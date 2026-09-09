@@ -79,6 +79,7 @@ export default function AdminDashboard() {
     <div className="p-8">
       <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
       <p className="text-gray-600 mb-8">Student Beneficiary Management System overview</p>
+      <a href="/reports" className="inline-block mb-8 rounded-md bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700">Generate Reports</a>
       {error && <div className="mb-6 p-4 bg-red-100 text-red-700 rounded">{error}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
