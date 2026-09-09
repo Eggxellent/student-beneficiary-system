@@ -1,7 +1,7 @@
 const studentModel = require('../models/student.model');
 const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
-const { checkDuplicate, jaroWinkler } = require('../services/duplicateCheck');
+const { checkDuplicates, jaroWinkler } = require('../services/duplicateCheck');
 const { getDuplicateThreshold } = require('../config/settings');
 const QRCode = require('qrcode');
 const { z } = require('zod');
@@ -39,18 +39,28 @@ async function create(req, res, next) {
     const { rows: candidates } = await pool.query(
       'SELECT * FROM students ORDER BY created_at DESC LIMIT 1000'
     );
-    const duplicateResults = [];
+    const duplicateCandidates = [];
     for (const candidate of candidates) {
       const similarity = jaroWinkler(full_name, candidate.full_name);
       if (similarity < 0.70) continue;
-      const result = await checkDuplicate({
+      duplicateCandidates.push({
+        candidate,
+        features: {
         jaro_winkler: similarity,
         dob_match: Number(dateValue(date_of_birth) === dateValue(candidate.date_of_birth)),
         school_match: Number(Boolean(school_code && school_code === candidate.school_code)),
         guardian_match: Number(Boolean(guardian_id && guardian_id === candidate.guardian_id)),
+        }
       });
-      duplicateResults.push({ candidate, probability: result.probability });
     }
+
+    const duplicateResults = duplicateCandidates.length > 0
+      ? await checkDuplicates(duplicateCandidates.map(({ features }) => features))
+        .then((results) => duplicateCandidates.map(({ candidate }, index) => ({
+          candidate,
+          probability: results[index].probability,
+        })))
+      : [];
 
     const student = await studentModel.create({ full_name, date_of_birth, school_code, guardian_id });
   const qrCode = await QRCode.toDataURL(student.id);

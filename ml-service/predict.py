@@ -36,6 +36,16 @@ def predict(data: dict[str, float | int]) -> dict[str, float]:
     return {"probability": round(probability, 4)}
 
 
+def predict_many(data: list[dict[str, float | int]]) -> list[dict[str, float]]:
+    model = joblib.load(MODEL_FILE)
+    feature_frame = pd.DataFrame(
+        [{column: item[column] for column in FEATURE_COLUMNS} for item in data],
+        columns=FEATURE_COLUMNS,
+    )
+    probabilities = model.predict_proba(feature_frame)[:, 1]
+    return [{"probability": round(float(probability), 4)} for probability in probabilities]
+
+
 def predict_duplicate(first: dict[str, str], second: dict[str, str], threshold: float = 0.5) -> dict[str, object]:
     features = build_features(first, second)
     result = predict(dict(zip(FEATURE_COLUMNS, features)))
@@ -50,7 +60,10 @@ def predict_duplicate(first: dict[str, str], second: dict[str, str], threshold: 
 if __name__ == "__main__":
     try:
         data = json.loads(sys.stdin.read())
-        print(json.dumps(predict(data)))
+        if isinstance(data, list):
+            print(json.dumps(predict_many(data)))
+        else:
+            print(json.dumps(predict(data)))
     except Exception as error:
         print(json.dumps({"error": str(error)}))
         sys.exit(1)

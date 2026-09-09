@@ -60,13 +60,17 @@ function jaroWinkler(first, second) {
 }
 
 function checkDuplicate(features) {
+  return checkDuplicates([features]).then((results) => results[0]);
+}
+
+function checkDuplicates(features) {
   return new Promise((resolve, reject) => {
     const child = execFile(pythonExecutable, [predictor], { windowsHide: true }, (error, stdout) => {
       if (error) return reject(error);
       try {
         const result = JSON.parse(stdout.trim());
         if (result.error) return reject(new Error(result.error));
-        resolve(result);
+        resolve(Array.isArray(result) ? result : [result]);
       } catch (parseError) {
         reject(parseError);
       }
@@ -75,4 +79,4 @@ function checkDuplicate(features) {
   });
 }
 
-module.exports = { checkDuplicate, jaroWinkler };
+module.exports = { checkDuplicate, checkDuplicates, jaroWinkler };
