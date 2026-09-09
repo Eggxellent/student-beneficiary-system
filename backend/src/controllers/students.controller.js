@@ -3,6 +3,15 @@ const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
 const { checkDuplicate, jaroWinkler } = require('../services/duplicateCheck');
 const { getDuplicateThreshold } = require('../config/settings');
+const QRCode = require('qrcode');
+const { z } = require('zod');
+
+const studentSchema = z.object({
+  full_name: z.string().min(2),
+  date_of_birth: z.string().optional(),
+  school_code: z.string().optional(),
+  guardian_id: z.string().optional()
+});
 
 function dateValue(value) {
   if (!value) return null;
@@ -11,8 +20,21 @@ function dateValue(value) {
 
 async function create(req, res, next) {
   try {
-    const { full_name, date_of_birth, school_code, guardian_id } = req.body;
-    if (!full_name) return res.status(400).json({ message: 'Full name is required' });
+    const validation = studentSchema.safeParse(req.body);
+
+    if (!validation.success) {
+      return res.status(400).json({
+        message: 'Invalid student data',
+        errors: validation.error.flatten()
+      });
+    }
+
+    const {
+      full_name,
+      date_of_birth,
+      school_code,
+      guardian_id
+    } = validation.data;
 
     const { rows: candidates } = await pool.query(
       'SELECT * FROM students ORDER BY created_at DESC LIMIT 1000'
@@ -31,6 +53,7 @@ async function create(req, res, next) {
     }
 
     const student = await studentModel.create({ full_name, date_of_birth, school_code, guardian_id });
+  const qrCode = await QRCode.toDataURL(student.id);
     const flags = [];
     const threshold = getDuplicateThreshold();
     for (const result of duplicateResults) {
@@ -45,7 +68,12 @@ async function create(req, res, next) {
     }
 
     await logAudit(req.user.id || req.user.sub, 'CREATE', 'students', student.id);
-    res.status(201).json({ message: 'Student registered successfully', student, duplicate_flags: flags });
+    res.status(201).json({
+      message: 'Student registered successfully',
+      student,
+      qr_code: qrCode,
+      duplicate_flags: flags
+    });
   } catch (error) {
     next(error);
   }
