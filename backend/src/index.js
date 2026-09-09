@@ -31,6 +31,10 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/reports', reportsRouter);
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+module.exports = app;
