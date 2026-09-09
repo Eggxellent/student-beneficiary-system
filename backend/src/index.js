@@ -6,6 +6,8 @@ const authRouter = require('./routes/auth.routes');
 const auditRouter = require('./routes/audit.routes');
 const studentsRouter = require('./routes/students.routes');
 const duplicateFlagsRouter = require('./routes/duplicateFlags.routes');
+const disbursementsRouter = require('./routes/disbursements.routes');
+const settingsRouter = require('./routes/settings.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -23,6 +25,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/audit-logs', auditRouter);
 app.use('/api/students', studentsRouter);
 app.use('/api/duplicate-flags', duplicateFlagsRouter);
+app.use('/api/disbursements', disbursementsRouter);
+app.use('/api/settings', settingsRouter);
 app.use(errorHandler);
 
 app.listen(PORT, () => {

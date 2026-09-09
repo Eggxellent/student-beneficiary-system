@@ -2,6 +2,7 @@ const studentModel = require('../models/student.model');
 const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
 const { checkDuplicate, jaroWinkler } = require('../services/duplicateCheck');
+const { getDuplicateThreshold } = require('../config/settings');
 
 function dateValue(value) {
   if (!value) return null;
@@ -31,8 +32,9 @@ async function create(req, res, next) {
 
     const student = await studentModel.create({ full_name, date_of_birth, school_code, guardian_id });
     const flags = [];
+    const threshold = getDuplicateThreshold();
     for (const result of duplicateResults) {
-      if (result.probability >= 0.70) {
+      if (result.probability >= threshold) {
         const { rows } = await pool.query(
           `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
            VALUES ($1, $2, $3, 'pending') RETURNING *`,
