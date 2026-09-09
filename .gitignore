@@ -11,5 +11,6 @@ ml-service/.venv/
 ml-service/model/*.joblib
 ml-service/data/raw_pairs.csv
 ml-service/data/features.csv
+backend/reports/*.pdf
 __pycache__/
 *.py[cod]

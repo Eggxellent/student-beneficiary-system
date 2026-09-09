@@ -8,6 +8,7 @@ const studentsRouter = require('./routes/students.routes');
 const duplicateFlagsRouter = require('./routes/duplicateFlags.routes');
 const disbursementsRouter = require('./routes/disbursements.routes');
 const settingsRouter = require('./routes/settings.routes');
+const reportsRouter = require('./routes/reports.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -27,6 +28,7 @@ app.use('/api/students', studentsRouter);
 app.use('/api/duplicate-flags', duplicateFlagsRouter);
 app.use('/api/disbursements', disbursementsRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/reports', reportsRouter);
 app.use(errorHandler);
 
 app.listen(PORT, () => {
