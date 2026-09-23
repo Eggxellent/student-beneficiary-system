@@ -18,8 +18,16 @@ CREATE TABLE IF NOT EXISTS students (
   date_of_birth DATE,
   school_code VARCHAR(100),
   guardian_id VARCHAR(100),
+  upi VARCHAR(100) UNIQUE NOT NULL,
+  eligibility_score INTEGER,
+  eligibility_category VARCHAR(50),
+  eligibility_assessed_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE students ADD COLUMN IF NOT EXISTS eligibility_score INTEGER;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS eligibility_category VARCHAR(50);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS eligibility_assessed_at TIMESTAMP;
 
 -- 3. Duplicate flags
 CREATE TABLE IF NOT EXISTS duplicate_flags (

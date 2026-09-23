@@ -1,54 +1,85 @@
 import { useEffect, useState } from "react";
-import {
-  BarElement,
-  CategoryScale,
-  Chart as ChartJS,
-  Legend,
-  LineElement,
-  LinearScale,
-  PointElement,
-  Title,
-  Tooltip,
-} from "chart.js";
-import { Bar, Line } from "react-chartjs-2";
+import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-);
+const navigation = [
+  { name: "Dashboard", path: "/dashboard", icon: "▦" },
+  { name: "Students", path: "/students", icon: "♙" },
+  { name: "Duplicate Review", path: "/duplicate-review", icon: "⚠" },
+  { name: "Eligibility", path: "/eligibility", icon: "✓" },
+  { name: "Disbursements", path: "/disbursements", icon: "▣" },
+  { name: "Reports", path: "/reports", icon: "▥" },
+];
 
 function rows(data) {
   return Array.isArray(data) ? data : data?.value || [];
 }
 
+function formatRelativeTime(value) {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 60) return "Just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} mins ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+  return `${Math.floor(seconds / 86400)} days ago`;
+}
+
+function activityDetails(action) {
+  if (action?.includes("DUPLICATE")) return { label: "Duplicate Alert", detail: "Duplicate record review updated", icon: "⚠", color: "bg-orange-50 text-orange-600" };
+  if (action?.includes("DISBURSEMENT")) return { label: "Disbursement", detail: "Disbursement record created", icon: "$", color: "bg-purple-50 text-purple-600" };
+  if (action?.includes("CREATE")) return { label: "Student Registration", detail: "New student registration completed", icon: "+", color: "bg-blue-50 text-blue-600" };
+  return { label: action?.replaceAll("_", " ") || "System Activity", detail: "System activity recorded", icon: "•", color: "bg-slate-100 text-slate-600" };
+}
+
+function buildTrend(items, dateField) {
+  const months = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - (5 - index), 1);
+    return { key: `${date.getFullYear()}-${date.getMonth()}`, label: date.toLocaleString("en", { month: "short" }), students: 0 };
+  });
+
+  items.forEach((item) => {
+    const createdAt = new Date(item[dateField]);
+    const key = `${createdAt.getFullYear()}-${createdAt.getMonth()}`;
+    const month = months.find((item) => item.key === key);
+    if (month) month.students += 1;
+  });
+
+  return months.reduce((trend, month, index) => {
+    const previous = trend[index - 1]?.total || 0;
+    trend.push({ ...month, total: previous + month.students });
+    return trend;
+  }, []);
+}
+
 export default function AdminDashboard() {
+  const { user, logout } = useAuth();
+  const location = useLocation();
   const [students, setStudents] = useState([]);
-  const [disbursements, setDisbursements] = useState([]);
   const [flags, setFlags] = useState([]);
+  const [disbursements, setDisbursements] = useState([]);
+  const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   async function loadDashboard() {
     try {
       setLoading(true);
-      const [studentsResponse, disbursementsResponse, flagsResponse] = await Promise.all([
+      setLoadError("");
+      const [studentsResponse, flagsResponse, disbursementsResponse, activitiesResponse] = await Promise.all([
         api.get("/students"),
-        api.get("/disbursements"),
         api.get("/duplicate-flags?status=pending"),
+        api.get("/disbursements"),
+        api.get("/audit-logs"),
       ]);
-
       setStudents(rows(studentsResponse.data));
-      setDisbursements(rows(disbursementsResponse.data));
       setFlags(rows(flagsResponse.data));
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to load dashboard.");
+      setDisbursements(rows(disbursementsResponse.data));
+      setActivities(rows(activitiesResponse.data));
+      setLastUpdated(new Date());
+    } catch {
+      setLoadError("Dashboard data could not be refreshed. Showing the last available values.");
     } finally {
       setLoading(false);
     }
@@ -58,46 +89,294 @@ export default function AdminDashboard() {
     loadDashboard();
   }, []);
 
-  if (loading) return <div className="p-8"><p>Loading dashboard...</p></div>;
-
-  const totalDisbursements = disbursements.reduce(
-    (total, item) => total + Number(item.amount || 0),
-    0
-  );
-  const schoolCounts = {};
-  students.forEach((student) => {
-    const school = student.school_code || "Unknown";
-    schoolCounts[school] = (schoolCounts[school] || 0) + 1;
-  });
-  const dateCounts = {};
-  disbursements.forEach((item) => {
-    const date = item.disbursement_date;
-    dateCounts[date] = (dateCounts[date] || 0) + Number(item.amount || 0);
-  });
+  const trend = buildTrend(students, "created_at");
+  const disbursementTrend = buildTrend(disbursements, "disbursement_date");
+  const maxTrend = Math.max(...trend.map((item) => item.total), ...disbursementTrend.map((item) => item.total), 1);
+  const eligibleStudents = students.filter((student) => ["eligible", "highly_eligible"].includes(student.eligibility_category)).length;
+  const statistics = [
+    { label: "Total Students", value: students.length.toLocaleString(), detail: "Registered students", icon: "♙", color: "bg-blue-50 text-blue-600" },
+    { label: "Eligible Students", value: eligibleStudents.toLocaleString(), detail: "Stored eligible assessments", icon: "✓", color: "bg-green-50 text-green-600" },
+    { label: "Duplicate Alerts", value: flags.length.toLocaleString(), detail: "Potential duplicate records", icon: "⚠", color: "bg-orange-50 text-orange-600" },
+    { label: "Pending Reviews", value: flags.length.toLocaleString(), detail: "Cases requiring review", icon: "◷", color: "bg-purple-50 text-purple-600" },
+  ];
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
-      <p className="text-gray-600 mb-8">Student Beneficiary Management System overview</p>
-      <a href="/reports" className="inline-block mb-8 rounded-md bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700">Generate Reports</a>
-      {error && <div className="mb-6 p-4 bg-red-100 text-red-700 rounded">{error}</div>}
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow"><p className="text-gray-500">Total Students</p><p className="text-3xl font-bold mt-2">{students.length}</p></div>
-        <div className="bg-white p-6 rounded-lg shadow"><p className="text-gray-500">Total Disbursements</p><p className="text-3xl font-bold mt-2">KSh {totalDisbursements.toLocaleString()}</p></div>
-        <div className="bg-white p-6 rounded-lg shadow"><p className="text-gray-500">Pending Duplicate Flags</p><p className="text-3xl font-bold mt-2">{flags.length}</p></div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-xl font-bold mb-5">Disbursements Over Time</h2>
-          <Line data={{ labels: Object.keys(dateCounts), datasets: [{ label: "Disbursements (KSh)", data: Object.values(dateCounts) }] }} options={{ responsive: true }} />
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <aside className="fixed left-0 top-0 z-30 hidden h-screen w-56 flex-col border-r border-slate-200 bg-blue-50/70 sm:flex">
+        <div className="flex h-12 items-center gap-2 border-b border-slate-200 px-4">
+          <div className="flex h-5 w-5 items-center justify-center rounded bg-blue-600 text-[10px] text-white">🎓</div>
+          <span className="text-sm font-bold tracking-tight text-slate-800">SBMS</span>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-xl font-bold mb-5">Students by School</h2>
-          <Bar data={{ labels: Object.keys(schoolCounts), datasets: [{ label: "Students", data: Object.values(schoolCounts) }] }} options={{ responsive: true }} />
+
+        <nav className="flex-1 space-y-1 px-3 py-4">
+          {navigation.map((item) => {
+            const isActive = location.pathname === item.path;
+
+            return (
+              <Link
+                key={item.name}
+                to={item.path}
+                className={`flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-medium transition ${
+                  isActive
+                    ? "bg-blue-50 text-blue-600"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                <span className="w-4 text-center text-xs">{item.icon}</span>
+                <span>{item.name}</span>
+                {isActive && <span className="ml-auto text-blue-500">›</span>}
+              </Link>
+            );
+          })}
+
+          <Link
+            to="/settings"
+            className="flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+          >
+            <span className="w-4 text-center">⚙</span>
+            <span>Settings</span>
+          </Link>
+        </nav>
+
+        <div className="border-t border-slate-200 p-3">
+          <button
+            type="button"
+            onClick={logout}
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-[11px] font-medium text-slate-600 transition hover:bg-red-50 hover:text-red-600"
+          >
+            <span>↪</span>
+            <span>Logout</span>
+          </button>
         </div>
-      </div>
+      </aside>
+
+      <main className="min-h-screen sm:ml-56">
+        <header className="sticky top-0 z-20 flex h-12 items-center justify-between border-b border-slate-200 bg-white/95 px-3 backdrop-blur sm:px-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-500">▦</span>
+            <h1 className="text-xs font-semibold text-slate-800">Dashboard</h1>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="relative hidden sm:block">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">⌕</span>
+              <input
+                type="text"
+                placeholder="Search students, UPI, school..."
+                className="h-7 w-48 rounded border border-slate-200 bg-slate-50 pl-7 pr-3 text-[10px] outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+
+            <button type="button" aria-label="Notifications" className="text-sm text-slate-500 hover:text-slate-800">♧</button>
+            <div className="h-5 w-px bg-slate-200" />
+
+            <div className="flex items-center gap-3">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs text-blue-600">♙</div>
+              <div className="hidden sm:block">
+                <p className="text-[10px] font-medium text-slate-800">{user?.full_name || "Administrator"}</p>
+                <p className="text-[9px] text-slate-500">{user?.role || "Administrator"}</p>
+              </div>
+              <span className="text-xs text-slate-400">▼</span>
+            </div>
+          </div>
+        </header>
+
+        <section className="mx-auto max-w-7xl p-5">
+          <div className="mb-4 flex flex-col justify-between gap-4 rounded-md border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-center">
+            <div>
+              <p className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-emerald-600">
+                System Active
+              </p>
+              <h2 className="text-xl font-bold text-slate-900">Good morning, {user?.full_name?.split(" ")[0] || "Admin"} 👋</h2>
+              <p className="mt-1 max-w-xl text-[11px] text-slate-500">
+                Here&apos;s an overview of your student beneficiaries and the activities that require your attention.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  to="/students/register"
+                  className="rounded bg-blue-600 px-3 py-2 text-[10px] font-semibold text-white transition hover:bg-blue-700"
+                >
+                  + Register Student
+                </Link>
+                <Link
+                  to="/duplicate-review"
+                  className="rounded border border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Review Duplicates
+                </Link>
+              </div>
+            </div>
+
+            <div className="hidden h-24 w-40 items-center justify-center rounded-sm bg-[linear-gradient(135deg,#17477d,#e69d35)] text-4xl shadow-inner md:flex">
+              🎓
+            </div>
+          </div>
+
+          {loadError && <p className="mb-3 rounded border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">{loadError}</p>}
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {statistics.map((statistic) => (
+              <article key={statistic.label} className="rounded-md border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-[9px] font-medium uppercase text-slate-500">{statistic.label}</p>
+                    <p className="mt-1 text-xl font-bold text-slate-900">{statistic.value}</p>
+                    <p className="mt-1 text-[9px] text-slate-500">{statistic.detail}</p>
+                  </div>
+                  <div className={`flex h-7 w-7 items-center justify-center rounded text-sm ${statistic.color}`}>{statistic.icon}</div>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-3">
+            <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800">Student Overview</h3>
+                  <p className="mt-1 text-sm text-slate-500">Student registration and disbursement trends</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={loadDashboard} disabled={loading} className="text-sm font-medium text-slate-500 hover:text-blue-700 disabled:opacity-50">
+                    {loading ? "Refreshing..." : "Refresh"}
+                  </button>
+                  <Link to="/reports" className="text-sm font-medium text-blue-600 hover:text-blue-700">View Full Report →</Link>
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center gap-6 text-xs text-slate-500">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+                  Total Students
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                  Disbursements
+                </div>
+              </div>
+
+              <div className="mt-5 h-40 border-b border-slate-200 bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_31px,#e2e8f0_32px)] px-2">
+                <svg viewBox="0 0 600 160" className="h-full w-full" role="img" aria-label="Student registration trend">
+                  <defs>
+                    <linearGradient id="studentTrend" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stopColor="#2563eb" stopOpacity="0.22" />
+                      <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d={`M 0,160 ${trend.map((item, index) => `L ${(index / (trend.length - 1 || 1)) * 600},${160 - (item.total / maxTrend) * 130}`).join(" ")} L 600,160 Z`}
+                    fill="url(#studentTrend)"
+                  />
+                  <polyline
+                    points={trend.map((item, index) => `${(index / (trend.length - 1 || 1)) * 600},${160 - (item.total / maxTrend) * 130}`).join(" ")}
+                    fill="none"
+                    stroke="#2563eb"
+                    strokeWidth="3"
+                  />
+                  <polyline
+                    points={disbursementTrend.map((item, index) => `${(index / (disbursementTrend.length - 1 || 1)) * 600},${160 - (item.total / maxTrend) * 130}`).join(" ")}
+                    fill="none"
+                    stroke="#0f766e"
+                    strokeWidth="2"
+                  />
+                </svg>
+              </div>
+
+              <div className="mt-3 flex justify-between px-2 text-xs text-slate-400">
+                {trend.map((item) => <span key={item.key}>{item.label}</span>)}
+              </div>
+              <p className="mt-3 text-right text-[9px] text-slate-400">
+                {lastUpdated ? `Last updated ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Loading dashboard data"}
+              </p>
+            </div>
+
+            <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-800">Quick Actions</h3>
+              <p className="mt-1 text-sm text-slate-500">Commonly performed operations.</p>
+
+              <div className="mt-6 space-y-3">
+                <Link
+                  to="/students/register"
+                  className="flex items-center justify-between rounded-lg bg-blue-600 px-4 py-4 text-sm font-semibold text-white transition hover:bg-blue-700"
+                >
+                  <span>+ Register Student</span>
+                  <span>→</span>
+                </Link>
+                <Link
+                  to="/duplicate-review"
+                  className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  <span>⚠ Review Duplicates</span>
+                  <span>→</span>
+                </Link>
+                <Link
+                  to="/reports"
+                  className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  <span>▥ View Reports</span>
+                  <span>→</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-3">
+            <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800">Duplicate Review</h3>
+                  <p className="mt-1 text-sm text-slate-500">Potential duplicate records requiring review.</p>
+                </div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50 text-lg text-orange-600">⚠</div>
+              </div>
+
+              <div className="mt-6">
+                <p className="text-4xl font-bold text-slate-900">{flags.length}</p>
+                <p className="mt-1 text-sm text-slate-500">Potential duplicates</p>
+              </div>
+
+              <div className="mt-5 rounded-lg bg-orange-50 p-4">
+                <p className="text-sm font-medium text-orange-800">{flags.length} require human review</p>
+                <p className="mt-1 text-xs text-orange-700">Review flagged records before taking further action.</p>
+              </div>
+
+              <Link
+                to="/duplicate-review"
+                className="mt-5 block w-full rounded-lg bg-orange-500 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-orange-600"
+              >
+                Review Duplicates →
+              </Link>
+            </div>
+
+            <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800">Recent Activity</h3>
+                  <p className="mt-1 text-sm text-slate-500">Recent updates from the student beneficiary management system.</p>
+                </div>
+                <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700">See All →</button>
+              </div>
+
+              <div className="mt-6 divide-y divide-slate-100">
+                {activities.slice(0, 4).map((activity) => {
+                  const details = activityDetails(activity.action);
+                  return (
+                    <div key={activity.id} className="flex items-center gap-4 py-4">
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${details.color}`}>{details.icon}</div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-800">{details.label}</p>
+                        <p className="mt-1 text-xs text-slate-500">{details.detail}</p>
+                      </div>
+                      <span className="shrink-0 text-xs text-slate-400">{formatRelativeTime(activity.created_at)}</span>
+                    </div>
+                  );
+                })}
+                {activities.length === 0 && <p className="py-6 text-sm text-slate-500">No recent activity recorded.</p>}
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }

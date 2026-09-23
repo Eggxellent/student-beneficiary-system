@@ -1,11 +1,13 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
+import Students from "./pages/Students";
 import StudentRegistration from "./pages/StudentRegistration";
 import DuplicateReview from "./pages/DuplicateReview";
 import Disbursements from "./pages/Disbursements";
 import Eligibility from "./pages/Eligibility";
 import AdminDashboard from "./pages/AdminDashboard";
 import Reports from "./pages/Reports";
+import Settings from "./pages/Settings";
 import { useAuth } from "./context/AuthContext";
 
 function ProtectedRoute({ children }) {
@@ -71,6 +73,14 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route
+        path="/students"
+        element={
+          <ProtectedRoute>
+            <Students />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/students/register"
         element={
           <ProtectedRoute>
@@ -107,6 +117,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Reports />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <Settings />
           </ProtectedRoute>
         }
       />
