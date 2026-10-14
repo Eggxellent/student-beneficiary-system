@@ -56,8 +56,9 @@ describe('Duplicate flags and disbursements API', () => {
   });
 
   test('GET /api/duplicate-flags should return pending duplicate flags for admins', async () => {
-    const student = await createStudent({ full_name: `Pending Flag ${Date.now()}` });
-    const matchedStudent = await createStudent({ full_name: `Matched Flag ${Date.now()}` });
+    const sharedUpi = `UPI-SHARED-${Date.now()}`;
+    const student = await createStudent({ full_name: `Pending Flag ${Date.now()}`, upi: sharedUpi });
+    const matchedStudent = await createStudent({ full_name: `Matched Flag ${Date.now()}`, upi: sharedUpi });
 
     const flagResult = await pool.query(
       `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
@@ -114,22 +115,22 @@ describe('Duplicate flags and disbursements API', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body.results.map(({ decision, score_maximums }) => ({ decision, score_maximums }))).toEqual([
+      { decision: 'critical', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
+      { decision: 'critical', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
       { decision: 'review', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
-      { decision: 'duplicate', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
       { decision: 'review', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
-      { decision: 'review', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
-      { decision: 'review', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
+      { decision: 'clear', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
     ]);
     expect(response.body.results[0].probability).toBeGreaterThanOrEqual(0.3);
     expect(response.body.results[0].probability).toBeLessThan(0.7);
-    expect(response.body.results[0].review_reason).toMatch(/administrator confirmation/i);
+    expect(response.body.results[0].review_reason).toMatch(/Critical identifier match/i);
     expect(response.body.results[1].probability).toBeGreaterThanOrEqual(0.7);
-    expect(response.body.results[1].review_reason).toMatch(/administrator confirmation/i);
+    expect(response.body.results[1].review_reason).toMatch(/Critical identifier match/i);
     expect(response.body.results[2].probability).toBe(0.2);
     expect(response.body.results[3].probability).toBeLessThan(0.3);
     expect(response.body.results[3].review_reason).toMatch(/four or more fields/i);
     expect(response.body.results[4].probability).toBe(0.12);
-    expect(response.body.results[4].review_reason).toMatch(/exact name and date/i);
+    expect(response.body.results[4].review_reason).toBeNull();
   });
 
   test('POST /api/duplicate-flags/evaluate should reject non-admin users', async () => {
@@ -188,6 +189,14 @@ describe('Duplicate flags and disbursements API', () => {
     expect(response.statusCode).toBe(409);
     expect(response.body.message).toMatch(/duplicate issue/i);
     expect(response.body.duplicate_flag.id).toBe(flagResult.rows[0].id);
+
+    const matchedStudentResponse = await request(app)
+      .post('/api/disbursements')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ student_id: matchedStudent.id, amount: 15000 });
+
+    expect(matchedStudentResponse.statusCode).toBe(409);
+    expect(matchedStudentResponse.body.duplicate_flag.id).toBe(flagResult.rows[0].id);
 
     await pool.query('DELETE FROM duplicate_flags WHERE id = $1', [flagResult.rows[0].id]);
     await pool.query('DELETE FROM students WHERE id = $1 OR id = $2', [student.id, matchedStudent.id]);

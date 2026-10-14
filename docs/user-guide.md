@@ -39,11 +39,11 @@ The system compares:
 - UPI
 - Birth certificate number
 
-Exact identity-related matches contribute evidence, while name similarity is graded. Missing values are not treated as matching values. Pending cases are refreshed automatically when the Duplicate Review page loads.
+UPI and birth certificate numbers must be unique across students. Any exact match is marked **Critical**, even when the weighted score is below the Duplicate threshold. Missing values are not treated as matches. When a pending case falls below the review threshold and has no critical identifier or corroborating match, it is automatically cleared and recorded in the audit log.
 
 ## Review a possible duplicate
 
-Open **Duplicate Review** to see pending cases. Open **Review Case** to compare both student records side by side. The page shows:
+Open **Duplicate Review** to see pending cases. Use **Scan existing records** to compare all stored student pairs and create flags for qualifying pairs that have not already been reviewed. Use **Review Case** to compare both student records side by side. The page shows:
 
 - The values from each record
 - Match or difference evidence
@@ -64,7 +64,7 @@ Register a student with identity values that do not match an existing record. Th
 
 ### Likely duplicate
 
-Register a student with the same UPI or birth certificate number as an existing record. The system should create a pending admin-review flag. Scores of 70% or higher are labelled Duplicate; lower scores remain Review. Field officers can submit the registration; admins confirm or clear the flag.
+Register a student with the same UPI or birth certificate number as an existing record. The system creates a pending critical flag and alerts the field officer immediately. Both records are blocked from disbursement until an admin confirms or clears the flag. The system does not automatically declare the records to be the same learner.
 
 ### Similar name, different learner
 
@@ -76,4 +76,4 @@ Use the same DOB, school, and guardian but different names, UPI values, and birt
 
 ## Limitations
 
-The trained model uses synthetic data and must be validated with representative real-world records before operational use. Exact UPI and birth-certificate matches each carry 40% of the score, but an identifier match alone does not bypass the 70% Duplicate threshold. Admins confirm or clear flagged records; probabilities alone are not proof of identity.
+The trained model uses synthetic data and must be validated with representative real-world records before operational use. Exact UPI and birth-certificate matches each carry 40% of the score and receive critical status independently of the score threshold. Admins confirm or clear flagged records; probabilities alone are not proof of identity.

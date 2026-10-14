@@ -7,6 +7,8 @@ const {
   classifyDuplicate,
   duplicateReviewReason,
   DUPLICATE_SCORE_MAXIMUMS,
+  hasCorroboratingMajority,
+  MIN_NAME_SIMILARITY,
 } = require('../services/duplicateCheck');
 const { getDuplicateThreshold, getReviewThreshold } = require('../config/settings');
 const { z } = require('zod');
@@ -25,13 +27,13 @@ const evaluationRequestSchema = z.object({
     label: z.string().trim().min(1).max(80),
     first: evaluationStudentSchema,
     second: evaluationStudentSchema,
-  })).min(1).max(10),
+  })).min(1).max(30),
 });
 
 function evaluate(req, res) {
   const validation = evaluationRequestSchema.safeParse(req.body);
   if (!validation.success) {
-    return res.status(400).json({ message: 'Provide between 1 and 10 valid student pairs to evaluate.' });
+    return res.status(400).json({ message: 'Provide between 1 and 30 valid student pairs to evaluate.' });
   }
 
   const results = validation.data.pairs.map(({ label, first, second }) => {
@@ -52,6 +54,82 @@ function evaluate(req, res) {
   });
 
   return res.json({ results });
+}
+
+async function scanExisting(req, res, next) {
+  try {
+    const { rows: students } = await pool.query(
+      `SELECT id, full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number
+       FROM students
+       ORDER BY created_at ASC, id ASC`
+    );
+    const { rows: existingFlags } = await pool.query(
+      'SELECT student_id, matched_student_id FROM duplicate_flags'
+    );
+    const pairKey = (firstId, secondId) => [String(firstId), String(secondId)].sort().join(':');
+    const knownPairs = new Set(existingFlags.map((flag) => pairKey(flag.student_id, flag.matched_student_id)));
+    const duplicateThreshold = getDuplicateThreshold();
+    const reviewThreshold = getReviewThreshold();
+    const pendingFlags = [];
+    let pairsCompared = 0;
+    let existingPairsSkipped = 0;
+
+    for (let firstIndex = 0; firstIndex < students.length; firstIndex += 1) {
+      const first = students[firstIndex];
+      for (let secondIndex = firstIndex + 1; secondIndex < students.length; secondIndex += 1) {
+        const second = students[secondIndex];
+        pairsCompared += 1;
+        const features = buildDuplicateFeatures(first, second);
+        if (
+          features.jaro_winkler < MIN_NAME_SIMILARITY
+          && !features.upi_match
+          && !features.birth_certificate_match
+          && !hasCorroboratingMajority(features)
+        ) continue;
+
+        const probability = calculateDuplicateScore(features);
+        const riskLevel = classifyDuplicate(features, probability, duplicateThreshold, reviewThreshold);
+        if (riskLevel === 'clear') continue;
+
+        const key = pairKey(first.id, second.id);
+        if (knownPairs.has(key)) {
+          existingPairsSkipped += 1;
+          continue;
+        }
+        knownPairs.add(key);
+        pendingFlags.push({ studentId: second.id, matchedStudentId: first.id, probability });
+      }
+    }
+
+    let flagsCreated = 0;
+    for (let offset = 0; offset < pendingFlags.length; offset += 500) {
+      const batch = pendingFlags.slice(offset, offset + 500);
+      const values = [];
+      const parameters = [];
+      batch.forEach((flag, index) => {
+        const position = index * 3;
+        values.push(`($${position + 1}, $${position + 2}, $${position + 3}, 'pending')`);
+        parameters.push(flag.studentId, flag.matchedStudentId, flag.probability);
+      });
+      const inserted = await pool.query(
+        `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
+         VALUES ${values.join(', ')} RETURNING id`,
+        parameters
+      );
+      flagsCreated += inserted.rowCount;
+    }
+
+    await logAudit(req.user.id || req.user.sub, 'SCAN_DUPLICATES', 'students', null);
+    res.json({
+      records_scanned: students.length,
+      pairs_compared: pairsCompared,
+      candidates_found: pendingFlags.length + existingPairsSkipped,
+      flags_created: flagsCreated,
+      existing_pairs_skipped: existingPairsSkipped,
+    });
+  } catch (error) {
+    next(error);
+  }
 }
 
 async function list(req, res, next) {
@@ -87,18 +165,31 @@ async function list(req, res, next) {
       );
       const probability = calculateDuplicateScore(features);
       const reviewThreshold = getReviewThreshold();
-      await pool.query('UPDATE duplicate_flags SET probability = $1 WHERE id = $2', [probability, flag.id]);
+      const riskLevel = classifyDuplicate(features, probability, getDuplicateThreshold(), reviewThreshold);
+      const shouldAutoClear = status === 'pending' && riskLevel === 'clear';
+      if (shouldAutoClear) {
+        await pool.query(
+          `UPDATE duplicate_flags
+           SET probability = $1, status = 'cleared', resolved_by = NULL, resolved_at = NOW()
+           WHERE id = $2 AND status = 'pending'`,
+          [probability, flag.id]
+        );
+        await logAudit(null, 'AUTO_CLEAR_LOW_SCORE', 'duplicate_flags', flag.id);
+      } else {
+        await pool.query('UPDATE duplicate_flags SET probability = $1 WHERE id = $2', [probability, flag.id]);
+      }
       return {
         ...flag,
         probability,
-        risk_level: classifyDuplicate(features, probability, getDuplicateThreshold(), reviewThreshold),
+        status: shouldAutoClear ? 'cleared' : flag.status,
+        risk_level: riskLevel,
         review_reason: duplicateReviewReason(features, probability, reviewThreshold),
         score_breakdown: calculateDuplicateContributions(features),
         score_maximums: DUPLICATE_SCORE_MAXIMUMS,
         calculated_probability: probability,
       };
     }));
-    res.json(refreshedFlags);
+    res.json(status === 'pending' ? refreshedFlags.filter((flag) => flag.status === 'pending') : refreshedFlags);
   } catch (error) {
     next(error);
   }
@@ -127,4 +218,4 @@ async function update(req, res, next) {
   }
 }
 
-module.exports = { evaluate, list, update };
+module.exports = { evaluate, list, scanExisting, update };

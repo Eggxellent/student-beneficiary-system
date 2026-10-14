@@ -33,4 +33,5 @@ frontend together from this directory:
 npm start
 ```
 
-Open `http://localhost:4173`. The API runs on port 5000 and is proxied by Vite.
+Open `http://localhost:4174`. The frontend runs on port 4174, and the API runs
+on port 5000 and is proxied by Vite.

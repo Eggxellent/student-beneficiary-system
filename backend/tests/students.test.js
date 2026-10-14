@@ -100,7 +100,8 @@ describe("Students API", () => {
 
     expect(firstResponse.statusCode).toBe(201);
     expect(duplicateResponse.statusCode).toBe(201);
-    expect(duplicateResponse.body.duplicate_flags).toBeUndefined();
+    expect(duplicateResponse.body.duplicate_flags).toHaveLength(1);
+    expect(duplicateResponse.body.duplicate_flags[0].risk_level).toBe('critical');
     expect(duplicateResponse.body.message).toBe("Student registered successfully");
 
     const flags = await pool.query(

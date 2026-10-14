@@ -5,7 +5,6 @@ const {
   DUPLICATE_SCORE_MAXIMUMS,
   MIN_NAME_SIMILARITY,
   hasCorroboratingMajority,
-  hasExactNameAndDateMatch,
   classifyDuplicate,
   duplicateReviewReason,
 } = require('../src/services/duplicateCheck');
@@ -74,13 +73,13 @@ describe('Duplicate comparison features', () => {
     const fourFields = { ...threeFields, guardian_match: 1 };
 
     expect(hasCorroboratingMajority(threeFields)).toBe(false);
-    expect(classifyDuplicate(threeFields, 0.2, 0.7, 0.3)).toBe('review');
-    expect(duplicateReviewReason(threeFields, 0.2, 0.3)).toMatch(/exact name and date/i);
+    expect(classifyDuplicate(threeFields, 0.2, 0.7, 0.3)).toBe('clear');
+    expect(duplicateReviewReason(threeFields, 0.2, 0.3)).toBeNull();
     expect(classifyDuplicate(fourFields, 0.4, 0.7, 0.3)).toBe('review');
     expect(classifyDuplicate(fourFields, 0.7, 0.7, 0.3)).toBe('duplicate');
   });
 
-  test('a lone exact birth certificate match is flagged for review below the clear-duplicate threshold', () => {
+  test('a lone exact birth certificate match is critical below the clear-duplicate threshold', () => {
     const features = buildDuplicateFeatures(student(), student({
       full_name: 'Zxq Blr',
       date_of_birth: '2010-09-20',
@@ -93,11 +92,11 @@ describe('Duplicate comparison features', () => {
     expect(calculateDuplicateScore(features)).toBeGreaterThanOrEqual(0.4);
     expect(calculateDuplicateScore(features)).toBeLessThan(0.7);
     expect(calculateDuplicateContributions(features).birth_certificate).toBe(0.4);
-    expect(classifyDuplicate(features, calculateDuplicateScore(features), 0.7, 0.3)).toBe('review');
-    expect(duplicateReviewReason(features, calculateDuplicateScore(features), 0.3)).toMatch(/administrator confirmation/i);
+    expect(classifyDuplicate(features, calculateDuplicateScore(features), 0.7, 0.3)).toBe('critical');
+    expect(duplicateReviewReason(features, calculateDuplicateScore(features), 0.3)).toMatch(/Critical identifier match/i);
   });
 
-  test('a lone exact UPI match is flagged for review below the clear-duplicate threshold', () => {
+  test('a lone exact UPI match is critical below the clear-duplicate threshold', () => {
     const features = buildDuplicateFeatures(student(), student({
       full_name: 'Zxq Blr',
       date_of_birth: '2010-09-20',
@@ -110,11 +109,11 @@ describe('Duplicate comparison features', () => {
     expect(calculateDuplicateScore(features)).toBeGreaterThanOrEqual(0.4);
     expect(calculateDuplicateScore(features)).toBeLessThan(0.7);
     expect(calculateDuplicateContributions(features).upi).toBe(0.4);
-    expect(classifyDuplicate(features, calculateDuplicateScore(features), 0.7, 0.3)).toBe('review');
-    expect(duplicateReviewReason(features, calculateDuplicateScore(features), 0.3)).toMatch(/administrator confirmation/i);
+    expect(classifyDuplicate(features, calculateDuplicateScore(features), 0.7, 0.3)).toBe('critical');
+    expect(duplicateReviewReason(features, calculateDuplicateScore(features), 0.3)).toMatch(/Critical identifier match/i);
   });
 
-  test('a single exact identifier and supporting evidence below 70 percent stays in review', () => {
+  test('a single exact identifier stays critical regardless of supporting evidence below 70 percent', () => {
     const features = buildDuplicateFeatures(student(), student({
       full_name: 'John Kamau',
       date_of_birth: '2005-04-12',
@@ -125,7 +124,7 @@ describe('Duplicate comparison features', () => {
     }));
 
     expect(calculateDuplicateScore(features)).toBe(0.6);
-    expect(classifyDuplicate(features, calculateDuplicateScore(features), 0.7, 0.3)).toBe('review');
+    expect(classifyDuplicate(features, calculateDuplicateScore(features), 0.7, 0.3)).toBe('critical');
   });
 
   test('scores at 70 percent are classified as clear duplicate candidates', () => {
@@ -156,7 +155,7 @@ describe('Duplicate comparison features', () => {
     expect(calculateDuplicateContributions(features).birth_certificate).toBe(0);
   });
 
-  test('exact name and date agreement routes to review even below the weighted threshold', () => {
+  test('exact name and date alone remain clear without stronger supporting evidence', () => {
     const features = buildDuplicateFeatures(student({
       full_name: 'Amina Hassan',
       date_of_birth: '2010-05-14',
@@ -175,9 +174,9 @@ describe('Duplicate comparison features', () => {
     const score = calculateDuplicateScore(features);
 
     expect(score).toBe(0.12);
-    expect(hasExactNameAndDateMatch(features)).toBe(true);
-    expect(classifyDuplicate(features, score, 0.7, 0.3)).toBe('review');
-    expect(duplicateReviewReason(features, score, 0.3)).toMatch(/exact name and date/i);
+    expect(hasCorroboratingMajority(features)).toBe(false);
+    expect(classifyDuplicate(features, score, 0.7, 0.3)).toBe('clear');
+    expect(duplicateReviewReason(features, score, 0.3)).toBeNull();
   });
 
   test('nearby dates receive stronger similarity than dates years apart', () => {

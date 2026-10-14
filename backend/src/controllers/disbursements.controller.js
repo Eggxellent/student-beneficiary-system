@@ -30,7 +30,7 @@ async function create(req, res, next) {
     const unresolved = await pool.query(
       `SELECT id, status, probability
        FROM duplicate_flags
-       WHERE student_id = $1
+       WHERE (student_id = $1 OR matched_student_id = $1)
        AND status IN ('pending', 'confirmed_duplicate')
        LIMIT 1`,
       [student_id]

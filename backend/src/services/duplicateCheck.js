@@ -180,28 +180,22 @@ function hasCorroboratingMajority(features) {
   return Object.values(features).filter((similarity) => similarity >= MIN_NAME_SIMILARITY).length >= MIN_CORROBORATING_FIELDS;
 }
 
-function hasExactNameAndDateMatch(features) {
-  return features.jaro_winkler === 1 && features.dob_match === 1;
-}
-
 function classifyDuplicate(features, score, duplicateThreshold, reviewThreshold) {
+  if (features.upi_match === 1 || features.birth_certificate_match === 1) return 'critical';
   if (score >= duplicateThreshold) return 'duplicate';
-  if (
-    features.upi_match === 1
-    || features.birth_certificate_match === 1
-    || score >= reviewThreshold
-    || hasCorroboratingMajority(features)
-    || hasExactNameAndDateMatch(features)
-  ) return 'review';
+  if (score >= reviewThreshold || hasCorroboratingMajority(features)) return 'review';
   return 'clear';
 }
 
 function duplicateReviewReason(features, score, reviewThreshold) {
-  if (features.upi_match === 1 || features.birth_certificate_match === 1) {
-    return 'Exact UPI or birth certificate number match; administrator confirmation is required.';
+  const matchedIdentifiers = [
+    features.upi_match === 1 ? 'UPI' : null,
+    features.birth_certificate_match === 1 ? 'birth certificate number' : null,
+  ].filter(Boolean);
+  if (matchedIdentifiers.length > 0) {
+    return `Critical identifier match: exact ${matchedIdentifiers.join(' and ')} across student records. Verify the original documents and resolve this flag before disbursement.`;
   }
   if (score >= reviewThreshold) return null;
-  if (hasExactNameAndDateMatch(features)) return 'Exact name and date-of-birth agreement warrants manual review.';
   if (hasCorroboratingMajority(features)) return 'Four or more fields show strong similarity; manual review is required.';
   return null;
 }
@@ -268,7 +262,6 @@ module.exports = {
   calculateDuplicateContributions,
   calculateDuplicateScore,
   hasCorroboratingMajority,
-  hasExactNameAndDateMatch,
   classifyDuplicate,
   duplicateReviewReason,
   DUPLICATE_SCORE_MAXIMUMS,

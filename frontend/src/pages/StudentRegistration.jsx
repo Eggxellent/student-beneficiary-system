@@ -14,6 +14,8 @@ export default function StudentRegistration() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const hasDuplicateFlags = Boolean(result?.duplicate_flags?.length);
+  const hasCriticalIdentifierFlag = result?.duplicate_flags?.some((flag) => flag.risk_level === "critical");
 
   function handleChange(e) {
     setForm({
@@ -69,9 +71,19 @@ export default function StudentRegistration() {
       )}
 
       {result && (
-        <div className="mb-6 p-5 bg-green-50 border border-green-200 rounded text-green-800">
-          <h2 className="text-xl font-bold mb-2">Student registered</h2>
+        <div className={`mb-6 rounded border p-5 ${hasCriticalIdentifierFlag ? "border-red-300 bg-red-50 text-red-900" : hasDuplicateFlags ? "border-amber-300 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-green-800"}`}>
+          <h2 className="mb-2 text-xl font-bold">Student registered</h2>
           <p>{result.message}</p>
+
+          {hasDuplicateFlags && (
+            <div className={`mt-4 rounded border bg-white p-4 ${hasCriticalIdentifierFlag ? "border-red-300" : "border-amber-300"}`} role="alert">
+              <h3 className={`font-bold ${hasCriticalIdentifierFlag ? "text-red-900" : "text-amber-900"}`}>{hasCriticalIdentifierFlag ? "Critical identifier match" : "Possible duplicate needs administrator review"}</h3>
+              <p className={`mt-1 text-sm ${hasCriticalIdentifierFlag ? "text-red-800" : "text-amber-800"}`}>{hasCriticalIdentifierFlag ? "An exact UPI or birth certificate match exists. This record and its matched record are blocked from disbursement until an administrator resolves the alert." : "A possible duplicate was found. Disbursement remains blocked until an administrator reviews the pending flag."}</p>
+              <ul className={`mt-2 list-inside list-disc text-sm ${hasCriticalIdentifierFlag ? "text-red-800" : "text-amber-800"}`}>
+                {result.duplicate_flags.filter((flag) => flag.review_reason).map((flag) => <li key={flag.id}>{flag.review_reason}</li>)}
+              </ul>
+            </div>
+          )}
 
           {result.qr_code && (
             <div className="mt-5">

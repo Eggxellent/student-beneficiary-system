@@ -2,74 +2,127 @@ import { Fragment, useEffect, useState } from "react";
 import { BadgeCheck, CircleCheck, Eye, FlaskConical, ShieldAlert, X } from "lucide-react";
 import api from "../services/api";
 
-const evaluationNames = [
-  "Amina Hassan", "Brian Otieno", "Faith Njeri", "John Kamau",
-  "Mary Wanjiku", "Peter Ochieng", "Wanjiku Mwangi", "Samuel Kiptoo",
+const sampleStudent = (full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number) => ({
+  full_name,
+  date_of_birth,
+  school_code,
+  guardian_id,
+  upi,
+  birth_certificate_number,
+});
+
+const evaluationPairs = [
+  // Critical: an exact UPI or birth certificate match always requires action.
+  {
+    label: "Exact same student record",
+    first: sampleStudent("Nia Wanjiku", "2008-04-12", "SCH-041", "G-481725", "UPI-041", "BC-2008-041"),
+    second: sampleStudent("Nia Wanjiku", "2008-04-12", "SCH-041", "G-481725", "UPI-041", "BC-2008-041"),
+  },
+  {
+    label: "UPI reused with a different name and date of birth",
+    first: sampleStudent("Brian Otieno", "2007-02-16", "SCH-052", "G-520041", "UPI-052", "BC-2007-052"),
+    second: sampleStudent("Kevin Kiptoo", "2009-11-03", "SCH-091", "G-910037", "UPI-052", "BC-2009-091"),
+  },
+  {
+    label: "Birth certificate reused after a name change",
+    first: sampleStudent("Mary Wanjiku", "2006-06-18", "SCH-061", "G-610019", "UPI-061", "BC-2006-061"),
+    second: sampleStudent("Faith Njeri", "2008-09-21", "SCH-092", "G-920014", "UPI-092", "BC-2006-061"),
+  },
+  {
+    label: "Both unique identifiers match",
+    first: sampleStudent("Achieng Otieno", "2011-08-07", "SCH-108", "G-10832", "UPI-108", "BC-2011-108"),
+    second: sampleStudent("Achieng Otieno", "2011-08-07", "SCH-108", "G-10832", "UPI-108", "BC-2011-108"),
+  },
+  {
+    label: "UPI match despite spaces and letter case",
+    first: sampleStudent("Peter Ochieng", "2009-01-24", "SCH-024", "G-240021", "UPI-TEST-204", "BC-2009-024"),
+    second: sampleStudent("Peter Ochieng", "2009-01-24", "SCH-024", "G-240021", "upi test 204", "BC-2009-024B"),
+  },
+  {
+    label: "Birth certificate match despite formatting differences",
+    first: sampleStudent("Zawadi Muthoni", "2012-05-30", "SCH-030", "G-300035", "UPI-030", "BC-2012-030"),
+    second: sampleStudent("Zawadi Muthoni", "2012-05-30", "SCH-030", "G-300035", "UPI-030B", "bc 2012 030"),
+  },
+  {
+    label: "Possible UPI entry error across two applicants",
+    first: sampleStudent("Samuel Mwangi", "2006-11-08", "SCH-008", "G-800007", "UPI-70008", "BC-2006-008"),
+    second: sampleStudent("Jane Wambui", "2010-07-12", "SCH-112", "G-112008", "UPI-70008", "BC-2010-112"),
+  },
+
+  // Review: similar identity details, but no unique identifier is shared.
+  {
+    label: "Same name, date, school, and guardian; identifiers differ",
+    first: sampleStudent("Amina Hassan", "2010-05-14", "SCH-114", "G-11401", "UPI-114", "BC-2010-114"),
+    second: sampleStudent("Amina Hassan", "2010-05-14", "SCH-114", "G-11401", "UPI-115", "BC-2010-115"),
+  },
+  {
+    label: "Small name typo with matching date, school, and guardian",
+    first: sampleStudent("Amina Njeri", "2008-04-12", "SCH-101", "G-10101", "UPI-101", "BC-2008-101"),
+    second: sampleStudent("Amina Njerii", "2008-04-12", "SCH-101", "G-10101", "UPI-102", "BC-2008-102"),
+  },
+  {
+    label: "Name spelling variation across otherwise matching details",
+    first: sampleStudent("Achieng Otieno", "2011-08-07", "SCH-108", "G-10832", "UPI-108A", "BC-2011-108A"),
+    second: sampleStudent("Achieng Otiieno", "2011-08-07", "SCH-108", "G-10832", "UPI-108B", "BC-2011-108B"),
+  },
+  {
+    label: "One-day date entry difference with matching identity details",
+    first: sampleStudent("Mercy Wanjiku", "2010-11-03", "SCH-203", "G-20311", "UPI-203A", "BC-2010-203A"),
+    second: sampleStudent("Mercy Wanjiku", "2010-11-04", "SCH-203", "G-20311", "UPI-203B", "BC-2010-203B"),
+  },
+  {
+    label: "Same name and date after a school transfer",
+    first: sampleStudent("Collins Omondi", "2009-12-01", "SCH-010", "G-10009", "UPI-010A", "BC-2009-010A"),
+    second: sampleStudent("Collins Omondi", "2009-12-01", "SCH-016", "G-16009", "UPI-010B", "BC-2009-010B"),
+  },
+  {
+    label: "Possible duplicate with a surname typo and matching supporting fields",
+    first: sampleStudent("Kevin Kiptoo", "2007-01-15", "SCH-005", "G-50043", "UPI-005A", "BC-2007-005A"),
+    second: sampleStudent("Kevin Kiptu", "2007-01-15", "SCH-005", "G-50043", "UPI-005B", "BC-2007-005B"),
+  },
+
+  // Clear: overlap is limited to common or non-unique attributes.
+  {
+    label: "Twins share date, school, and guardian but have different names",
+    first: sampleStudent("Wanjiru Kamau", "2012-03-10", "SCH-310", "G-31002", "UPI-310A", "BC-2012-310A"),
+    second: sampleStudent("Brian Otieno", "2012-03-10", "SCH-310", "G-31002", "UPI-310B", "BC-2012-310B"),
+  },
+  {
+    label: "Siblings share a guardian and school",
+    first: sampleStudent("Esther Akinyi", "2007-03-14", "SCH-027", "G-27053", "UPI-027", "BC-2007-027"),
+    second: sampleStudent("Joseph Maina", "2009-08-30", "SCH-027", "G-27053", "UPI-028", "BC-2009-028"),
+  },
+  {
+    label: "Common surname and same school only",
+    first: sampleStudent("Susan Otieno", "2007-01-12", "SCH-039", "G-39067", "UPI-039", "BC-2007-039"),
+    second: sampleStudent("Brian Otieno", "2009-05-22", "SCH-039", "G-39068", "UPI-040", "BC-2009-040"),
+  },
+  {
+    label: "Similar names but different dates and identity details",
+    first: sampleStudent("John Kamau", "2005-05-10", "SCH-121", "G-12101", "UPI-121", "BC-2005-121"),
+    second: sampleStudent("John Kamao", "2008-11-14", "SCH-909", "G-90999", "UPI-122", "BC-2008-909"),
+  },
+  {
+    label: "Same date of birth only",
+    first: sampleStudent("Daniel Kibet", "2006-02-14", "SCH-030", "G-30057", "UPI-030A", "BC-2006-030A"),
+    second: sampleStudent("Mercy Wanjiru", "2006-02-14", "SCH-031", "G-31058", "UPI-031", "BC-2006-031"),
+  },
+  {
+    label: "Same school only",
+    first: sampleStudent("Ann Wambui", "2005-07-19", "SCH-032", "G-32059", "UPI-032", "BC-2005-032"),
+    second: sampleStudent("Robert Otieno", "2007-11-03", "SCH-032", "G-32060", "UPI-033", "BC-2007-033"),
+  },
+  {
+    label: "Same guardian only",
+    first: sampleStudent("Victor Omondi", "2004-04-09", "SCH-033", "G-33061", "UPI-033A", "BC-2004-033A"),
+    second: sampleStudent("Cynthia Achieng", "2006-10-25", "SCH-034", "G-33061", "UPI-034", "BC-2006-034"),
+  },
+  {
+    label: "Exact name and birthdate only; school and guardian differ",
+    first: sampleStudent("Amina Hassan", "2010-05-14", "SCH-114", "G-11401", "UPI-114", "BC-2010-114"),
+    second: sampleStudent("Amina Hassan", "2010-05-14", "SCH-115", "G-11501", "UPI-115", "BC-2010-115"),
+  },
 ];
-
-function randomItem(values) {
-  return values[Math.floor(Math.random() * values.length)];
-}
-
-function randomInteger(minimum, maximum) {
-  return Math.floor(Math.random() * (maximum - minimum + 1)) + minimum;
-}
-
-function createEvaluationPairs() {
-  const makeStudent = (fullName) => ({
-    full_name: fullName,
-    date_of_birth: `${2005 + Math.floor(Math.random() * 9)}-${String(1 + Math.floor(Math.random() * 12)).padStart(2, "0")}-${String(1 + Math.floor(Math.random() * 28)).padStart(2, "0")}`,
-    school_code: `SCH-${String(randomInteger(1, 80)).padStart(3, "0")}`,
-    guardian_id: `G-${randomInteger(100000, 999999)}`,
-    upi: `UPI-${randomInteger(10000000, 99999999)}`,
-    birth_certificate_number: `BC-${randomInteger(100000, 999999)}`,
-  });
-
-  const exactUpiFirst = makeStudent(randomItem(evaluationNames));
-  const exactUpiSecond = makeStudent(randomItem(evaluationNames));
-  exactUpiSecond.upi = exactUpiFirst.upi;
-
-  const exactCertificateFirst = makeStudent(randomItem(evaluationNames));
-  const exactCertificateSecond = makeStudent(randomItem(evaluationNames));
-  exactCertificateSecond.birth_certificate_number = exactCertificateFirst.birth_certificate_number;
-
-  const exactIdentifiersFirst = makeStudent("Nia Wanjiku");
-  const exactIdentifiersSecond = makeStudent("David Otieno");
-  exactIdentifiersSecond.upi = exactIdentifiersFirst.upi;
-  exactIdentifiersSecond.birth_certificate_number = exactIdentifiersFirst.birth_certificate_number;
-
-  const sharedName = randomItem(evaluationNames);
-  const similarityFirst = makeStudent(sharedName);
-  const similaritySecond = {
-    ...similarityFirst,
-    upi: `UPI-${randomInteger(10000000, 99999999)}`,
-    birth_certificate_number: `BC-${randomInteger(100000, 999999)}`,
-  };
-
-  const clearFirst = makeStudent("Zainab Muthoni");
-  const clearSecond = makeStudent("Abdullahi Wekesa");
-  const quorumFirst = {
-    ...makeStudent("Fatuma Wairimu"),
-    date_of_birth: "1980-04-12",
-    school_code: "SCH-4821765",
-    guardian_id: "G-4821765",
-  };
-  const quorumSecond = {
-    ...makeStudent("Amina Wanjiku"),
-    date_of_birth: "1980-09-09",
-    school_code: "SCH-4821750",
-    guardian_id: "G-4821750",
-  };
-
-  return [
-    { label: "Exact UPI match", first: exactUpiFirst, second: exactUpiSecond },
-    { label: "Exact birth certificate match", first: exactCertificateFirst, second: exactCertificateSecond },
-    { label: "Both unique identifiers match (80%+)", first: exactIdentifiersFirst, second: exactIdentifiersSecond },
-    { label: "Name and household details match", first: similarityFirst, second: similaritySecond },
-    { label: "Unrelated records", first: clearFirst, second: clearSecond },
-    { label: "Four strong fields below weighted cutoff", first: quorumFirst, second: quorumSecond },
-  ];
-}
 
 export default function DuplicateReview() {
   const [flags, setFlags] = useState([]);
@@ -78,6 +131,8 @@ export default function DuplicateReview() {
   const [selectedFlagId, setSelectedFlagId] = useState(null);
   const [evaluation, setEvaluation] = useState(null);
   const [evaluationLoading, setEvaluationLoading] = useState(false);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanSummary, setScanSummary] = useState(null);
 
   function fetchFlags() {
     setLoading(true);
@@ -89,6 +144,7 @@ export default function DuplicateReview() {
 
   useEffect(() => {
     fetchFlags();
+    runEvaluation();
   }, []);
 
   function resolveFlag(id, status) {
@@ -102,12 +158,28 @@ export default function DuplicateReview() {
     setEvaluationLoading(true);
     setError("");
     try {
-      const response = await api.post("/duplicate-flags/evaluate", { pairs: createEvaluationPairs() });
+      const response = await api.post("/duplicate-flags/evaluate", { pairs: evaluationPairs });
       setEvaluation(response.data.results);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to evaluate synthetic records.");
     } finally {
       setEvaluationLoading(false);
+    }
+  }
+
+  async function scanExistingRecords() {
+    setScanLoading(true);
+    setError("");
+    setScanSummary(null);
+    try {
+      const response = await api.post("/duplicate-flags/scan");
+      setScanSummary(response.data);
+      const flagsResponse = await api.get("/duplicate-flags?status=pending");
+      setFlags(flagsResponse.data);
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to scan existing student records.");
+    } finally {
+      setScanLoading(false);
     }
   }
 
@@ -131,29 +203,59 @@ export default function DuplicateReview() {
     });
   }
 
+  const evaluationCounts = {
+    critical: evaluation?.filter((result) => result.decision === "critical" || result.decision === "duplicate").length || 0,
+    review: evaluation?.filter((result) => result.decision === "review").length || 0,
+    clear: evaluation?.filter((result) => result.decision === "clear").length || 0,
+  };
+
   return (
     <div className="p-8">
       <h1 className="text-3xl font-bold mb-2">Duplicate Review</h1>
+      <p className="mb-4 rounded border-l-4 border-red-600 bg-red-50 px-4 py-3 text-sm text-red-900">
+        <strong>Critical identifier rule:</strong> UPI and birth certificate numbers must not be shared between students. Any exact match is flagged as critical; both records stay blocked from disbursement until an administrator resolves it.
+      </p>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <p className="text-gray-600">Review pending duplicate matches before disbursement.</p>
-        <button
-          type="button"
-          onClick={runEvaluation}
-          disabled={evaluationLoading}
-          className="inline-flex items-center gap-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800 hover:bg-blue-100 disabled:opacity-60"
-        >
-          <FlaskConical size={16} aria-hidden="true" />
-          {evaluationLoading ? "Generating..." : "Generate Random Records"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={scanExistingRecords}
+            disabled={scanLoading}
+            className="inline-flex items-center gap-2 rounded bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+          >
+            <ShieldAlert size={16} aria-hidden="true" />
+            {scanLoading ? "Scanning records..." : "Scan existing records"}
+          </button>
+          <button
+            type="button"
+            onClick={runEvaluation}
+            disabled={evaluationLoading}
+            className="inline-flex items-center gap-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800 hover:bg-blue-100 disabled:opacity-60"
+          >
+            <FlaskConical size={16} aria-hidden="true" />
+            {evaluationLoading ? "Checking samples..." : "Run duplicate samples"}
+          </button>
+        </div>
       </div>
 
       {error && <p className="error">{error}</p>}
+      {scanSummary && (
+        <p className="mb-5 rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="status">
+          Scanned {scanSummary.records_scanned.toLocaleString()} records ({scanSummary.pairs_compared.toLocaleString()} pairs). Created {scanSummary.flags_created.toLocaleString()} new pending flags; {scanSummary.existing_pairs_skipped.toLocaleString()} already flagged pairs were skipped.
+        </p>
+      )}
       {evaluation && (
         <section className="mb-8 rounded-md border border-blue-200 bg-blue-50/50 p-4" aria-live="polite">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">Synthetic Evaluation</h2>
-              <p className="mt-1 text-sm text-slate-600">Six synthetic pairs scored with the current rules. These records were not saved.</p>
+              <h2 className="text-lg font-semibold text-slate-900">Duplicate Scenario Samples</h2>
+              <p className="mt-1 text-sm text-slate-600">{evaluation.length} realistic sample pairs scored with the current rules. They cover shared identifiers, near matches, transfers, twins, siblings, and common-field overlap. These examples are display-only and are not saved as students.</p>
+              <div className="mt-3 flex flex-wrap gap-2" aria-label="Scenario decisions summary">
+                <span className="rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-800">Critical: {evaluationCounts.critical}</span>
+                <span className="rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">Review: {evaluationCounts.review}</span>
+                <span className="rounded bg-green-100 px-2 py-1 text-xs font-semibold text-green-800">Clear: {evaluationCounts.clear}</span>
+              </div>
             </div>
             <button type="button" onClick={() => setEvaluation(null)} aria-label="Dismiss evaluation results" title="Dismiss results" className="rounded p-1 text-slate-500 hover:bg-white hover:text-slate-900">
               <X size={16} aria-hidden="true" />
@@ -161,8 +263,9 @@ export default function DuplicateReview() {
           </div>
           <div className="grid gap-3 lg:grid-cols-2">
             {evaluation.map((result) => {
-              const DecisionIcon = result.decision === "duplicate" ? ShieldAlert : result.decision === "review" ? Eye : CircleCheck;
-              const decisionStyle = result.decision === "duplicate" ? "text-red-700 bg-red-50" : result.decision === "review" ? "text-amber-800 bg-amber-50" : "text-green-800 bg-green-50";
+              const isCritical = result.decision === "critical";
+              const DecisionIcon = isCritical || result.decision === "duplicate" ? ShieldAlert : result.decision === "review" ? Eye : CircleCheck;
+              const decisionStyle = isCritical || result.decision === "duplicate" ? "text-red-800 bg-red-100" : result.decision === "review" ? "text-amber-800 bg-amber-50" : "text-green-800 bg-green-50";
               return (
                 <article key={result.label} className="rounded border border-slate-200 bg-white p-3">
                   <div className="mb-3 flex items-center justify-between gap-2">
@@ -192,7 +295,7 @@ export default function DuplicateReview() {
                       </div>
                     ))}
                   </div>
-                  {result.review_reason && <p className="mt-3 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">{result.review_reason}</p>}
+                  {result.review_reason && <p className={`mt-3 rounded border px-2 py-1.5 text-xs ${isCritical ? "border-red-300 bg-red-50 font-semibold text-red-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>{result.review_reason}</p>}
                 </article>
               );
             })}
@@ -216,19 +319,21 @@ export default function DuplicateReview() {
             <tbody>
               {flags.map((flag) => {
                 const probability = Number(flag.probability);
+                const isCritical = flag.risk_level === 'critical';
                 const isDuplicate = flag.risk_level === 'duplicate';
-                const riskLevel = isDuplicate ? 'Duplicate' : 'Review';
+                const riskLevel = isCritical ? 'Critical identifier match' : isDuplicate ? 'Duplicate candidate' : 'Review';
+                const riskClass = isCritical || isDuplicate ? 'font-bold text-red-800' : 'font-semibold text-amber-700';
 
                 return (
                   <Fragment key={flag.id}>
-                    <tr>
+                    <tr className={isCritical ? 'bg-red-50' : undefined}>
                       <td>{flag.student_name}</td>
                       <td>{flag.matched_student_name}</td>
                       <td>
-                        <span className={isDuplicate ? 'font-bold text-red-700' : 'font-semibold text-yellow-700'}>
+                        <span className={riskClass}>
                           {(probability * 100).toFixed(1)}%
                         </span>
-                        <div className="text-xs text-gray-500">{riskLevel}</div>
+                        <div className={`text-xs ${riskClass}`}>{riskLevel}</div>
                       </td>
                       <td>
                         <button type="button" onClick={() => setSelectedFlagId(selectedFlagId === flag.id ? null : flag.id)}>
@@ -241,7 +346,7 @@ export default function DuplicateReview() {
                       <td colSpan="4">
                         <div className="rounded border border-slate-200 bg-slate-50 p-4">
                           <h2 className="mb-3 text-lg font-semibold">Manual Review: {flag.student_name}</h2>
-                          {flag.review_reason && <p className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{flag.review_reason}</p>}
+                          {flag.review_reason && <p className={`mb-4 rounded border px-3 py-2 text-sm ${isCritical ? "border-red-300 bg-red-50 font-semibold text-red-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>{flag.review_reason}</p>}
                           <p className="mb-4 text-sm text-slate-600">
                             Compare the two records below before recording a decision. Clearing this flag means the records are not duplicates; eligibility is assessed separately.
                           </p>
@@ -265,8 +370,8 @@ export default function DuplicateReview() {
                               {evidence(flag).map((item) => (
                                 <div key={item.label} className="flex items-center justify-between text-sm">
                                   <span>{item.label}</span>
-                                  <span className={item.similarity >= 99.9 ? "font-semibold text-green-700" : item.similarity > 0 ? "font-medium text-amber-700" : "text-slate-500"}>
-                                    {item.similarity.toFixed(1)}% similar
+                                  <span className={isCritical && ['upi', 'birth_certificate'].includes(item.key) && item.similarity >= 99.9 ? "font-bold text-red-800" : item.similarity >= 99.9 ? "font-semibold text-green-700" : item.similarity > 0 ? "font-medium text-amber-700" : "text-slate-500"}>
+                                    {isCritical && ['upi', 'birth_certificate'].includes(item.key) && item.similarity >= 99.9 ? "EXACT MATCH · CRITICAL" : `${item.similarity.toFixed(1)}% similar`}
                                   </span>
                                 </div>
                               ))}

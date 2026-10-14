@@ -123,6 +123,7 @@ async function create(req, res, next) {
       message: 'Student registered successfully',
       student,
       qr_code: qrCode,
+      duplicate_flags: flags,
     });
   } catch (error) {
     next(error);
