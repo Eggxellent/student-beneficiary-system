@@ -1,8 +1,15 @@
 const studentModel = require('../models/student.model');
 const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
-const { checkDuplicates, jaroWinkler } = require('../services/duplicateCheck');
-const { getDuplicateThreshold } = require('../config/settings');
+const {
+  buildDuplicateFeatures,
+  calculateDuplicateScore,
+  classifyDuplicate,
+  duplicateReviewReason,
+  hasCorroboratingMajority,
+  MIN_NAME_SIMILARITY,
+} = require('../services/duplicateCheck');
+const { getDuplicateThreshold, getReviewThreshold } = require('../config/settings');
 const QRCode = require('qrcode');
 const { z } = require('zod');
 
@@ -10,7 +17,9 @@ const studentSchema = z.object({
   full_name: z.string().min(2),
   date_of_birth: z.string().optional(),
   school_code: z.string().optional(),
-  guardian_id: z.string().optional()
+  guardian_id: z.string().optional(),
+  upi: z.string().min(1),
+  birth_certificate_number: z.string().optional()
 });
 
 function dateValue(value) {
@@ -33,48 +42,80 @@ async function create(req, res, next) {
       full_name,
       date_of_birth,
       school_code,
-      guardian_id
+      guardian_id,
+      upi,
+      birth_certificate_number
     } = validation.data;
 
+    const { rows: exactUpiCandidates } = upi
+      ? await pool.query('SELECT * FROM students WHERE upi = $1', [upi])
+      : { rows: [] };
+    const { rows: exactCertificateCandidates } = birth_certificate_number
+      ? await pool.query('SELECT * FROM students WHERE birth_certificate_number = $1', [birth_certificate_number])
+      : { rows: [] };
+    const exactUpiIds = new Set(exactUpiCandidates.map((candidate) => candidate.id));
+    const exactCandidateIds = new Set([
+      ...exactUpiIds,
+      ...exactCertificateCandidates.map((candidate) => candidate.id),
+    ]);
     const { rows: candidates } = await pool.query(
-      'SELECT * FROM students ORDER BY created_at DESC LIMIT 1000'
+      'SELECT * FROM students WHERE id <> ALL($1::uuid[]) ORDER BY created_at DESC LIMIT 1000',
+      [Array.from(exactCandidateIds)]
     );
     const duplicateCandidates = [];
-    for (const candidate of candidates) {
-      const similarity = jaroWinkler(full_name, candidate.full_name);
-      if (similarity < 0.70) continue;
+    const candidateById = new Map(
+      [...exactUpiCandidates, ...exactCertificateCandidates, ...candidates]
+        .map((candidate) => [candidate.id, candidate])
+    );
+    for (const candidate of candidateById.values()) {
+      const birthCertificateMatch = Number(Boolean(
+        birth_certificate_number
+        && birth_certificate_number === candidate.birth_certificate_number
+      ));
+      const features = buildDuplicateFeatures(
+        { full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number },
+        candidate
+      );
+      if (
+        features.jaro_winkler < MIN_NAME_SIMILARITY
+        && !features.upi_match
+        && !birthCertificateMatch
+        && !hasCorroboratingMajority(features)
+      ) continue;
       duplicateCandidates.push({
         candidate,
-        features: {
-        jaro_winkler: similarity,
-        dob_match: Number(dateValue(date_of_birth) === dateValue(candidate.date_of_birth)),
-        school_match: Number(Boolean(school_code && school_code === candidate.school_code)),
-        guardian_match: Number(Boolean(guardian_id && guardian_id === candidate.guardian_id)),
-        }
+        features,
       });
     }
 
     const duplicateResults = duplicateCandidates.length > 0
-      ? await checkDuplicates(duplicateCandidates.map(({ features }) => features))
-        .then((results) => duplicateCandidates.map(({ candidate }, index) => ({
-          candidate,
-          probability: results[index].probability,
-        })))
+      ? duplicateCandidates.map(({ candidate, features }) => ({
+        candidate,
+        features,
+        probability: calculateDuplicateScore(features),
+      }))
       : [];
 
-    const student = await studentModel.create({ full_name, date_of_birth, school_code, guardian_id });
-  const qrCode = await QRCode.toDataURL(student.id);
+    const student = await studentModel.create({ full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number });
+    const qrCode = await QRCode.toDataURL(student.id);
     const flags = [];
-    const threshold = getDuplicateThreshold();
+    const duplicateThreshold = getDuplicateThreshold();
+    const reviewThreshold = getReviewThreshold();
     for (const result of duplicateResults) {
-      if (result.probability >= threshold) {
-        const { rows } = await pool.query(
-          `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
-           VALUES ($1, $2, $3, 'pending') RETURNING *`,
-          [student.id, result.candidate.id, result.probability]
-        );
-        flags.push(rows[0]);
-      }
+      const riskLevel = classifyDuplicate(result.features, result.probability, duplicateThreshold, reviewThreshold);
+      if (riskLevel === 'clear') continue;
+
+      const { rows } = await pool.query(
+        `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
+         VALUES ($1, $2, $3, 'pending') RETURNING *`,
+        [student.id, result.candidate.id, result.probability]
+      );
+
+      flags.push({
+        ...rows[0],
+        risk_level: riskLevel,
+        review_reason: duplicateReviewReason(result.features, result.probability, reviewThreshold),
+      });
     }
 
     await logAudit(req.user.id || req.user.sub, 'CREATE', 'students', student.id);
@@ -82,7 +123,6 @@ async function create(req, res, next) {
       message: 'Student registered successfully',
       student,
       qr_code: qrCode,
-      duplicate_flags: flags
     });
   } catch (error) {
     next(error);

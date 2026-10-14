@@ -13,10 +13,10 @@ describe("Disbursements API", () => {
     await request(app)
       .post("/api/auth/register")
       .send({
-        full_name: "Disbursement Test Admin",
+        full_name: "Disbursement Test Field Officer",
         email,
         password,
-        role: "admin",
+        role: "field_officer",
       });
 
     const loginResponse = await request(app)
@@ -36,6 +36,7 @@ describe("Disbursements API", () => {
         date_of_birth: "2005-01-01",
         school_code: "TEST001",
         guardian_id: `GUARD-${Date.now()}`,
+        upi: `UPI-TEST-${Date.now()}`,
       });
 
     studentId = studentResponse.body.student.id;

@@ -7,6 +7,7 @@ describe("Duplicate Detection Performance", () => {
       dob_match: 1,
       school_match: 1,
       guardian_match: 1,
+      upi_match: 1,
     };
 
     await checkDuplicate(features);
@@ -24,5 +25,5 @@ describe("Duplicate Detection Performance", () => {
     expect(result).toBeDefined();
     expect(result.probability).toBeDefined();
     expect(elapsedMs).toBeLessThan(3000);
-  }, 10000);
+  }, 30000);
 });

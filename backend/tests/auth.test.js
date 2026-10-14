@@ -31,4 +31,32 @@ describe("Authentication API", () => {
     expect(response.body.token).toBeDefined();
     expect(typeof response.body.token).toBe("string");
   });
+
+  test("protected endpoints should reject an invalid JWT", async () => {
+    const response = await request(app)
+      .get("/api/audit-logs")
+      .set("Authorization", "Bearer invalid-token");
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  test("admin-only endpoints should reject field officers", async () => {
+    const officer = {
+      full_name: "Test Field Officer",
+      email: `fieldofficer${Date.now()}@example.com`,
+      password: "TestPassword123!",
+      role: "field_officer",
+    };
+
+    await request(app).post("/api/auth/register").send(officer);
+    const loginResponse = await request(app)
+      .post("/api/auth/login")
+      .send({ email: officer.email, password: officer.password });
+
+    const response = await request(app)
+      .get("/api/audit-logs")
+      .set("Authorization", `Bearer ${loginResponse.body.token}`);
+
+    expect(response.statusCode).toBe(403);
+  });
 });

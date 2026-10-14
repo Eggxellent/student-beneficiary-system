@@ -1,70 +1,50 @@
-import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
 import Students from "./pages/Students";
 import StudentRegistration from "./pages/StudentRegistration";
 import DuplicateReview from "./pages/DuplicateReview";
 import Disbursements from "./pages/Disbursements";
 import Eligibility from "./pages/Eligibility";
-import AdminDashboard from "./pages/AdminDashboard";
+import FieldOfficerDashboard from "./pages/FieldOfficerDashboard";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import AuditLogs from "./pages/AuditLogs";
 import { useAuth } from "./context/AuthContext";
+import AppLayout from "./components/AppLayout";
 
-function ProtectedRoute({ children }) {
-  const { isAuthenticated } = useAuth();
+function ProtectedRoute({ children, allowedRoles }) {
+  const { isAuthenticated, user } = useAuth();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
+  if (allowedRoles && !allowedRoles.includes(user?.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return children;
 }
 
-function Dashboard() {
-  const { user, logout } = useAuth();
+function DashboardHome() {
+  const { user } = useAuth();
 
+  if (user?.role === "admin") {
+    return <Navigate to="/duplicate-review" replace />;
+  }
+
+  if (user?.role === "field_officer") {
+    return <AppLayout><FieldOfficerDashboard /></AppLayout>;
+  }
+
+  return <Navigate to="/login" replace />;
+}
+
+function ProtectedPage({ children, allowedRoles }) {
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold">SBMS Dashboard</h1>
-      <p className="mt-2">Welcome, {user?.full_name}</p>
-      <p className="text-gray-600">Role: {user?.role}</p>
-      <Link
-        to="/students/register"
-        className="inline-block mt-6 bg-blue-600 text-white px-5 py-3 rounded"
-      >
-        Register Student
-      </Link>
-      <Link
-        to="/duplicate-review"
-        className="inline-block mt-6 ml-3 bg-amber-600 text-white px-5 py-3 rounded"
-      >
-        Duplicate Review
-      </Link>
-      <Link
-        to="/disbursements"
-        className="inline-block mt-6 ml-3 bg-green-600 text-white px-5 py-3 rounded"
-      >
-        Disbursements
-      </Link>
-      <Link
-        to="/eligibility"
-        className="inline-block mt-6 ml-3 bg-purple-600 text-white px-5 py-3 rounded"
-      >
-        Eligibility
-      </Link>
-      <Link
-        to="/reports"
-        className="inline-block mt-6 ml-3 bg-slate-700 text-white px-5 py-3 rounded"
-      >
-        Reports
-      </Link>
-      <button
-        onClick={logout}
-        className="mt-6 bg-red-600 text-white px-4 py-2 rounded"
-      >
-        Logout
-      </button>
-    </div>
+    <ProtectedRoute allowedRoles={allowedRoles}>
+      <AppLayout>{children}</AppLayout>
+    </ProtectedRoute>
   );
 }
 
@@ -75,64 +55,72 @@ export default function App() {
       <Route
         path="/students"
         element={
-          <ProtectedRoute>
+          <ProtectedPage allowedRoles={["field_officer"]}>
             <Students />
-          </ProtectedRoute>
+          </ProtectedPage>
         }
       />
       <Route
         path="/students/register"
         element={
-          <ProtectedRoute>
+          <ProtectedPage allowedRoles={["field_officer"]}>
             <StudentRegistration />
-          </ProtectedRoute>
+          </ProtectedPage>
         }
       />
       <Route
         path="/duplicate-review"
         element={
-          <ProtectedRoute>
+          <ProtectedPage allowedRoles={["admin"]}>
             <DuplicateReview />
-          </ProtectedRoute>
+          </ProtectedPage>
         }
       />
       <Route
         path="/disbursements"
         element={
-          <ProtectedRoute>
+          <ProtectedPage allowedRoles={["field_officer"]}>
             <Disbursements />
-          </ProtectedRoute>
+          </ProtectedPage>
         }
       />
       <Route
         path="/eligibility"
         element={
-          <ProtectedRoute>
+          <ProtectedPage allowedRoles={["field_officer"]}>
             <Eligibility />
-          </ProtectedRoute>
+          </ProtectedPage>
         }
       />
       <Route
         path="/reports"
         element={
-          <ProtectedRoute>
+          <ProtectedPage allowedRoles={["admin"]}>
             <Reports />
-          </ProtectedRoute>
+          </ProtectedPage>
         }
       />
       <Route
         path="/settings"
         element={
-          <ProtectedRoute>
+          <ProtectedPage allowedRoles={["admin"]}>
             <Settings />
-          </ProtectedRoute>
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/audit"
+        element={
+          <ProtectedPage allowedRoles={["admin"]}>
+            <AuditLogs />
+          </ProtectedPage>
         }
       />
       <Route
         path="/dashboard"
         element={
           <ProtectedRoute>
-            <AdminDashboard />
+            <DashboardHome />
           </ProtectedRoute>
         }
       />

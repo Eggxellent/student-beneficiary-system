@@ -18,19 +18,19 @@ student-beneficiary-system/
 
 ## Getting Started
 
-### Backend
+Install dependencies once:
 
 ```bash
-cd backend
 npm install
-cp .env.example .env
-npm run dev
+npm install --prefix backend
+npm install --prefix frontend
 ```
 
-### Frontend
+Set `DATABASE_URL` and `JWT_SECRET` in `backend/.env`, then start the API and
+frontend together from this directory:
 
 ```bash
-cd frontend
-npm install
 npm start
 ```
+
+Open `http://localhost:4173`. The API runs on port 5000 and is proxied by Vite.

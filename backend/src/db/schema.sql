@@ -18,16 +18,35 @@ CREATE TABLE IF NOT EXISTS students (
   date_of_birth DATE,
   school_code VARCHAR(100),
   guardian_id VARCHAR(100),
-  upi VARCHAR(100) UNIQUE NOT NULL,
+  upi VARCHAR(100) NOT NULL,
+  birth_certificate_number VARCHAR(100),
   eligibility_score INTEGER,
   eligibility_category VARCHAR(50),
   eligibility_assessed_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+ALTER TABLE students DROP CONSTRAINT IF EXISTS students_upi_key;
+ALTER TABLE students DROP CONSTRAINT IF EXISTS students_upi_unique;
+DROP INDEX IF EXISTS students_upi_unique;
+
 ALTER TABLE students ADD COLUMN IF NOT EXISTS eligibility_score INTEGER;
 ALTER TABLE students ADD COLUMN IF NOT EXISTS eligibility_category VARCHAR(50);
 ALTER TABLE students ADD COLUMN IF NOT EXISTS eligibility_assessed_at TIMESTAMP;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'students' AND column_name = 'birth_certificate_entry_number'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'students' AND column_name = 'birth_certificate_number'
+  ) THEN
+    ALTER TABLE students RENAME COLUMN birth_certificate_entry_number TO birth_certificate_number;
+  ELSE
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS birth_certificate_number VARCHAR(100);
+  END IF;
+END $$;
 
 -- 3. Duplicate flags
 CREATE TABLE IF NOT EXISTS duplicate_flags (

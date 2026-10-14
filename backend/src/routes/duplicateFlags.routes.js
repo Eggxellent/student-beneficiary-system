@@ -7,6 +7,7 @@ const router = express.Router();
 
 router.use(authenticateToken);
 router.get('/', requireRole('admin'), controller.list);
+router.post('/evaluate', requireRole('admin'), controller.evaluate);
 router.patch('/:id', requireRole('admin'), controller.update);
 
 module.exports = router;

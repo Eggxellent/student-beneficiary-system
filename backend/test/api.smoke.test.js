@@ -22,7 +22,7 @@ test('health endpoint is available', async () => {
   assert.deepEqual(body, { status: 'ok' });
 });
 
-test('admin can authenticate and read protected resources', async () => {
+test('admin can authenticate, read admin resources, and is blocked from field workflows', async () => {
   const login = await request('/api/auth/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -33,13 +33,15 @@ test('admin can authenticate and read protected resources', async () => {
   assert.ok(login.body.token);
 
   const headers = { authorization: `Bearer ${login.body.token}` };
-  const [students, disbursements, flags] = await Promise.all([
+  const [students, eligibility, disbursements, flags] = await Promise.all([
     request('/api/students', { headers }),
+    request('/api/eligibility', { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({}) }),
     request('/api/disbursements', { headers }),
     request('/api/duplicate-flags?status=pending', { headers }),
   ]);
 
-  assert.equal(students.response.status, 200);
+  assert.equal(students.response.status, 403);
+  assert.equal(eligibility.response.status, 403);
   assert.equal(disbursements.response.status, 200);
   assert.equal(flags.response.status, 200);
 });

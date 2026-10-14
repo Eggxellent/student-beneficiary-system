@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "student-beneficiary-system-frontend": "file:../.."
+  }
+}

@@ -18,11 +18,12 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await login(email, password);
-      navigate("/");
+      const user = await login(email, password);
+      navigate(user.role === "admin" ? "/duplicate-review" : "/dashboard");
     } catch (err) {
       setError(
         err.response?.data?.message ||
+        err.response?.data?.error ||
         "Login failed. Please check your details."
       );
     } finally {
@@ -41,7 +42,7 @@ export default function Login() {
         </h1>
 
         <p className="text-gray-600 mb-6">
-          Sign in to your account
+          Sign in with your assigned account. Your role opens your workspace.
         </p>
 
         {error && (

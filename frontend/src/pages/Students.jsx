@@ -21,7 +21,7 @@ export default function Students() {
   }, []);
 
   const filteredStudents = students.filter((student) => {
-    const searchable = `${student.full_name} ${student.upi} ${student.school_code || ""}`.toLowerCase();
+    const searchable = `${student.full_name} ${student.upi} ${student.school_code || ""} ${student.birth_certificate_number || ""}`.toLowerCase();
     return searchable.includes(query.toLowerCase());
   });
 
@@ -42,7 +42,7 @@ export default function Students() {
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search name, UPI, or school code"
+        placeholder="Search name, UPI, school, or birth certificate"
         className="mb-5 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
       />
 
@@ -55,6 +55,7 @@ export default function Students() {
               <th className="px-5 py-3 font-medium">Student</th>
               <th className="px-5 py-3 font-medium">UPI</th>
               <th className="px-5 py-3 font-medium">School</th>
+              <th className="px-5 py-3 font-medium">Birth Certificate</th>
               <th className="px-5 py-3 font-medium">Eligibility</th>
             </tr>
           </thead>
@@ -64,13 +65,14 @@ export default function Students() {
                 <td className="px-5 py-4 font-medium text-slate-900">{student.full_name}</td>
                 <td className="px-5 py-4">{student.upi}</td>
                 <td className="px-5 py-4">{student.school_code || "-"}</td>
+                <td className="px-5 py-4">{student.birth_certificate_number || "-"}</td>
                 <td className="px-5 py-4">{eligibilityLabel(student.eligibility_category)}</td>
               </tr>
             ))}
             {!loading && filteredStudents.length === 0 && (
-              <tr><td colSpan="4" className="px-5 py-10 text-center text-slate-500">No students found.</td></tr>
+              <tr><td colSpan="5" className="px-5 py-10 text-center text-slate-500">No students found.</td></tr>
             )}
-            {loading && <tr><td colSpan="4" className="px-5 py-10 text-center text-slate-500">Loading students...</td></tr>}
+            {loading && <tr><td colSpan="5" className="px-5 py-10 text-center text-slate-500">Loading students...</td></tr>}
           </tbody>
         </table>
       </div>

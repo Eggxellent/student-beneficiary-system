@@ -7,6 +7,8 @@ export default function StudentRegistration() {
     date_of_birth: "",
     school_code: "",
     guardian_id: "",
+    upi: "",
+    birth_certificate_number: "",
   });
 
   const [result, setResult] = useState(null);
@@ -37,6 +39,8 @@ export default function StudentRegistration() {
         date_of_birth: "",
         school_code: "",
         guardian_id: "",
+        upi: "",
+        birth_certificate_number: "",
       });
     } catch (err) {
       setError(
@@ -55,7 +59,7 @@ export default function StudentRegistration() {
       </h1>
 
       <p className="text-gray-600 mb-6">
-        Enter the student's details to check for possible duplicates.
+        Enter the student's details as provided. Possible duplicates are routed to an administrator for review.
       </p>
 
       {error && (
@@ -65,31 +69,9 @@ export default function StudentRegistration() {
       )}
 
       {result && (
-        <div className="mb-6 p-5 bg-gray-50 border rounded">
-          <h2 className="text-xl font-bold mb-3">
-            Registration Result
-          </h2>
-
-          {result.duplicate_flags?.length > 0 ? (
-            <div className="p-4 bg-red-100 text-red-700 rounded">
-              <p className="font-bold">
-                Possible duplicate detected
-              </p>
-
-              {result.duplicate_flags.map((flag) => (
-                <p key={flag.id} className="mt-2">
-                  Probability:{" "}
-                  {(Number(flag.probability) * 100).toFixed(1)}%
-                </p>
-              ))}
-            </div>
-          ) : (
-            <div className="p-4 bg-green-100 text-green-700 rounded">
-              <p className="font-bold">
-                No duplicate detected
-              </p>
-            </div>
-          )}
+        <div className="mb-6 p-5 bg-green-50 border border-green-200 rounded text-green-800">
+          <h2 className="text-xl font-bold mb-2">Student registered</h2>
+          <p>{result.message}</p>
 
           {result.qr_code && (
             <div className="mt-5">
@@ -114,6 +96,7 @@ export default function StudentRegistration() {
         <label className="block font-medium mb-2">
           Full Name
         </label>
+        <p className="text-sm text-gray-500 mb-2">Use the student's full name as shown on official records.</p>
 
         <input
           name="full_name"
@@ -127,6 +110,7 @@ export default function StudentRegistration() {
         <label className="block font-medium mb-2">
           Date of Birth
         </label>
+        <p className="text-sm text-gray-500 mb-2">Format: YYYY-MM-DD.</p>
 
         <input
           type="date"
@@ -139,6 +123,7 @@ export default function StudentRegistration() {
         <label className="block font-medium mb-2">
           School Code
         </label>
+        <p className="text-sm text-gray-500 mb-2">Use the official school code, e.g. SCH001 or SCH-001.</p>
 
         <input
           name="school_code"
@@ -151,6 +136,7 @@ export default function StudentRegistration() {
         <label className="block font-medium mb-2">
           Guardian ID
         </label>
+        <p className="text-sm text-gray-500 mb-2">Use the assigned ID, e.g. G001 or G-123456.</p>
 
         <input
           name="guardian_id"
@@ -160,12 +146,39 @@ export default function StudentRegistration() {
           placeholder="e.g. G001"
         />
 
+        <label className="block font-medium mb-2">
+          UPI
+        </label>
+        <p className="text-sm text-gray-500 mb-2">Use the student's official UPI, e.g. UPI-12345678.</p>
+
+        <input
+          name="upi"
+          value={form.upi}
+          onChange={handleChange}
+          className="w-full border rounded p-3 mb-6"
+          placeholder="e.g. UPI-12345678"
+          required
+        />
+
+        <label className="block font-medium mb-2">
+          Birth Certificate Number
+        </label>
+        <p className="text-sm text-gray-500 mb-2">Enter the number as printed, e.g. BC-1001.</p>
+
+        <input
+          name="birth_certificate_number"
+          value={form.birth_certificate_number}
+          onChange={handleChange}
+          className="w-full border rounded p-3 mb-6"
+          placeholder="e.g. BC-1001"
+        />
+
         <button
           type="submit"
           disabled={loading}
           className="w-full bg-blue-600 text-white py-3 rounded hover:bg-blue-700 disabled:opacity-50"
         >
-          {loading ? "Checking..." : "Register Student"}
+          {loading ? "Registering..." : "Register Student"}
         </button>
       </form>
     </div>
