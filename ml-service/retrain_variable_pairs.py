@@ -17,8 +17,6 @@ from sklearn.metrics import (
 from sklearn.model_selection import StratifiedGroupKFold, train_test_split
 
 from feature_engineering import FEATURE_COLUMNS
-from generate_variable_pairs import generate_pairs
-
 BASE = Path(__file__).resolve().parent
 CANDIDATE = BASE / "model" / "research" / "rf_variable_noise_candidate.joblib"
 TRAIN_FILE = BASE / "training" / "pairs_variable_noise_train.csv"
@@ -50,12 +48,32 @@ def score(labels: pd.Series, probabilities) -> dict[str, object]:
 
 
 def main() -> dict[str, object]:
-    for path in (TRAIN_FILE.parent, INTERNAL_FILE.parent):
-        path.mkdir(parents=True, exist_ok=True)
-
-    generated_train = generate_pairs(COUNT, POSITIVE_RATE, seed=103_117, profile="train")
-    # Holdout uses a separate name vocabulary, DOB period, and numeric ID ranges.
-    holdout = generate_pairs(COUNT, POSITIVE_RATE, seed=204_229, profile="holdout")
+    if not TRAIN_FILE.exists() or not HOLDOUT_FILE.exists():
+        raise FileNotFoundError(
+            "Expected the branch training and independent-holdout CSVs. "
+            "Generate them with generate_variable_pairs.py before training."
+        )
+    generated_train = pd.read_csv(TRAIN_FILE)
+    holdout = pd.read_csv(HOLDOUT_FILE)
+    required = {*FEATURE_COLUMNS, "label", "group_id"}
+    for name, data in (("training", generated_train), ("holdout", holdout)):
+        missing = sorted(required - set(data.columns))
+        if missing:
+            raise ValueError(f"{name} CSV is missing required columns: {', '.join(missing)}")
+        if data[list(required)].isnull().any().any():
+            raise ValueError(f"{name} CSV has missing features, labels, or group IDs")
+        if not set(data.label.unique()).issubset({0, 1}) or data.label.nunique() != 2:
+            raise ValueError(f"{name} CSV must contain both binary labels")
+        if (data.groupby("group_id").label.nunique() != 1).any():
+            raise ValueError(f"Each {name} group_id must have one label")
+    raw_columns = {
+        "name_1", "name_2", "dob_1", "dob_2", "guardian_1", "guardian_2",
+        "upi_1", "upi_2", "birth_certificate_1", "birth_certificate_2",
+    }
+    for name, data in (("training", generated_train), ("holdout", holdout)):
+        missing_raw = sorted(raw_columns - set(data.columns))
+        if missing_raw:
+            raise ValueError(f"{name} CSV needs raw fields to verify disjointness: {', '.join(missing_raw)}")
     for left, right in (
         ((set(generated_train.name_1) | set(generated_train.name_2)),
          (set(holdout.name_1) | set(holdout.name_2))),
@@ -70,9 +88,8 @@ def main() -> dict[str, object]:
     ):
         if left & right:
             raise RuntimeError("Training and independent holdout share raw values")
-    generated_train.to_csv(TRAIN_FILE, index=False)
-    holdout.to_csv(HOLDOUT_FILE, index=False)
     holdout_hash = hashlib.sha256(HOLDOUT_FILE.read_bytes()).hexdigest()
+    train_hash = hashlib.sha256(TRAIN_FILE.read_bytes()).hexdigest()
 
     groups = generated_train[["group_id", "label"]].drop_duplicates("group_id")
     train_groups, test_groups = train_test_split(
@@ -119,8 +136,11 @@ def main() -> dict[str, object]:
         "raw_value_columns_used_as_model_features": False,
         "pair_count_per_dataset": COUNT,
         "positive_rate_assumption": POSITIVE_RATE,
+        "training_positive_fraction": float(generated_train.label.mean()),
+        "holdout_positive_fraction": float(holdout.label.mean()),
         "label_counts": {str(k): int(v) for k, v in generated_train.label.value_counts().sort_index().items()},
         "training_file": str(TRAIN_FILE.relative_to(BASE)),
+        "training_file_sha256": train_hash,
         "train_rows": len(train), "internal_test_rows": len(internal),
         "split": "50/50 stratified by group_id; related pairs kept together",
         "cv": "5-fold StratifiedGroupKFold on training half only",

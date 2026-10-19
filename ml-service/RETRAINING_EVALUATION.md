@@ -8,17 +8,17 @@ The existing `data/features.csv` contains 10,000 pairs with a 50/50 label split.
 
 ## Current workflow
 
-Use `retrain_variable_pairs.py` as the reproducible retraining and evaluation entry point:
+Use `retrain_variable_pairs.py` as the canonical retraining and evaluation entry point (also used by `train.py` and `train_model.py`):
 
 ```powershell
 & .\ml-service\.venv\Scripts\python.exe .\ml-service\retrain_variable_pairs.py
 ```
 
-It creates separate generated datasets using different random seeds and disjoint value profiles. Duplicate labels come from a shared latent student identity; field corruption varies independently by severity. Nonduplicate pairs can share names and demographic fields. The independent holdout has a separate name vocabulary, birth-date range and identifier range. The same five school categories are retained because they are the application's permitted schools.
+It reads the branch datasets `training/pairs_variable_noise_train.csv` and `evaluation/pairs_variable_noise_holdout.csv` directly; it does not read or overwrite the legacy `data/features.csv`. Duplicate labels come from a shared latent student identity; field corruption varies independently by severity. Nonduplicate pairs can share names and demographic fields. The independent holdout has a separate name vocabulary, birth-date range and identifier range. The same five school categories are retained because they are the application's permitted schools.
 
 The script checks that names, dates of birth, guardian IDs, UPIs and birth-certificate values do not overlap between training and independent holdout. Raw synthetic fields are kept in the CSV for that audit, while the classifier is fitted only on the six columns in `feature_engineering.FEATURE_COLUMNS`. The supplied randomized evaluation CSV is never used for training or tuning. The fitted model is saved as a research candidate under `model/research/`; this experiment does not replace the deployed model.
 
-The generated training dataset is split 50/50 by `group_id`; related pairs stay together. Five-fold grouped cross-validation runs only on the training half. The second independently generated dataset is evaluated once after fitting. Results are written to `evaluation/variable_noise_retraining_metrics.json`, with the training file at `training/pairs_variable_noise_train.csv` and the independent holdout at `evaluation/pairs_variable_noise_holdout.csv`.
+The training CSV is split 50/50 by `group_id`; related pairs stay together. Five-fold grouped cross-validation runs only on the training half. The separately generated holdout CSV is evaluated once after fitting. Results are written to `evaluation/variable_noise_retraining_metrics.json`. The legacy `train.py` and `train_model.py` commands now route to this same workflow so they cannot silently train on the old CSV.
 
 ## Latest run
 

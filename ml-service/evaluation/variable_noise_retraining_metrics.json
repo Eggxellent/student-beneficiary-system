@@ -7,11 +7,14 @@
   "raw_value_columns_used_as_model_features": false,
   "pair_count_per_dataset": 10000,
   "positive_rate_assumption": 0.05,
+  "training_positive_fraction": 0.05,
+  "holdout_positive_fraction": 0.05,
   "label_counts": {
     "0": 9500,
     "1": 500
   },
   "training_file": "training\\pairs_variable_noise_train.csv",
+  "training_file_sha256": "a5661deef9e35221febd831c77a04c31f2656d6a36afd7569804bca9e5cd8b89",
   "train_rows": 5000,
   "internal_test_rows": 5000,
   "split": "50/50 stratified by group_id; related pairs kept together",
