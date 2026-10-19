@@ -1,0 +1,87 @@
+{
+  "model_promoted": false,
+  "candidate_model_file": "model\\research\\rf_variable_noise_candidate.joblib",
+  "candidate_model_sha256": "9ebc3a078cfc03fd68f5c3d7c902a278286b1e62329c1b4bf41d9282d3631856",
+  "generator": "labels indicate shared latent identity; each field is independently corrupted or collides probabilistically",
+  "independent_holdout_domains": "disjoint names, birth-date ranges, guardian IDs, UPIs, and birth-certificate numbers; same five school categories retained",
+  "raw_value_columns_used_as_model_features": false,
+  "pair_count_per_dataset": 10000,
+  "positive_rate_assumption": 0.05,
+  "label_counts": {
+    "0": 9500,
+    "1": 500
+  },
+  "training_file": "training\\pairs_variable_noise_train.csv",
+  "train_rows": 5000,
+  "internal_test_rows": 5000,
+  "split": "50/50 stratified by group_id; related pairs kept together",
+  "cv": "5-fold StratifiedGroupKFold on training half only",
+  "cv_f1_by_fold": [
+    0.7142857142857143,
+    0.736,
+    0.7164179104477612,
+    0.732824427480916,
+    0.7007299270072993
+  ],
+  "internal_test_metrics": {
+    "threshold": 0.5,
+    "accuracy": 0.9582,
+    "balanced_accuracy": 0.9514736842105262,
+    "precision": 0.5475638051044084,
+    "recall": 0.944,
+    "f1": 0.6930983847283406,
+    "average_precision": 0.9076586937886363,
+    "roc_auc": 0.9878631578947368,
+    "confusion_matrix_labels_0_1": [
+      [
+        4555,
+        195
+      ],
+      [
+        14,
+        236
+      ]
+    ],
+    "true_negatives": 4555,
+    "false_positives": 195,
+    "false_negatives": 14,
+    "true_positives": 236
+  },
+  "independent_holdout_file": "evaluation\\pairs_variable_noise_holdout.csv",
+  "independent_holdout_sha256": "8b8b9fcd1bcbf95d96be6375e89340d25087d020b269738c74577d2e8a0388a1",
+  "independent_holdout_label_counts": {
+    "0": 9500,
+    "1": 500
+  },
+  "independent_holdout_used_for_training_or_tuning": false,
+  "independent_holdout_metrics": {
+    "threshold": 0.5,
+    "accuracy": 0.9569,
+    "balanced_accuracy": 0.9384736842105263,
+    "precision": 0.5406360424028268,
+    "recall": 0.918,
+    "f1": 0.6805040770941438,
+    "average_precision": 0.9060724023923294,
+    "roc_auc": 0.9830856842105263,
+    "confusion_matrix_labels_0_1": [
+      [
+        9110,
+        390
+      ],
+      [
+        41,
+        459
+      ]
+    ],
+    "true_negatives": 9110,
+    "false_positives": 390,
+    "false_negatives": 41,
+    "true_positives": 459
+  },
+  "user_supplied_evaluation_dataset_used_for_training": false,
+  "scikit_learn_version": "1.9.0",
+  "limitations": [
+    "The 5% positive rate is a synthetic simulation assumption, not measured real-world prevalence.",
+    "Synthetic performance cannot establish real-world duplicate-detection performance."
+  ]
+}
