@@ -18,14 +18,24 @@ from sklearn.model_selection import StratifiedGroupKFold, train_test_split
 
 from feature_engineering import FEATURE_COLUMNS
 BASE = Path(__file__).resolve().parent
-CANDIDATE = BASE / "model" / "research" / "rf_variable_noise_candidate.joblib"
-TRAIN_FILE = BASE / "training" / "pairs_variable_noise_train.csv"
-INTERNAL_FILE = BASE / "evaluation" / "pairs_variable_noise_internal_test.csv"
-HOLDOUT_FILE = BASE / "evaluation" / "pairs_variable_noise_holdout.csv"
-REPORT = BASE / "evaluation" / "variable_noise_retraining_metrics.json"
+CANDIDATE = BASE / "model" / "research" / "rf_attachment_style_candidate.joblib"
+TRAIN_FILE = BASE / "training" / "pairs_attachment_style_train.csv"
+INTERNAL_FILE = BASE / "evaluation" / "pairs_attachment_style_internal_test.csv"
+HOLDOUT_FILE = BASE / "evaluation" / "pairs_attachment_style_holdout.csv"
+REPORT = BASE / "evaluation" / "attachment_style_retraining_metrics.json"
 COUNT = 10_000
-POSITIVE_RATE = 0.05  # Simulation assumption, not a measured SBMS rate.
+POSITIVE_RATE = 0.50  # Balanced synthetic labels from the attachment, not an SBMS rate.
 SPLIT_SEED = 51_042
+NONVALUES = {"", "????", "12345", "N/A", "UNKNOWN", "SCH001", "SCH009", "0000-00-00", "G000000", "UPI-00000000", "BC-000000"}
+
+
+def observed_values(data: pd.DataFrame, columns: tuple[str, str]) -> set[str]:
+    return {
+        str(value).strip().upper()
+        for column in columns
+        for value in data[column].dropna()
+        if str(value).strip().upper() not in NONVALUES
+    }
 
 
 def score(labels: pd.Series, probabilities) -> dict[str, object]:
@@ -51,7 +61,7 @@ def main() -> dict[str, object]:
     if not TRAIN_FILE.exists() or not HOLDOUT_FILE.exists():
         raise FileNotFoundError(
             "Expected the branch training and independent-holdout CSVs. "
-            "Generate them with generate_variable_pairs.py before training."
+            "Generate them with generate_attachment_style_pairs.py before training."
         )
     generated_train = pd.read_csv(TRAIN_FILE, float_precision="round_trip")
     holdout = pd.read_csv(HOLDOUT_FILE, float_precision="round_trip")
@@ -75,16 +85,11 @@ def main() -> dict[str, object]:
         if missing_raw:
             raise ValueError(f"{name} CSV needs raw fields to verify disjointness: {', '.join(missing_raw)}")
     for left, right in (
-        ((set(generated_train.name_1) | set(generated_train.name_2)),
-         (set(holdout.name_1) | set(holdout.name_2))),
-        ((set(generated_train.dob_1) | set(generated_train.dob_2)),
-         (set(holdout.dob_1) | set(holdout.dob_2))),
-        ((set(generated_train.guardian_1) | set(generated_train.guardian_2)),
-         (set(holdout.guardian_1) | set(holdout.guardian_2))),
-        ((set(generated_train.upi_1) | set(generated_train.upi_2)),
-         (set(holdout.upi_1) | set(holdout.upi_2))),
-        ((set(generated_train.birth_certificate_1) | set(generated_train.birth_certificate_2)),
-         (set(holdout.birth_certificate_1) | set(holdout.birth_certificate_2))),
+        (observed_values(generated_train, ("name_1", "name_2")), observed_values(holdout, ("name_1", "name_2"))),
+        (observed_values(generated_train, ("dob_1", "dob_2")), observed_values(holdout, ("dob_1", "dob_2"))),
+        (observed_values(generated_train, ("guardian_1", "guardian_2")), observed_values(holdout, ("guardian_1", "guardian_2"))),
+        (observed_values(generated_train, ("upi_1", "upi_2")), observed_values(holdout, ("upi_1", "upi_2"))),
+        (observed_values(generated_train, ("birth_certificate_1", "birth_certificate_2")), observed_values(holdout, ("birth_certificate_1", "birth_certificate_2"))),
     ):
         if left & right:
             raise RuntimeError("Training and independent holdout share raw values")
@@ -131,8 +136,8 @@ def main() -> dict[str, object]:
         "model_promoted": False,
         "candidate_model_file": str(CANDIDATE.relative_to(BASE)),
         "candidate_model_sha256": hashlib.sha256(CANDIDATE.read_bytes()).hexdigest(),
-        "generator": "labels indicate shared latent identity; each field is independently corrupted or collides probabilistically",
-        "independent_holdout_domains": "disjoint names, birth-date ranges, guardian IDs, UPIs, and birth-certificate numbers; same five school categories retained",
+        "generator": "attachment-style noisy scenarios; labels map to shared latent identity and features are recomputed from cleaned record fields",
+        "independent_holdout_domains": "disjoint name pools, birth-date ranges, guardian IDs, UPIs, and birth-certificate numbers; same five school categories retained",
         "raw_value_columns_used_as_model_features": False,
         "pair_count_per_dataset": COUNT,
         "positive_rate_assumption": POSITIVE_RATE,
@@ -154,7 +159,7 @@ def main() -> dict[str, object]:
         "user_supplied_evaluation_dataset_used_for_training": False,
         "scikit_learn_version": sklearn.__version__,
         "limitations": [
-            "The 5% positive rate is a synthetic simulation assumption, not measured real-world prevalence.",
+            "The 50% positive rate is a balanced synthetic simulation from the attachment, not measured real-world prevalence.",
             "Synthetic performance cannot establish real-world duplicate-detection performance.",
         ],
     }

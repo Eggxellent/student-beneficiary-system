@@ -1,0 +1,90 @@
+{
+  "model_promoted": false,
+  "candidate_model_file": "model\\research\\rf_attachment_style_candidate.joblib",
+  "candidate_model_sha256": "29536cebe48a09142fad92a9f76ab505f5f3028a9f1f86700ea80a85dc79dce7",
+  "generator": "attachment-style noisy scenarios; labels map to shared latent identity and features are recomputed from cleaned record fields",
+  "independent_holdout_domains": "disjoint name pools, birth-date ranges, guardian IDs, UPIs, and birth-certificate numbers; same five school categories retained",
+  "raw_value_columns_used_as_model_features": false,
+  "pair_count_per_dataset": 10000,
+  "positive_rate_assumption": 0.5,
+  "training_positive_fraction": 0.5,
+  "holdout_positive_fraction": 0.5,
+  "label_counts": {
+    "0": 5000,
+    "1": 5000
+  },
+  "training_file": "training\\pairs_attachment_style_train.csv",
+  "training_file_sha256": "22bafa6cc0b58c44ad55c65d972997206f69a86b9adfce4cec1421fe500366e8",
+  "train_rows": 5000,
+  "internal_test_rows": 5000,
+  "split": "50/50 stratified by group_id; related pairs kept together",
+  "cv": "5-fold StratifiedGroupKFold on training half only",
+  "cv_f1_by_fold": [
+    0.7087628865979382,
+    0.7242693773824651,
+    0.6996098829648895,
+    0.7316455696202532,
+    0.7320754716981132
+  ],
+  "internal_test_metrics": {
+    "threshold": 0.5,
+    "accuracy": 0.7742,
+    "balanced_accuracy": 0.7742,
+    "precision": 0.9935205183585313,
+    "recall": 0.552,
+    "f1": 0.7096940087426074,
+    "average_precision": 0.8637270712283653,
+    "roc_auc": 0.8341272800000001,
+    "confusion_matrix_labels_0_1": [
+      [
+        2491,
+        9
+      ],
+      [
+        1120,
+        1380
+      ]
+    ],
+    "true_negatives": 2491,
+    "false_positives": 9,
+    "false_negatives": 1120,
+    "true_positives": 1380
+  },
+  "independent_holdout_file": "evaluation\\pairs_attachment_style_holdout.csv",
+  "independent_holdout_sha256": "bf90ea74e9b8f2552cd2eda8b7ff1a27202038b41e2e5d5862ac8cf207b7d7d4",
+  "independent_holdout_label_counts": {
+    "0": 5000,
+    "1": 5000
+  },
+  "independent_holdout_used_for_training_or_tuning": false,
+  "independent_holdout_metrics": {
+    "threshold": 0.5,
+    "accuracy": 0.7641,
+    "balanced_accuracy": 0.7641,
+    "precision": 0.981407218374043,
+    "recall": 0.5384,
+    "f1": 0.6953377243962289,
+    "average_precision": 0.8665135392361466,
+    "roc_auc": 0.8355875399999999,
+    "confusion_matrix_labels_0_1": [
+      [
+        4949,
+        51
+      ],
+      [
+        2308,
+        2692
+      ]
+    ],
+    "true_negatives": 4949,
+    "false_positives": 51,
+    "false_negatives": 2308,
+    "true_positives": 2692
+  },
+  "user_supplied_evaluation_dataset_used_for_training": false,
+  "scikit_learn_version": "1.9.0",
+  "limitations": [
+    "The 50% positive rate is a balanced synthetic simulation from the attachment, not measured real-world prevalence.",
+    "Synthetic performance cannot establish real-world duplicate-detection performance."
+  ]
+}

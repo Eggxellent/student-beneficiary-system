@@ -1,10 +1,6 @@
-"""Compatibility entry point for the branch's isolated retraining workflow.
+"""Compatibility entry point for the attachment-style branch experiment."""
 
-Training and evaluation data are read from the checked-in variable-noise CSVs;
-the legacy data/features.csv file is intentionally not used here.
-"""
-
-from retrain_variable_pairs import main as retrain_and_evaluate
+from retrain_attachment_style import main as retrain_and_evaluate
 
 
 def train_model() -> dict[str, object]:
