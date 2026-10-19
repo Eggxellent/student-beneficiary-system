@@ -53,8 +53,8 @@ def main() -> dict[str, object]:
             "Expected the branch training and independent-holdout CSVs. "
             "Generate them with generate_variable_pairs.py before training."
         )
-    generated_train = pd.read_csv(TRAIN_FILE)
-    holdout = pd.read_csv(HOLDOUT_FILE)
+    generated_train = pd.read_csv(TRAIN_FILE, float_precision="round_trip")
+    holdout = pd.read_csv(HOLDOUT_FILE, float_precision="round_trip")
     required = {*FEATURE_COLUMNS, "label", "group_id"}
     for name, data in (("training", generated_train), ("holdout", holdout)):
         missing = sorted(required - set(data.columns))
