@@ -13,6 +13,72 @@
     "0": 5000,
     "1": 5000
   },
+  "single_feature_diagnostics": {
+    "training": {
+      "jaro_winkler": {
+        "positive_mean": 0.585418447071447,
+        "negative_mean": 0.45902772344322346,
+        "single_feature_auc_best_direction": 0.61004648
+      },
+      "dob_match": {
+        "positive_mean": 0.461,
+        "negative_mean": 0.1798,
+        "single_feature_auc_best_direction": 0.6406000000000001
+      },
+      "school_match": {
+        "positive_mean": 0.2446,
+        "negative_mean": 0.2156,
+        "single_feature_auc_best_direction": 0.5145
+      },
+      "guardian_match": {
+        "positive_mean": 0.533,
+        "negative_mean": 0.263,
+        "single_feature_auc_best_direction": 0.635
+      },
+      "upi_match": {
+        "positive_mean": 0.4142,
+        "negative_mean": 0.0,
+        "single_feature_auc_best_direction": 0.7071000000000001
+      },
+      "birth_certificate_match": {
+        "positive_mean": 0.446,
+        "negative_mean": 0.0,
+        "single_feature_auc_best_direction": 0.723
+      }
+    },
+    "independent_holdout": {
+      "jaro_winkler": {
+        "positive_mean": 0.640608412032412,
+        "negative_mean": 0.5516826920116921,
+        "single_feature_auc_best_direction": 0.58080568
+      },
+      "dob_match": {
+        "positive_mean": 0.4534,
+        "negative_mean": 0.1848,
+        "single_feature_auc_best_direction": 0.6343000000000001
+      },
+      "school_match": {
+        "positive_mean": 0.2476,
+        "negative_mean": 0.2048,
+        "single_feature_auc_best_direction": 0.5214
+      },
+      "guardian_match": {
+        "positive_mean": 0.5276,
+        "negative_mean": 0.2712,
+        "single_feature_auc_best_direction": 0.6282000000000001
+      },
+      "upi_match": {
+        "positive_mean": 0.4,
+        "negative_mean": 0.0,
+        "single_feature_auc_best_direction": 0.7
+      },
+      "birth_certificate_match": {
+        "positive_mean": 0.4472,
+        "negative_mean": 0.0,
+        "single_feature_auc_best_direction": 0.7236
+      }
+    }
+  },
   "training_file": "training\\pairs_attachment_style_train.csv",
   "training_file_sha256": "22bafa6cc0b58c44ad55c65d972997206f69a86b9adfce4cec1421fe500366e8",
   "train_rows": 5000,

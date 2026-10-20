@@ -57,6 +57,25 @@ def score(labels: pd.Series, probabilities) -> dict[str, object]:
     }
 
 
+def single_feature_diagnostics(data: pd.DataFrame) -> dict[str, dict[str, float]]:
+    """Report how predictive each individual feature is in either direction.
+
+    A very high single-feature AUC can reveal a synthetic label shortcut even
+    when grouped train/test metrics look strong. This is diagnostic only: exact
+    identifier matches can be valid evidence in real duplicate review.
+    """
+    labels = data.label.astype(int)
+    diagnostics = {}
+    for column in FEATURE_COLUMNS:
+        auc = float(roc_auc_score(labels, data[column]))
+        diagnostics[column] = {
+            "positive_mean": float(data.loc[labels == 1, column].mean()),
+            "negative_mean": float(data.loc[labels == 0, column].mean()),
+            "single_feature_auc_best_direction": max(auc, 1.0 - auc),
+        }
+    return diagnostics
+
+
 def main() -> dict[str, object]:
     if not TRAIN_FILE.exists() or not HOLDOUT_FILE.exists():
         raise FileNotFoundError(
@@ -144,6 +163,10 @@ def main() -> dict[str, object]:
         "training_positive_fraction": float(generated_train.label.mean()),
         "holdout_positive_fraction": float(holdout.label.mean()),
         "label_counts": {str(k): int(v) for k, v in generated_train.label.value_counts().sort_index().items()},
+        "single_feature_diagnostics": {
+            "training": single_feature_diagnostics(generated_train),
+            "independent_holdout": single_feature_diagnostics(holdout),
+        },
         "training_file": str(TRAIN_FILE.relative_to(BASE)),
         "training_file_sha256": train_hash,
         "train_rows": len(train), "internal_test_rows": len(internal),
