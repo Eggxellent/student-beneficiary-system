@@ -113,6 +113,18 @@ describe('Duplicate comparison features', () => {
     expect(duplicateReviewReason(features, calculateDuplicateScore(features), 0.3)).toMatch(/Critical identifier match/i);
   });
 
+  test('an exact National ID match is a deterministic critical review lead outside the weighted model score', () => {
+    const features = buildDuplicateFeatures(
+      student({ full_name: 'Nia Wanjiku', date_of_birth: null, school_code: null, guardian_id: null, upi: null, birth_certificate_number: null, national_id_number: '12345678-X' }),
+      student({ full_name: 'Xqz Blr', date_of_birth: null, school_code: null, guardian_id: null, upi: null, birth_certificate_number: null, national_id_number: '1234 5678-x' })
+    );
+
+    expect(features.national_id_match).toBe(1);
+    expect(calculateDuplicateScore(features)).toBe(0);
+    expect(classifyDuplicate(features, 0, 0.7, 0.3)).toBe('critical');
+    expect(duplicateReviewReason(features, 0, 0.3)).toMatch(/National ID number/i);
+  });
+
   test('a single exact identifier stays critical regardless of supporting evidence below 70 percent', () => {
     const features = buildDuplicateFeatures(student(), student({
       full_name: 'John Kamau',

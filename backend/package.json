@@ -8,7 +8,9 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "jest --runInBand tests",
-    "test:smoke": "node --test test/api.smoke.test.js"
+    "test:smoke": "node --test test/api.smoke.test.js",
+    "seed:synthetic": "node scripts/seed-kenyan-demo-data.js",
+    "reset:synthetic": "node scripts/reset-kenyan-demo-data.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

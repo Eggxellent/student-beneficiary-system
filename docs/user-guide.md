@@ -13,7 +13,7 @@ SBMS helps administrators identify potentially duplicated student beneficiary re
 
 ## Sign in
 
-Use an administrator account. Protected pages redirect unauthenticated users to the login screen. Administrator-only pages include duplicate review and audit logs.
+Open `/login` and choose the Admin or Field Officer sign-in. SBMS checks the account's stored role and rejects sign-in through the other role's page. Admins use the system dashboard and duplicate review; Field Officers use the separate field dashboard for student registration and field operations.
 
 ## Register a student
 
@@ -21,12 +21,14 @@ Open **Students** and choose **Register Student**. Enter:
 
 - Full name
 - Date of birth
-- School code
-- Guardian ID
-- UPI
-- Birth Certificate Number
+- One of the five approved schools
+- National ID number
+- Primary phone number
+- Link a QR token
 
 Submit the form to save the student and run duplicate comparison against existing records. A QR code is returned for a successful registration.
+
+Student records use a consistent storage format across the form and API: names are trimmed and repeated spaces are collapsed; dates use `YYYY-MM-DD`; school names match the approved list exactly; identifier values are trimmed and stored in uppercase; and Kenyan mobile numbers are stored in `+254` format. Phone numbers entered as `07...`, `01...`, or `254...` are normalized automatically. Empty optional fields are stored as `NULL`.
 
 ## Understand duplicate results
 

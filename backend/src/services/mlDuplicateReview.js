@@ -1,0 +1,68 @@
+const { scoreStudentPairs } = require('./duplicateCheck');
+const { getMlReviewScoreThreshold } = require('../config/settings');
+
+const PREDICTION_BATCH_SIZE = 200;
+const MISSING_IDENTIFIERS = new Set(['', 'na', 'nan', 'none', 'null', 'unknown', 'notprovided', 'notavailable']);
+
+function configuredThreshold() {
+  const value = getMlReviewScoreThreshold();
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error('ML_REVIEW_SCORE_THRESHOLD must be a number from 0 to 1');
+  }
+  return value;
+}
+
+function normalizedIdentifier(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function usableIdentifier(value) {
+  const normalized = normalizedIdentifier(value);
+  return !MISSING_IDENTIFIERS.has(normalized) && !(normalized.length >= 4 && /^0+$/.test(normalized));
+}
+
+function exactNationalIdMatch(first, second) {
+  const left = normalizedIdentifier(first.national_id_number);
+  const right = normalizedIdentifier(second.national_id_number);
+  return usableIdentifier(left) && usableIdentifier(right) && left === right;
+}
+
+async function scorePairs(pairs) {
+  const results = [];
+  let modelVersion;
+  const batchCount = Math.max(1, Math.ceil(pairs.length / PREDICTION_BATCH_SIZE));
+  for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
+    const offset = batchIndex * PREDICTION_BATCH_SIZE;
+    const batch = pairs.slice(offset, offset + PREDICTION_BATCH_SIZE);
+    let prediction;
+    try {
+      prediction = await scoreStudentPairs(batch);
+    } catch (cause) {
+      const error = new Error('Python duplicate predictor failed');
+      error.code = 'DUPLICATE_PREDICTOR_FAILED';
+      error.cause = cause;
+      throw error;
+    }
+    if (!Array.isArray(prediction.results) || prediction.results.length !== batch.length || !prediction.model_version) {
+      throw new Error('Python duplicate predictor returned an invalid response');
+    }
+    if (modelVersion && modelVersion !== prediction.model_version) {
+      throw new Error('Python duplicate model changed during this comparison');
+    }
+    modelVersion = prediction.model_version;
+    for (const result of prediction.results) {
+      if (!Number.isFinite(result.score) || result.score < 0 || result.score > 1 || !result.features) {
+        throw new Error('Python duplicate predictor returned an invalid score');
+      }
+      results.push(result);
+    }
+  }
+  return { model_version: modelVersion, results };
+}
+
+module.exports = {
+  PREDICTION_BATCH_SIZE,
+  configuredThreshold,
+  exactNationalIdMatch,
+  scorePairs,
+};

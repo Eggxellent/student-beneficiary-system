@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -30,8 +31,10 @@ from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold, train_te
 from xgboost import XGBClassifier
 
 ML_DIR = Path(__file__).resolve().parents[1]
-DATA_FILE = ML_DIR / "data" / "features.csv"
-RESULTS_DIR = Path(__file__).resolve().parent / "results"
+DATA_FILE = Path(
+    os.environ.get("SBMS_ML_DATA_FILE", ML_DIR / "training" / "realistic_pairs_train.csv")
+).resolve()
+RESULTS_DIR = Path(os.environ.get("SBMS_ML_RESULTS_DIR", Path(__file__).resolve().parent / "results")).resolve()
 JSON_FILE = RESULTS_DIR / "comparison_results.json"
 REPORT_FILE = RESULTS_DIR / "comparison_report.md"
 RANDOM_STATE = 42
@@ -320,6 +323,7 @@ The same Random Forest settings selected in Experiment 1, same feature set excep
 ## Limitations and use
 
 - These results describe a synthetic dataset, not real student records. They do not establish real-world effectiveness.
+- The generator encodes chosen synthetic error rates and is not a substitute for real, independently labeled records. Group separation prevents related pairs crossing partitions, but cannot prove generalization to the beneficiary population.
 - Group separation keeps pairs generated from the same group together. It cannot remove every synthetic-data bias or prove generalization to the beneficiary population.
 - The recommendations are for the capstone research comparison. The SBMS production model and backend decision workflow were not changed by this experiment.
 - Training times include model search for Experiment 1 and final model fitting for Experiment 2; timing varies by machine.

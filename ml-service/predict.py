@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sys
 from pathlib import Path
 
@@ -34,6 +35,29 @@ def predict_many(data: list[dict[str, float | int]], model=None) -> list[dict[st
     return [{"probability": round(float(probability), 4)} for probability in probabilities]
 
 
+def predict_pairs(pairs: list[dict[str, dict[str, str]]], model=None) -> list[dict[str, object]]:
+    """Score raw record pairs using the same feature builder used for training."""
+    if not isinstance(pairs, list):
+        raise ValueError("pairs must be a list")
+    if not pairs:
+        return []
+    features = []
+    for pair in pairs:
+        if not isinstance(pair, dict) or not isinstance(pair.get("first"), dict) or not isinstance(pair.get("second"), dict):
+            raise ValueError("each pair must contain first and second student records")
+        features.append(build_pair_features(pair["first"], pair["second"]))
+    probabilities = predict_many(features, model)
+    return [
+        {"score": result["probability"], "features": feature}
+        for feature, result in zip(features, probabilities, strict=True)
+    ]
+
+
+def model_version() -> str:
+    digest = hashlib.sha256(MODEL_FILE.read_bytes()).hexdigest()
+    return f"xgboost:{digest}"
+
+
 def predict_duplicate(first: dict[str, str], second: dict[str, str], threshold: float = 0.5) -> dict[str, object]:
     features = build_features(first, second)
     result = predict(dict(zip(FEATURE_COLUMNS, features)))
@@ -47,12 +71,16 @@ def predict_duplicate(first: dict[str, str], second: dict[str, str], threshold: 
 
 def run_server() -> None:
     model = joblib.load(MODEL_FILE)
+    version = model_version()
     for line in sys.stdin:
         if not line.strip():
             continue
         try:
             data = json.loads(line)
-            result = predict_many(data, model) if isinstance(data, list) else predict(data, model)
+            if isinstance(data, dict) and "pairs" in data:
+                result = {"model_version": version, "results": predict_pairs(data["pairs"], model)}
+            else:
+                result = predict_many(data, model) if isinstance(data, list) else predict(data, model)
             print(json.dumps(result), flush=True)
         except Exception as error:
             print(json.dumps({"error": str(error)}), flush=True)

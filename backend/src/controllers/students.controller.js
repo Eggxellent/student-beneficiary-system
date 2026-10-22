@@ -1,25 +1,23 @@
 const studentModel = require('../models/student.model');
 const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
-const {
-  buildDuplicateFeatures,
-  calculateDuplicateScore,
-  classifyDuplicate,
-  duplicateReviewReason,
-  hasCorroboratingMajority,
-  MIN_NAME_SIMILARITY,
-} = require('../services/duplicateCheck');
-const { getDuplicateThreshold, getReviewThreshold } = require('../config/settings');
+const { exactNationalIdMatch, scorePairs, configuredThreshold } = require('../services/mlDuplicateReview');
 const QRCode = require('qrcode');
+const { randomUUID } = require('crypto');
 const { z } = require('zod');
+const { APPROVED_SCHOOLS } = require('../config/schools');
+const { cleanOptional, normalizeIdentifier, normalizeKenyanPhone, validIsoDate } = require('../services/studentRecordFormat');
 
 const studentSchema = z.object({
-  full_name: z.string().min(2),
-  date_of_birth: z.string().optional(),
-  school_code: z.string().optional(),
-  guardian_id: z.string().optional(),
-  upi: z.string().min(1),
-  birth_certificate_number: z.string().optional()
+  full_name: z.string().trim().transform((value) => value.replace(/\s+/g, ' ')).pipe(z.string().min(2).max(255)),
+  date_of_birth: z.preprocess(cleanOptional, z.string().refine(validIsoDate, 'Date of birth must use YYYY-MM-DD').optional()),
+  school_code: z.enum(APPROVED_SCHOOLS),
+  guardian_id: z.preprocess(normalizeIdentifier, z.string().max(100).optional()),
+  upi: z.preprocess(normalizeIdentifier, z.string().max(100).optional()),
+  birth_certificate_number: z.preprocess(normalizeIdentifier, z.string().max(100).optional()),
+  national_id_number: z.preprocess(normalizeIdentifier, z.string().max(100).optional()),
+  primary_phone: z.preprocess(normalizeKenyanPhone, z.string().regex(/^\+254[17]\d{8}$/, 'Phone must be a Kenyan mobile number').optional()),
+  qr_token: z.preprocess(cleanOptional, z.string().max(100).optional()),
 });
 
 function dateValue(value) {
@@ -44,86 +42,80 @@ async function create(req, res, next) {
       school_code,
       guardian_id,
       upi,
-      birth_certificate_number
+      birth_certificate_number,
+      national_id_number,
+      primary_phone,
+      qr_token,
     } = validation.data;
 
-    const { rows: exactUpiCandidates } = upi
-      ? await pool.query('SELECT * FROM students WHERE upi = $1', [upi])
-      : { rows: [] };
-    const { rows: exactCertificateCandidates } = birth_certificate_number
-      ? await pool.query('SELECT * FROM students WHERE birth_certificate_number = $1', [birth_certificate_number])
-      : { rows: [] };
-    const exactUpiIds = new Set(exactUpiCandidates.map((candidate) => candidate.id));
-    const exactCandidateIds = new Set([
-      ...exactUpiIds,
-      ...exactCertificateCandidates.map((candidate) => candidate.id),
-    ]);
-    const { rows: candidates } = await pool.query(
-      'SELECT * FROM students WHERE id <> ALL($1::uuid[]) ORDER BY created_at DESC LIMIT 1000',
-      [Array.from(exactCandidateIds)]
-    );
-    const duplicateCandidates = [];
-    const candidateById = new Map(
-      [...exactUpiCandidates, ...exactCertificateCandidates, ...candidates]
-        .map((candidate) => [candidate.id, candidate])
-    );
-    for (const candidate of candidateById.values()) {
-      const birthCertificateMatch = Number(Boolean(
-        birth_certificate_number
-        && birth_certificate_number === candidate.birth_certificate_number
-      ));
-      const features = buildDuplicateFeatures(
-        { full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number },
-        candidate
-      );
-      if (
-        features.jaro_winkler < MIN_NAME_SIMILARITY
-        && !features.upi_match
-        && !birthCertificateMatch
-        && !hasCorroboratingMajority(features)
-      ) continue;
-      duplicateCandidates.push({
-        candidate,
-        features,
-      });
-    }
-
-    const duplicateResults = duplicateCandidates.length > 0
-      ? duplicateCandidates.map(({ candidate, features }) => ({
-        candidate,
-        features,
-        probability: calculateDuplicateScore(features),
-      }))
-      : [];
-
-    const student = await studentModel.create({ full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number });
-    const qrCode = await QRCode.toDataURL(student.id);
+    const submitted = { full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number, national_id_number };
+    const threshold = configuredThreshold();
+    const token = qr_token || randomUUID();
+    const qrCode = await QRCode.toDataURL(token);
     const flags = [];
-    const duplicateThreshold = getDuplicateThreshold();
-    const reviewThreshold = getReviewThreshold();
-    for (const result of duplicateResults) {
-      const riskLevel = classifyDuplicate(result.features, result.probability, duplicateThreshold, reviewThreshold);
-      if (riskLevel === 'clear') continue;
-
-      const { rows } = await pool.query(
-        `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
-         VALUES ($1, $2, $3, 'pending') RETURNING *`,
-        [student.id, result.candidate.id, result.probability]
+    const client = await pool.connect();
+    let student;
+    let prediction;
+    try {
+      await client.query('BEGIN');
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('sbms.student.registration'))");
+      const { rows: candidates } = await client.query(
+        `SELECT id, full_name, date_of_birth, school_code, guardian_id, upi,
+                birth_certificate_number, national_id_number
+         FROM students ORDER BY created_at ASC, id ASC FOR UPDATE`
       );
-
-      flags.push({
-        ...rows[0],
-        risk_level: riskLevel,
-        review_reason: duplicateReviewReason(result.features, result.probability, reviewThreshold),
+      try {
+        prediction = await scorePairs(candidates.map((candidate) => ({ first: submitted, second: candidate })));
+      } catch (error) {
+        await client.query('ROLLBACK');
+        return res.status(503).json({
+          message: 'Student registration was not completed because duplicate screening is unavailable. Please retry or contact support.',
+          code: 'DUPLICATE_SCREENING_UNAVAILABLE',
+        });
+      }
+      const duplicateResults = candidates.flatMap((candidate, index) => {
+        const result = prediction.results[index];
+        const nationalIdMatch = exactNationalIdMatch(submitted, candidate);
+        return result.score >= threshold || nationalIdMatch
+          ? [{ candidate, score: result.score, features: result.features }]
+          : [];
       });
+      student = await studentModel.create({ full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number, national_id_number, primary_phone, qr_token: token }, client);
+      for (const result of duplicateResults) {
+        const { rows } = await client.query(
+          `INSERT INTO duplicate_flags
+             (student_id, matched_student_id, probability, status, model_version, review_threshold, comparison_features)
+           VALUES ($1, $2, $3, 'pending', $4, $5, $6)
+           ON CONFLICT DO NOTHING RETURNING *`,
+          [student.id, result.candidate.id, result.score, prediction.model_version, threshold, result.features]
+        );
+        if (rows[0]) flags.push({
+          ...rows[0],
+          model_score: result.score,
+          risk_level: 'review',
+          review_reason: exactNationalIdMatch(submitted, result.candidate)
+            ? 'Exact National ID match; an administrator must verify the source documents.'
+            : `Model score met the provisional human-review cutoff (${threshold.toFixed(2)}).`,
+        });
+      }
+      await logAudit(req.user.id || req.user.sub, 'CREATE', 'students', student.id, {
+        duplicate_model_version: prediction.model_version,
+        duplicate_review_threshold: threshold,
+        duplicate_flags_created: flags.length,
+      }, client);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
     }
-
-    await logAudit(req.user.id || req.user.sub, 'CREATE', 'students', student.id);
     res.status(201).json({
       message: 'Student registered successfully',
       student,
       qr_code: qrCode,
       duplicate_flags: flags,
+      duplicate_screening: { model_version: prediction.model_version, review_threshold: threshold, score_is_calibrated_probability: false },
     });
   } catch (error) {
     next(error);
@@ -134,6 +126,12 @@ async function list(req, res, next) {
   try { res.json(await studentModel.getAll()); } catch (error) { next(error); }
 }
 
+async function listSchools(req, res, next) {
+  try {
+    res.json(APPROVED_SCHOOLS);
+  } catch (error) { next(error); }
+}
+
 async function get(req, res, next) {
   try {
     const student = await studentModel.getById(req.params.id);
@@ -142,4 +140,4 @@ async function get(req, res, next) {
   } catch (error) { next(error); }
 }
 
-module.exports = { create, list, get };
+module.exports = { create, list, listSchools, get };

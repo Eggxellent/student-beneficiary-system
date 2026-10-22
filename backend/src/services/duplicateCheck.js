@@ -40,6 +40,7 @@ const MIN_CORROBORATING_FIELDS = 4;
 let predictorProcess;
 let predictorOutput;
 let pendingRequests = [];
+const MODEL_REQUEST_TIMEOUT_MS = 30000;
 
 function clean(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -157,6 +158,7 @@ function buildDuplicateFeatures(first, second) {
     guardian_match: matchingValue(first.guardian_id, second.guardian_id, 'g'),
     upi_match: exactIdentifierMatch(first.upi, second.upi),
     birth_certificate_match: exactIdentifierMatch(first.birth_certificate_number, second.birth_certificate_number),
+    national_id_match: exactIdentifierMatch(first.national_id_number, second.national_id_number),
   };
 }
 
@@ -181,7 +183,7 @@ function hasCorroboratingMajority(features) {
 }
 
 function classifyDuplicate(features, score, duplicateThreshold, reviewThreshold) {
-  if (features.upi_match === 1 || features.birth_certificate_match === 1) return 'critical';
+  if (features.upi_match === 1 || features.birth_certificate_match === 1 || features.national_id_match === 1) return 'critical';
   if (score >= duplicateThreshold) return 'duplicate';
   if (score >= reviewThreshold || hasCorroboratingMajority(features)) return 'review';
   return 'clear';
@@ -191,6 +193,7 @@ function duplicateReviewReason(features, score, reviewThreshold) {
   const matchedIdentifiers = [
     features.upi_match === 1 ? 'UPI' : null,
     features.birth_certificate_match === 1 ? 'birth certificate number' : null,
+    features.national_id_match === 1 ? 'National ID number' : null,
   ].filter(Boolean);
   if (matchedIdentifiers.length > 0) {
     return `Critical identifier match: exact ${matchedIdentifiers.join(' and ')} across student records. Verify the original documents and resolve this flag before disbursement.`;
@@ -209,10 +212,33 @@ function checkDuplicates(features) {
     ensurePredictor();
     pendingRequests.push({ resolve, reject });
     const preparedFeatures = features.map((feature) => ({
-      ...feature,
+      jaro_winkler: feature.jaro_winkler,
+      dob_match: feature.dob_match,
+      school_match: feature.school_match,
+      guardian_match: feature.guardian_match,
+      upi_match: feature.upi_match,
       birth_certificate_match: feature.birth_certificate_match || 0,
     }));
     predictorProcess.stdin.write(`${JSON.stringify(preparedFeatures)}\n`);
+  });
+}
+
+function scoreStudentPairs(pairs) {
+  if (!Array.isArray(pairs)) return Promise.reject(new TypeError('pairs must be an array'));
+  return new Promise((resolve, reject) => {
+    ensurePredictor();
+    const request = { resolve, reject, settled: false };
+    request.timeout = setTimeout(() => {
+      request.settled = true;
+      reject(new Error(`Python duplicate predictor timed out after ${MODEL_REQUEST_TIMEOUT_MS}ms`));
+    }, MODEL_REQUEST_TIMEOUT_MS);
+    pendingRequests.push(request);
+    predictorProcess.stdin.write(`${JSON.stringify({ pairs })}\n`, (error) => {
+      if (!error || request.settled) return;
+      request.settled = true;
+      clearTimeout(request.timeout);
+      reject(error);
+    });
   });
 }
 
@@ -229,11 +255,13 @@ function ensurePredictor() {
   predictorOutput = readline.createInterface({ input: predictorProcess.stdout });
   predictorOutput.on('line', (line) => {
     const request = pendingRequests.shift();
-    if (!request) return;
+    if (!request || request.settled) return;
     try {
       const result = JSON.parse(line);
+      request.settled = true;
+      clearTimeout(request.timeout);
       if (result.error) return request.reject(new Error(result.error));
-      request.resolve(Array.isArray(result) ? result : [result]);
+      request.resolve(result);
     } catch (error) {
       request.reject(error);
     }
@@ -249,14 +277,18 @@ function ensurePredictor() {
 function handlePredictorFailure(error) {
   const requests = pendingRequests;
   pendingRequests = [];
-  for (const request of requests) request.reject(error);
+  for (const request of requests) {
+    if (request.settled) continue;
+    request.settled = true;
+    clearTimeout(request.timeout);
+    request.reject(error);
+  }
 }
-
-ensurePredictor();
 
 module.exports = {
   checkDuplicate,
   checkDuplicates,
+  scoreStudentPairs,
   jaroWinkler,
   buildDuplicateFeatures,
   calculateDuplicateContributions,

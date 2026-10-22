@@ -23,7 +23,7 @@ test('health endpoint is available', async () => {
 });
 
 test('admin can authenticate, read admin resources, and is blocked from field workflows', async () => {
-  const login = await request('/api/auth/login', {
+  const login = await request('/api/auth/login/admin', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(credentials),
@@ -47,7 +47,7 @@ test('admin can authenticate, read admin resources, and is blocked from field wo
 });
 
 test('duplicate flagged student disbursement is blocked', async () => {
-  const login = await request('/api/auth/login', {
+  const login = await request('/api/auth/login/admin', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(credentials),
@@ -71,7 +71,7 @@ test('duplicate flagged student disbursement is blocked', async () => {
 });
 
 test('report export validates its date range', async () => {
-  const login = await request('/api/auth/login', {
+  const login = await request('/api/auth/login/admin', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(credentials),

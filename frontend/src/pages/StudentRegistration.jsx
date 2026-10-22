@@ -1,198 +1,112 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { CalendarDays, CreditCard, Phone, QrCode } from "lucide-react";
 import api from "../services/api";
 
-export default function StudentRegistration() {
-  const [form, setForm] = useState({
-    full_name: "",
-    date_of_birth: "",
-    school_code: "",
-    guardian_id: "",
-    upi: "",
-    birth_certificate_number: "",
-  });
+const emptyForm = { first_name: "", last_name: "", date_of_birth: "", school_code: "", national_id_number: "", primary_phone: "", qr_token: "" };
 
+export default function StudentRegistration() {
+  const [form, setForm] = useState(emptyForm);
+  const [schools, setSchools] = useState([]);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const hasDuplicateFlags = Boolean(result?.duplicate_flags?.length);
-  const hasCriticalIdentifierFlag = result?.duplicate_flags?.some((flag) => flag.risk_level === "critical");
 
-  function handleChange(e) {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+  useEffect(() => {
+    api.get("/students/schools").then(({ data }) => setSchools(data)).catch(() => setSchools([]));
+  }, []);
+
+  function handleChange(event) {
+    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  function linkToken() {
+    setForm((current) => ({ ...current, qr_token: crypto.randomUUID() }));
+    setError("");
+  }
 
+  async function handleSubmit(event) {
+    event.preventDefault();
     setLoading(true);
     setError("");
     setResult(null);
-
     try {
-      const response = await api.post("/students", form);
-
-      setResult(response.data);
-
-      setForm({
-        full_name: "",
-        date_of_birth: "",
-        school_code: "",
-        guardian_id: "",
-        upi: "",
-        birth_certificate_number: "",
+      const response = await api.post("/students", {
+        full_name: `${form.first_name.trim()} ${form.last_name.trim()}`,
+        date_of_birth: form.date_of_birth,
+        school_code: form.school_code,
+        national_id_number: form.national_id_number.trim(),
+        primary_phone: form.primary_phone.trim(),
+        qr_token: form.qr_token,
       });
+      setResult(response.data);
+      setForm(emptyForm);
     } catch (err) {
-      setError(
-        err.response?.data?.message ||
-        "Failed to register student."
-      );
+      setError(err.response?.data?.message || "Failed to register student.");
     } finally {
       setLoading(false);
     }
   }
 
+  const critical = result?.duplicate_flags?.some((flag) => flag.risk_level === "critical");
+  const duplicate = Boolean(result?.duplicate_flags?.length);
+  const fieldClass = "mt-2 h-11 w-full border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none focus:border-sky-400 focus:bg-white";
+  const labelClass = "block text-[10px] font-bold uppercase tracking-wide text-slate-800";
+
   return (
-    <div className="max-w-3xl mx-auto p-8">
-      <h1 className="text-3xl font-bold mb-2">
-        Register Student
-      </h1>
-
-      <p className="text-gray-600 mb-6">
-        Enter the student's details as provided. Possible duplicates are routed to an administrator for review.
-      </p>
-
-      {error && (
-        <div className="mb-6 p-4 bg-red-100 text-red-700 rounded">
-          {error}
-        </div>
-      )}
-
+    <main className="mx-auto max-w-[560px] px-4 py-8 sm:py-12">
       {result && (
-        <div className={`mb-6 rounded border p-5 ${hasCriticalIdentifierFlag ? "border-red-300 bg-red-50 text-red-900" : hasDuplicateFlags ? "border-amber-300 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-green-800"}`}>
-          <h2 className="mb-2 text-xl font-bold">Student registered</h2>
-          <p>{result.message}</p>
-
-          {hasDuplicateFlags && (
-            <div className={`mt-4 rounded border bg-white p-4 ${hasCriticalIdentifierFlag ? "border-red-300" : "border-amber-300"}`} role="alert">
-              <h3 className={`font-bold ${hasCriticalIdentifierFlag ? "text-red-900" : "text-amber-900"}`}>{hasCriticalIdentifierFlag ? "Critical identifier match" : "Possible duplicate needs administrator review"}</h3>
-              <p className={`mt-1 text-sm ${hasCriticalIdentifierFlag ? "text-red-800" : "text-amber-800"}`}>{hasCriticalIdentifierFlag ? "An exact UPI or birth certificate match exists. This record and its matched record are blocked from disbursement until an administrator resolves the alert." : "A possible duplicate was found. Disbursement remains blocked until an administrator reviews the pending flag."}</p>
-              <ul className={`mt-2 list-inside list-disc text-sm ${hasCriticalIdentifierFlag ? "text-red-800" : "text-amber-800"}`}>
-                {result.duplicate_flags.filter((flag) => flag.review_reason).map((flag) => <li key={flag.id}>{flag.review_reason}</li>)}
-              </ul>
-            </div>
-          )}
-
-          {result.qr_code && (
-            <div className="mt-5">
-              <p className="font-medium mb-2">
-                Student QR Code
-              </p>
-
-              <img
-                src={result.qr_code}
-                alt="Student QR Code"
-                className="w-40 h-40 border"
-              />
-            </div>
-          )}
-        </div>
+        <section className={`mb-5 border p-4 text-sm ${critical ? "border-red-300 bg-red-50 text-red-900" : duplicate ? "border-amber-300 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-green-800"}`} role="status">
+          <h2 className="font-bold">Student registered</h2>
+          <p className="mt-1">{result.message}</p>
+          {duplicate && <p className="mt-2">A possible match was found. An administrator must review it before disbursement.</p>}
+          {result.duplicate_flags?.filter((flag) => flag.review_reason).map((flag) => <p key={flag.id} className="mt-1">{flag.review_reason}</p>)}
+          {result.qr_code && <img src={result.qr_code} alt="Student QR code" className="mt-3 h-36 w-36 border bg-white p-2" />}
+        </section>
       )}
 
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white p-6 rounded-lg shadow"
-      >
-        <label className="block font-medium mb-2">
-          Full Name
-        </label>
-        <p className="text-sm text-gray-500 mb-2">Use the student's full name as shown on official records.</p>
+      <section className="overflow-hidden border border-slate-300 bg-white">
+        <header className="border-b border-slate-300 px-5 py-4">
+          <h1 className="text-[11px] font-bold tracking-[0.12em] text-slate-800">PANEL 01 — FIELD OFFICER REGISTRATION FORM</h1>
+        </header>
+        <form onSubmit={handleSubmit} className="mx-auto max-w-[340px] px-0 py-7 sm:py-8">
+          {error && <div className="mb-4 border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</div>}
 
-        <input
-          name="full_name"
-          value={form.full_name}
-          onChange={handleChange}
-          className="w-full border rounded p-3 mb-5"
-          placeholder="e.g. John Kamau"
-          required
-        />
+          <div className="mb-3 grid grid-cols-2 gap-3">
+            <label className={labelClass}>First name
+              <input name="first_name" value={form.first_name} onChange={handleChange} className={fieldClass} placeholder="Enter first name" required />
+            </label>
+            <label className={labelClass}>Last name
+              <input name="last_name" value={form.last_name} onChange={handleChange} className={fieldClass} placeholder="Enter last name" required />
+            </label>
+          </div>
 
-        <label className="block font-medium mb-2">
-          Date of Birth
-        </label>
-        <p className="text-sm text-gray-500 mb-2">Format: YYYY-MM-DD.</p>
+          <label className={`${labelClass} mb-3`}>Date of birth
+            <span className="relative block"><CalendarDays size={14} className="pointer-events-none absolute left-2 top-[14px] text-slate-600" aria-hidden="true" /><input type="date" name="date_of_birth" value={form.date_of_birth} onChange={handleChange} className={`${fieldClass} mt-2 pl-8`} required /></span>
+          </label>
 
-        <input
-          type="date"
-          name="date_of_birth"
-          value={form.date_of_birth}
-          onChange={handleChange}
-          className="w-full border rounded p-3 mb-5"
-        />
+          <label className={`${labelClass} mb-3`}>Select school
+            <select name="school_code" value={form.school_code} onChange={handleChange} className={fieldClass} required>
+              <option value="" disabled>Choose institution...</option>
+              {schools.map((school) => <option key={school} value={school}>{school}</option>)}
+            </select>
+          </label>
 
-        <label className="block font-medium mb-2">
-          School Code
-        </label>
-        <p className="text-sm text-gray-500 mb-2">Use the official school code, e.g. SCH001 or SCH-001.</p>
+          <label className={`${labelClass} mb-3`}>National ID number
+            <span className="relative block"><CreditCard size={14} className="pointer-events-none absolute left-2 top-[14px] text-slate-600" aria-hidden="true" /><input name="national_id_number" value={form.national_id_number} onChange={handleChange} className={`${fieldClass} pl-8`} placeholder="XXXXXXXX-X" required /></span>
+          </label>
 
-        <input
-          name="school_code"
-          value={form.school_code}
-          onChange={handleChange}
-          className="w-full border rounded p-3 mb-5"
-          placeholder="e.g. SCH001"
-        />
+          <label className={`${labelClass} mb-5`}>Primary phone
+            <span className="relative block"><Phone size={14} className="pointer-events-none absolute left-2 top-[14px] text-slate-600" aria-hidden="true" /><input type="tel" name="primary_phone" value={form.primary_phone} onChange={handleChange} className={`${fieldClass} pl-8`} placeholder="+254712345678 or 0712345678" required /></span>
+          </label>
 
-        <label className="block font-medium mb-2">
-          Guardian ID
-        </label>
-        <p className="text-sm text-gray-500 mb-2">Use the assigned ID, e.g. G001 or G-123456.</p>
-
-        <input
-          name="guardian_id"
-          value={form.guardian_id}
-          onChange={handleChange}
-          className="w-full border rounded p-3 mb-6"
-          placeholder="e.g. G001"
-        />
-
-        <label className="block font-medium mb-2">
-          UPI
-        </label>
-        <p className="text-sm text-gray-500 mb-2">Use the student's official UPI, e.g. UPI-12345678.</p>
-
-        <input
-          name="upi"
-          value={form.upi}
-          onChange={handleChange}
-          className="w-full border rounded p-3 mb-6"
-          placeholder="e.g. UPI-12345678"
-          required
-        />
-
-        <label className="block font-medium mb-2">
-          Birth Certificate Number
-        </label>
-        <p className="text-sm text-gray-500 mb-2">Enter the number as printed, e.g. BC-1001.</p>
-
-        <input
-          name="birth_certificate_number"
-          value={form.birth_certificate_number}
-          onChange={handleChange}
-          className="w-full border rounded p-3 mb-6"
-          placeholder="e.g. BC-1001"
-        />
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 text-white py-3 rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? "Registering..." : "Register Student"}
-        </button>
-      </form>
-    </div>
+          <button type="button" onClick={linkToken} className={`mb-2 flex h-10 w-full items-center justify-center gap-2 border text-xs font-semibold ${form.qr_token ? "border-green-300 bg-green-50 text-green-800" : "border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100"}`}>
+            <QrCode size={15} aria-hidden="true" /> {form.qr_token ? "QR CODE TOKEN LINKED" : "LINK QR CODE TOKEN"}
+          </button>
+          <button type="submit" disabled={loading || !form.qr_token} className="h-10 w-full bg-sky-500 text-sm font-bold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60">
+            {loading ? "SUBMITTING..." : "SUBMIT REGISTRATION"}
+          </button>
+        </form>
+      </section>
+    </main>
   );
 }

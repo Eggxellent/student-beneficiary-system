@@ -8,6 +8,7 @@ async function list(req, res, next) {
         a.action,
         a.table_name,
         a.record_id,
+        a.details,
         a.created_at,
         u.full_name AS user_name,
         u.email AS user_email

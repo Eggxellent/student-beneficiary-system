@@ -1,15 +1,39 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-export default function Login() {
+export default function Login({ role }) {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isAuthenticated, user, authLoading } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  if (authLoading) return null;
+  if (isAuthenticated) return <Navigate to={user?.role === "admin" ? "/dashboard" : "/field-officer"} replace />;
+
+  if (!role) {
+    return <main className="flex min-h-screen items-center justify-center bg-slate-100 p-5">
+      <section className="w-full max-w-2xl rounded-lg bg-white p-8 shadow">
+        <h1 className="text-2xl font-bold">SBMS sign in</h1>
+        <p className="mt-2 text-slate-600">Choose your account type to open the correct sign-in page.</p>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <Link to="/admin/login" className="rounded border border-blue-200 p-5 hover:bg-blue-50">
+            <span className="block text-lg font-semibold">Admin</span>
+            <span className="mt-1 block text-sm text-slate-600">System dashboard, user management and duplicate review.</span>
+          </Link>
+          <Link to="/field-officer/login" className="rounded border border-emerald-200 p-5 hover:bg-emerald-50">
+            <span className="block text-lg font-semibold">Field Officer</span>
+            <span className="mt-1 block text-sm text-slate-600">Student registration and field operations.</span>
+          </Link>
+        </div>
+      </section>
+    </main>;
+  }
+
+  const roleLabel = role === "admin" ? "Admin" : "Field Officer";
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -18,8 +42,8 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const user = await login(email, password);
-      navigate(user.role === "admin" ? "/duplicate-review" : "/dashboard");
+      const user = await login(email, password, role);
+      navigate(user.role === "admin" ? "/dashboard" : "/field-officer");
     } catch (err) {
       setError(
         err.response?.data?.message ||
@@ -35,14 +59,12 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-md bg-white p-8 rounded-lg shadow"
+        className={`w-full max-w-md rounded-lg bg-white p-8 shadow ${role === "admin" ? "border-t-4 border-blue-600" : "border-t-4 border-emerald-600"}`}
       >
-        <h1 className="text-2xl font-bold mb-2">
-          Student Beneficiary Management System
-        </h1>
+        <h1 className="text-2xl font-bold mb-2">{roleLabel} sign in</h1>
 
         <p className="text-gray-600 mb-6">
-          Sign in with your assigned account. Your role opens your workspace.
+          Sign in to the {roleLabel} workspace with your assigned account.
         </p>
 
         {error && (
@@ -60,7 +82,7 @@ export default function Login() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="w-full border rounded p-2 mb-4"
-          placeholder="admin@example.com"
+          placeholder={role === "admin" ? "Admin email" : "Field Officer email"}
           required
         />
 
@@ -84,6 +106,7 @@ export default function Login() {
         >
           {loading ? "Signing in..." : "Sign In"}
         </button>
+        <Link to="/login" className="mt-4 block text-center text-sm text-blue-700">Choose a different sign-in</Link>
       </form>
     </div>
   );

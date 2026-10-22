@@ -37,6 +37,7 @@ export default function AuditLogs() {
               <th className="px-5 py-3 font-medium">Action</th>
               <th className="px-5 py-3 font-medium">Resource</th>
               <th className="px-5 py-3 font-medium">Record</th>
+              <th className="px-5 py-3 font-medium">Details</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -50,12 +51,13 @@ export default function AuditLogs() {
                 <td className="px-5 py-4 font-medium text-slate-900">{log.action.replaceAll("_", " ")}</td>
                 <td className="px-5 py-4">{log.table_name || "-"}</td>
                 <td className="px-5 py-4 font-mono text-xs">{log.record_id || "-"}</td>
+                <td className="max-w-xs px-5 py-4 text-xs text-slate-600">{log.details ? JSON.stringify(log.details) : "-"}</td>
               </tr>
             ))}
             {!loading && logs.length === 0 && (
-              <tr><td colSpan="5" className="px-5 py-10 text-center text-slate-500">No audit events found.</td></tr>
+              <tr><td colSpan="6" className="px-5 py-10 text-center text-slate-500">No audit events found.</td></tr>
             )}
-            {loading && <tr><td colSpan="5" className="px-5 py-10 text-center text-slate-500">Loading audit logs...</td></tr>}
+            {loading && <tr><td colSpan="6" className="px-5 py-10 text-center text-slate-500">Loading audit logs...</td></tr>}
           </tbody>
         </table>
       </div>

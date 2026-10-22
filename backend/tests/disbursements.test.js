@@ -5,12 +5,13 @@ const pool = require("../src/config/db");
 describe("Disbursements API", () => {
   let token;
   let studentId;
+  let userId;
 
   beforeAll(async () => {
     const email = `disbursementtest${Date.now()}@example.com`;
     const password = "TestPassword123!";
 
-    await request(app)
+    const registration = await request(app)
       .post("/api/auth/register")
       .send({
         full_name: "Disbursement Test Field Officer",
@@ -18,9 +19,10 @@ describe("Disbursements API", () => {
         password,
         role: "field_officer",
       });
+    userId = registration.body.user?.id;
 
     const loginResponse = await request(app)
-      .post("/api/auth/login")
+      .post("/api/auth/login/field-officer")
       .send({
         email,
         password,
@@ -34,7 +36,7 @@ describe("Disbursements API", () => {
       .send({
         full_name: "Disbursement Test Student",
         date_of_birth: "2005-01-01",
-        school_code: "TEST001",
+        school_code: "Nairobi School",
         guardian_id: `GUARD-${Date.now()}`,
         upi: `UPI-TEST-${Date.now()}`,
       });
@@ -48,6 +50,11 @@ describe("Disbursements API", () => {
         "DELETE FROM students WHERE id = $1",
         [studentId]
       );
+    }
+
+    if (userId) {
+      await pool.query("DELETE FROM audit_logs WHERE user_id = $1", [userId]);
+      await pool.query("DELETE FROM users WHERE id = $1", [userId]);
     }
 
     await pool.end();

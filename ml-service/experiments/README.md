@@ -1,25 +1,13 @@
-# Reproduce the SBMS comparisons
+# Optional ML comparison experiments
 
-These are the reportable comparison runs for the capstone. They use the checked-in `ml-service/data/features.csv`, a group-separated 80/20 holdout (seed 42), and five-fold grouped cross-validation. The Random Forest and XGBoost searches each check 24 candidates. The name-method run reuses the Random Forest settings selected by the first comparison.
+These comparison scripts are separate from the standard training workflow. The default input is `ml-service/training/realistic_pairs_train.csv`; the six pair features and `group_id` are read directly. Generate that dataset first by running `ml-service/train.py`. `data/raw_pairs.csv` is a separate, harder synthetic scenario dataset, documented in `data/raw_pairs_metadata.json`; standard training does not use it. Reports and plots from earlier synthetic runs were removed because they do not describe the current application model.
 
-From the repository root on Windows, run:
+Run from the repository root on Windows:
 
 ```powershell
 & '.\ml-service\.venv\Scripts\python.exe' '.\ml-service\experiments\run_research_comparisons.py'
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\ml-service\experiments\render_comparison_report.ps1'
 ```
 
-If the virtual environment is missing, create one with Python 3.11 and install the experiment dependencies:
+Install the shared ML dependencies from `ml-service/requirements.txt` when setting up a fresh environment.
 
-```powershell
-py -3.11 -m venv ml-service\.venv
-& '.\ml-service\.venv\Scripts\python.exe' -m pip install -r ml-service\experiments\requirements.txt
-```
-
-Outputs are written under `ml-service/experiments/results/`:
-
-- `comparison_results.json` contains the full metrics, split details, installed package information, selected parameters, and dataset hash.
-- `comparison_report.md` contains the result tables and conclusions.
-- `comparison_report.png` is a one-page screenshot-ready table for the capstone report.
-
-The existing `compare_models.py` and `compare_name_similarity.py` files are earlier exploratory scripts. Use the runner above when reporting controlled comparison results. The experiment does not replace or modify the model artifact used by the application.
+The comparison results are generated under `ml-service/experiments/results/`. They remain simulations and should not be represented as real-case performance. Standard application training is performed by `ml-service/train.py` and records its grouped holdout and metrics under `ml-service/evaluation/`.

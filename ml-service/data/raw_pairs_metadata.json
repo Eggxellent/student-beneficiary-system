@@ -1,0 +1,34 @@
+{
+  "description": "Synthetic, identity-grounded SBMS pair scenarios; not real beneficiary data.",
+  "seed": 4210873,
+  "row_count": 10000,
+  "group_count": 5000,
+  "rows_per_group": 2,
+  "label_counts": {
+    "0": 5000,
+    "1": 5000
+  },
+  "scenario_group_counts": {
+    "common_name_same_school": 610,
+    "identifier_collision": 492,
+    "repeat_application": 2500,
+    "siblings_shared_household": 618,
+    "twins_or_close_age": 488,
+    "unrelated_candidate": 292
+  },
+  "positive_scenarios": [
+    "repeat_application"
+  ],
+  "negative_scenarios": [
+    "common_name_same_school",
+    "identifier_collision",
+    "siblings_shared_household",
+    "twins_or_close_age",
+    "unrelated_candidate"
+  ],
+  "csv_sha256": "65fc50e9e8ef02c32ab58f6e1c95555d90ac644d793e71c514993a3649db56c2",
+  "backup_file": "raw_pairs.pre_realistic_backup.csv",
+  "backup_sha256": "e214f9b28af17cff5f461bef051f7dd92b83af0a4c6a30eb71d8e91b669a3aa7",
+  "training_performed": false,
+  "caveat": "Ambiguous real-world cases need a separate human-reviewed set; they are not assigned guessed binary labels here."
+}

@@ -1,17 +1,20 @@
 import { Link, useLocation } from "react-router-dom";
-import { BadgeCheck, FileText, GraduationCap, LayoutDashboard, LogOut, Settings, ShieldAlert, Users, Wallet } from "lucide-react";
+import { BadgeCheck, FileText, GraduationCap, LayoutDashboard, LogOut, Settings, ShieldAlert, UserCog, UserPlus, Users, Wallet } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const navigationByRole = {
   admin: [
+    { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { name: "Duplicate Review", path: "/duplicate-review", icon: ShieldAlert },
     { name: "Audit Logs", path: "/audit", icon: FileText },
+    { name: "Users", path: "/users", icon: UserCog },
     { name: "Reports", path: "/reports", icon: FileText },
     { name: "Settings", path: "/settings", icon: Settings },
   ],
   field_officer: [
-    { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+    { name: "Dashboard", path: "/field-officer", icon: LayoutDashboard },
     { name: "Students", path: "/students", icon: Users },
+    { name: "Register Student", path: "/students/register", icon: UserPlus },
     { name: "Eligibility", path: "/eligibility", icon: BadgeCheck },
     { name: "Disbursements", path: "/disbursements", icon: Wallet },
   ],
@@ -40,7 +43,7 @@ export default function AppLayout({ children }) {
         </div>
         <nav aria-label="Main navigation" className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 pb-3 sm:px-6">
           {navigation.map((item) => {
-            const isActive = location.pathname === item.path || (item.path === "/students" && location.pathname === "/students/register");
+            const isActive = location.pathname === item.path;
             return (
               <Link
                 key={item.path}

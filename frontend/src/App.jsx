@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
+import AdminDashboard from "./pages/AdminDashboard";
 import Students from "./pages/Students";
 import StudentRegistration from "./pages/StudentRegistration";
 import DuplicateReview from "./pages/DuplicateReview";
@@ -9,11 +10,14 @@ import FieldOfficerDashboard from "./pages/FieldOfficerDashboard";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import AuditLogs from "./pages/AuditLogs";
+import UserManagement from "./pages/UserManagement";
 import { useAuth } from "./context/AuthContext";
 import AppLayout from "./components/AppLayout";
 
 function ProtectedRoute({ children, allowedRoles }) {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, authLoading } = useAuth();
+
+  if (authLoading) return null;
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -30,11 +34,11 @@ function DashboardHome() {
   const { user } = useAuth();
 
   if (user?.role === "admin") {
-    return <Navigate to="/duplicate-review" replace />;
+    return <AdminDashboard />;
   }
 
   if (user?.role === "field_officer") {
-    return <AppLayout><FieldOfficerDashboard /></AppLayout>;
+    return <Navigate to="/field-officer" replace />;
   }
 
   return <Navigate to="/login" replace />;
@@ -52,6 +56,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/admin/login" element={<Login role="admin" />} />
+      <Route path="/field-officer/login" element={<Login role="field_officer" />} />
       <Route
         path="/students"
         element={
@@ -113,6 +119,15 @@ export default function App() {
         element={
           <ProtectedPage allowedRoles={["admin"]}>
             <AuditLogs />
+          </ProtectedPage>
+        }
+      />
+      <Route path="/users" element={<ProtectedPage allowedRoles={["admin"]}><UserManagement /></ProtectedPage>} />
+      <Route
+        path="/field-officer"
+        element={
+          <ProtectedPage allowedRoles={["field_officer"]}>
+            <FieldOfficerDashboard />
           </ProtectedPage>
         }
       />

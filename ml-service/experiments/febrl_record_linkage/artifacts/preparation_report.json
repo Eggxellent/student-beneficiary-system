@@ -1,0 +1,210 @@
+{
+  "source_profile": {
+    "dataset": "FEBRL 4A and 4B",
+    "benchmark_type": "synthetic person-record linkage benchmark; not Kenyan beneficiary data",
+    "source_files": {
+      "dataset4a.csv": {
+        "url": "https://raw.githubusercontent.com/J535D165/recordlinkage/v0.16/recordlinkage/datasets/febrl/dataset4a.csv",
+        "bytes": 519618,
+        "sha256": "07c7cb3f0a8d88180e80317f2a60499dee4e8324a44c38059f4e7fed0a8b4488",
+        "row_count": 5000
+      },
+      "dataset4b.csv": {
+        "url": "https://raw.githubusercontent.com/J535D165/recordlinkage/v0.16/recordlinkage/datasets/febrl/dataset4b.csv",
+        "bytes": 515463,
+        "sha256": "2eed76c99fa2237be3ec013a123427926d4158abcb3a8f65874d6c7f1358cf2c",
+        "row_count": 5000
+      }
+    },
+    "dataset4a_profile": {
+      "row_count": 5000,
+      "columns": [
+        "given_name",
+        "surname",
+        "street_number",
+        "address_1",
+        "address_2",
+        "suburb",
+        "postcode",
+        "state",
+        "date_of_birth",
+        "soc_sec_id"
+      ],
+      "dtypes": {
+        "given_name": "string",
+        "surname": "string",
+        "street_number": "string",
+        "address_1": "string",
+        "address_2": "string",
+        "suburb": "string",
+        "postcode": "string",
+        "state": "string",
+        "date_of_birth": "string",
+        "soc_sec_id": "string"
+      },
+      "missing_values": {
+        "given_name": 112,
+        "surname": 48,
+        "street_number": 158,
+        "address_1": 98,
+        "address_2": 420,
+        "suburb": 55,
+        "postcode": 0,
+        "state": 50,
+        "date_of_birth": 94,
+        "soc_sec_id": 0
+      },
+      "record_id_count": 5000,
+      "entity_id_count": 5000
+    },
+    "dataset4b_profile": {
+      "row_count": 5000,
+      "columns": [
+        "given_name",
+        "surname",
+        "street_number",
+        "address_1",
+        "address_2",
+        "suburb",
+        "postcode",
+        "state",
+        "date_of_birth",
+        "soc_sec_id"
+      ],
+      "dtypes": {
+        "given_name": "string",
+        "surname": "string",
+        "street_number": "string",
+        "address_1": "string",
+        "address_2": "string",
+        "suburb": "string",
+        "postcode": "string",
+        "state": "string",
+        "date_of_birth": "string",
+        "soc_sec_id": "string"
+      },
+      "missing_values": {
+        "given_name": 234,
+        "surname": 102,
+        "street_number": 287,
+        "address_1": 220,
+        "address_2": 851,
+        "suburb": 106,
+        "postcode": 0,
+        "state": 107,
+        "date_of_birth": 199,
+        "soc_sec_id": 0
+      },
+      "record_id_count": 5000,
+      "entity_id_count": 5000
+    },
+    "ground_truth": {
+      "method": "The official load_febrl4(return_links=True) API returns rec-i-org to rec-i-dup-0 links. We parse and validate those documented IDs; pair labels are never inferred from row positions.",
+      "link_count": 5000
+    }
+  },
+  "pair_preparation": {
+    "seed": 20261022,
+    "split_entity_counts": {
+      "train": 3500,
+      "validation": 750,
+      "test": 750
+    },
+    "split_proportions": {
+      "train": 0.7,
+      "validation": 0.15,
+      "test": 0.15
+    },
+    "entity_overlap_counts": {
+      "train_validation": 0,
+      "train_test": 0,
+      "validation_test": 0
+    },
+    "source_record_overlap_counts": {
+      "train_validation": 0,
+      "train_test": 0,
+      "validation_test": 0
+    },
+    "total_possible_cross_dataset_pairs": 25000000,
+    "within_partition_possible_pairs": 13375000,
+    "cross_partition_pairs_not_generated": 11625000,
+    "splits": {
+      "train": {
+        "entity_count": 3500,
+        "record_count_4a": 3500,
+        "record_count_4b": 3500,
+        "all_within_partition_pairs": 12250000,
+        "candidate_pairs_after_blocking": 94412,
+        "candidate_positive_pairs": 3500,
+        "candidate_negative_pairs": 90912,
+        "ground_truth_positive_pairs": 3500,
+        "blocking_positive_recall": 1.0,
+        "positive_pairs_omitted_by_blocking": 0
+      },
+      "validation": {
+        "entity_count": 750,
+        "record_count_4a": 750,
+        "record_count_4b": 750,
+        "all_within_partition_pairs": 562500,
+        "candidate_pairs_after_blocking": 4203,
+        "candidate_positive_pairs": 750,
+        "candidate_negative_pairs": 3453,
+        "ground_truth_positive_pairs": 750,
+        "blocking_positive_recall": 1.0,
+        "positive_pairs_omitted_by_blocking": 0
+      },
+      "test": {
+        "entity_count": 750,
+        "record_count_4a": 750,
+        "record_count_4b": 750,
+        "all_within_partition_pairs": 562500,
+        "candidate_pairs_after_blocking": 4814,
+        "candidate_positive_pairs": 750,
+        "candidate_negative_pairs": 4064,
+        "ground_truth_positive_pairs": 750,
+        "blocking_positive_recall": 1.0,
+        "positive_pairs_omitted_by_blocking": 0
+      }
+    },
+    "blocking_fields": [
+      "given_name",
+      "surname",
+      "date_of_birth",
+      "postcode",
+      "soc_sec_id"
+    ],
+    "ground_truth_link_count": 5000,
+    "feature_columns": [
+      "given_name_jaro_winkler",
+      "surname_jaro_winkler",
+      "address_1_jaro_winkler",
+      "address_2_jaro_winkler",
+      "suburb_jaro_winkler",
+      "street_number_exact",
+      "postcode_exact",
+      "state_exact",
+      "date_of_birth_exact",
+      "soc_sec_id_exact",
+      "given_name_both_missing",
+      "given_name_one_missing",
+      "surname_both_missing",
+      "surname_one_missing",
+      "street_number_both_missing",
+      "street_number_one_missing",
+      "address_1_both_missing",
+      "address_1_one_missing",
+      "address_2_both_missing",
+      "address_2_one_missing",
+      "suburb_both_missing",
+      "suburb_one_missing",
+      "postcode_both_missing",
+      "postcode_one_missing",
+      "state_both_missing",
+      "state_one_missing",
+      "date_of_birth_both_missing",
+      "date_of_birth_one_missing",
+      "soc_sec_id_both_missing",
+      "soc_sec_id_one_missing"
+    ]
+  }
+}

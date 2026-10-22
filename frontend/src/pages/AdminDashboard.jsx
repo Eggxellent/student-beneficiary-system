@@ -6,27 +6,17 @@ import api from "../services/api";
 
 const navigation = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-  { name: "Students", path: "/students", icon: Users },
   { name: "Duplicate Review", path: "/duplicate-review", icon: ShieldAlert },
-  { name: "Eligibility", path: "/eligibility", icon: BadgeCheck },
-  { name: "Disbursements", path: "/disbursements", icon: Wallet },
+  { name: "Audit Logs", path: "/audit", icon: Clock3 },
+  { name: "Users", path: "/users", icon: Users },
   { name: "Reports", path: "/reports", icon: FileText },
 ];
-
-function rows(data) {
-  return Array.isArray(data) ? data : data?.value || [];
-}
 
 let dashboardRequest;
 
 function fetchDashboardData() {
   if (!dashboardRequest) {
-    dashboardRequest = Promise.all([
-      api.get("/students"),
-      api.get("/duplicate-flags?status=pending"),
-      api.get("/disbursements"),
-      api.get("/audit-logs"),
-    ]).finally(() => {
+    dashboardRequest = api.get("/admin/dashboard").then((response) => response.data).finally(() => {
       dashboardRequest = null;
     });
   }
@@ -43,6 +33,7 @@ function readDashboardCache(userId) {
       !cached ||
       !Number.isFinite(cached.totalStudents) ||
       !Number.isFinite(cached.eligibleStudents) ||
+      !Number.isFinite(cached.syntheticStudents) ||
       !Number.isFinite(cached.duplicateCount) ||
       !Array.isArray(cached.trend) ||
       !Array.isArray(cached.disbursementTrend) ||
@@ -70,62 +61,27 @@ function activityDetails(action) {
   return { label: action?.replaceAll("_", " ") || "System Activity", detail: "System activity recorded", icon: FileText, color: "bg-slate-100 text-slate-600" };
 }
 
-function buildTrend(items, dateField) {
-  const months = Array.from({ length: 6 }, (_, index) => {
-    const date = new Date();
-    date.setMonth(date.getMonth() - (5 - index), 1);
-    return { key: `${date.getFullYear()}-${date.getMonth()}`, label: date.toLocaleString("en", { month: "short" }), students: 0 };
-  });
-
-  items.forEach((item) => {
-    const createdAt = new Date(item[dateField]);
-    const key = `${createdAt.getFullYear()}-${createdAt.getMonth()}`;
-    const month = months.find((item) => item.key === key);
-    if (month) month.students += 1;
-  });
-
-  return months.reduce((trend, month, index) => {
-    const previous = trend[index - 1]?.total || 0;
-    trend.push({ ...month, total: previous + month.students });
-    return trend;
-  }, []);
-}
-
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [cachedDashboard, setCachedDashboard] = useState(() => readDashboardCache(user?.id));
-  const [students, setStudents] = useState([]);
-  const [flags, setFlags] = useState([]);
-  const [disbursements, setDisbursements] = useState([]);
   const [activities, setActivities] = useState(() => cachedDashboard?.activities || []);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [lastUpdated, setLastUpdated] = useState(() => cachedDashboard?.lastUpdated ? new Date(cachedDashboard.lastUpdated) : null);
 
-  async function loadDashboard() {
+  async function loadDashboard({ silent = false } = {}) {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setLoadError("");
-      const [studentsResponse, flagsResponse, disbursementsResponse, activitiesResponse] = await fetchDashboardData();
-      const studentsData = rows(studentsResponse.data);
-      const flagsData = rows(flagsResponse.data);
-      const disbursementsData = rows(disbursementsResponse.data);
-      const activitiesData = rows(activitiesResponse.data);
-      const updatedAt = new Date();
+      const dashboardData = await fetchDashboardData();
       const dashboardCache = {
-        totalStudents: studentsData.length,
-        eligibleStudents: studentsData.filter((student) => ["eligible", "highly_eligible"].includes(student.eligibility_category)).length,
-        duplicateCount: flagsData.length,
-        trend: buildTrend(studentsData, "created_at"),
-        disbursementTrend: buildTrend(disbursementsData, "disbursement_date"),
-        activities: activitiesData.slice(0, 4).map(({ action, created_at }, index) => ({ id: `${created_at}-${index}`, action, created_at })),
-        lastUpdated: updatedAt.toISOString(),
+        ...dashboardData,
+        activities: dashboardData.activities.slice(0, 4).map(({ action, created_at }, index) => ({ id: `${created_at}-${index}`, action, created_at })),
       };
+      const updatedAt = new Date(dashboardCache.lastUpdated || Date.now());
+      dashboardCache.lastUpdated = updatedAt.toISOString();
 
-      setStudents(studentsData);
-      setFlags(flagsData);
-      setDisbursements(disbursementsData);
       setActivities(dashboardCache.activities);
       setCachedDashboard(dashboardCache);
       setLastUpdated(updatedAt);
@@ -137,20 +93,22 @@ export default function AdminDashboard() {
     } catch {
       setLoadError("Dashboard data could not be refreshed. Showing the last available values.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
   useEffect(() => {
     loadDashboard();
+    const refreshTimer = window.setInterval(() => loadDashboard({ silent: true }), 30_000);
+    return () => window.clearInterval(refreshTimer);
   }, []);
 
-  const trend = cachedDashboard?.trend || buildTrend(students, "created_at");
-  const disbursementTrend = cachedDashboard?.disbursementTrend || buildTrend(disbursements, "disbursement_date");
+  const trend = cachedDashboard?.trend || [];
+  const disbursementTrend = cachedDashboard?.disbursementTrend || [];
   const maxTrend = Math.max(...trend.map((item) => item.total), ...disbursementTrend.map((item) => item.total), 1);
-  const totalStudents = cachedDashboard?.totalStudents ?? students.length;
-  const eligibleStudents = cachedDashboard?.eligibleStudents ?? students.filter((student) => ["eligible", "highly_eligible"].includes(student.eligibility_category)).length;
-  const duplicateCount = cachedDashboard?.duplicateCount ?? flags.length;
+  const totalStudents = cachedDashboard?.totalStudents ?? 0;
+  const eligibleStudents = cachedDashboard?.eligibleStudents ?? 0;
+  const duplicateCount = cachedDashboard?.duplicateCount ?? 0;
   const statistics = [
     { label: "Total Students", value: totalStudents.toLocaleString(), detail: "Registered students", icon: Users, color: "bg-blue-50 text-blue-600" },
     { label: "Eligible Students", value: eligibleStudents.toLocaleString(), detail: "Stored eligible assessments", icon: BadgeCheck, color: "bg-green-50 text-green-600" },
@@ -251,13 +209,6 @@ export default function AdminDashboard() {
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link
-                  to="/students/register"
-                  className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-2 text-[10px] font-semibold text-white transition hover:bg-blue-700"
-                >
-                  <Plus size={13} aria-hidden="true" />
-                  Register Student
-                </Link>
-                <Link
                   to="/duplicate-review"
                   className="rounded border border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-50"
                 >
@@ -287,6 +238,7 @@ export default function AdminDashboard() {
               </article>
             ))}
           </div>
+          <p className="mt-2 text-right text-[10px] text-slate-500">Synthetic test records included in totals: {cachedDashboard?.syntheticStudents ?? 0}</p>
 
           <div className="mt-4 grid gap-4 xl:grid-cols-3">
             <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
@@ -345,7 +297,7 @@ export default function AdminDashboard() {
                 {trend.map((item) => <span key={item.key}>{item.label}</span>)}
               </div>
               <p className="mt-3 text-right text-[9px] text-slate-400">
-                {lastUpdated ? `Last updated ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Loading dashboard data"}
+                {lastUpdated ? `Live · updated ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · refreshes every 30 seconds` : "Loading dashboard data"}
               </p>
             </div>
 
@@ -355,17 +307,17 @@ export default function AdminDashboard() {
 
               <div className="mt-6 space-y-3">
                 <Link
-                  to="/students/register"
-                  className="flex items-center justify-between rounded-lg bg-blue-600 px-4 py-4 text-sm font-semibold text-white transition hover:bg-blue-700"
-                >
-                  <span className="flex items-center gap-2"><Plus size={15} aria-hidden="true" /> Register Student</span>
-                  <ArrowRight size={15} aria-hidden="true" />
-                </Link>
-                <Link
                   to="/duplicate-review"
                   className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                 >
                   <span className="flex items-center gap-2"><ShieldAlert size={15} aria-hidden="true" /> Review Duplicates</span>
+                  <ArrowRight size={15} aria-hidden="true" />
+                </Link>
+                <Link
+                  to="/audit"
+                  className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  <span className="flex items-center gap-2"><Clock3 size={15} aria-hidden="true" /> View Audit Logs</span>
                   <ArrowRight size={15} aria-hidden="true" />
                 </Link>
                 <Link

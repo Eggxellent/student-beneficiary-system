@@ -2,24 +2,22 @@
 
 from __future__ import annotations
 
+import argparse
 import random
-import re
 import string
 from datetime import date, timedelta
 from pathlib import Path
 
-import jellyfish
 import pandas as pd
-from faker import Faker
 
 from data.kenyan_names import FIRST_NAMES, SCHOOLS, SURNAMES
+from feature_engineering import build_pair_features
 
 SEED = 42
 PAIR_COUNT = 10_000
 DUPLICATE_COUNT = PAIR_COUNT // 2
 OUTPUT_DIR = Path(__file__).parent / "data"
 
-Faker.seed(SEED)
 random.seed(SEED)
 
 
@@ -41,10 +39,6 @@ def random_upi() -> str:
 
 def random_birth_certificate_number() -> str:
     return f"BC-{random.randint(100000, 999999)}"
-
-
-def clean_name(value: str) -> str:
-    return re.sub(r"[^a-z]", "", value.lower())
 
 
 def make_name() -> str:
@@ -70,10 +64,11 @@ def typo_name(name: str) -> str:
 def variation(name: str) -> str:
     options = [
         name,
+        name,
         name.lower(),
-        name.upper(),
         name.replace(" ", "  "),
         typo_name(name),
+        typo_name(typo_name(name)),
     ]
     return random.choice(options)
 
@@ -90,64 +85,78 @@ def student_record() -> dict[str, str]:
 
 
 def duplicate_variation(original: dict[str, str]) -> dict[str, str]:
-    """Create another record belonging to the same student."""
+    """Create a noisy second record for the same student."""
     duplicate = original.copy()
 
     duplicate["full_name"] = variation(original["full_name"])
 
     duplicate["date_of_birth"] = (
         original["date_of_birth"]
-        if random.random() < 0.90
+        if random.random() < 0.85
         else random_date()
     )
 
     duplicate["school_code"] = (
         original["school_code"]
-        if random.random() < 0.90
+        if random.random() < 0.88
         else random.choice(SCHOOLS)
     )
 
     duplicate["guardian_id"] = (
         original["guardian_id"]
-        if random.random() < 0.85
+        if random.random() < 0.78
         else random_guardian_id()
     )
 
     duplicate["upi"] = (
         original["upi"]
-        if random.random() < 0.70
+        if random.random() < 0.65
         else random_upi()
+    )
+
+    duplicate["birth_certificate_number"] = (
+        original["birth_certificate_number"]
+        if random.random() < 0.85
+        else random_birth_certificate_number()
     )
 
     return duplicate
 
 
 def different_student(first: dict[str, str]) -> dict[str, str]:
-    """Create a genuinely different student with overlapping attributes."""
+    """Create a non-duplicate, including difficult sibling/name-collision cases."""
     second = student_record()
 
-    if random.random() < 0.45:
-        second["full_name"] = variation(first["full_name"])
+    if random.random() < 0.18:
+        second["full_name"] = first["full_name"]
+    elif random.random() < 0.38:
+        second["full_name"] = typo_name(first["full_name"])
 
-    if random.random() < 0.35:
+    if random.random() < 0.30:
         second["date_of_birth"] = first["date_of_birth"]
 
-    if random.random() < 0.5:
+    if random.random() < 0.60:
         second["school_code"] = first["school_code"]
 
-    if random.random() < 0.20:
+    if random.random() < 0.35:
+        second["guardian_id"] = first["guardian_id"]
+
+    # Siblings and twins can share several demographic fields without being duplicates.
+    if random.random() < 0.12:
+        second["date_of_birth"] = first["date_of_birth"]
+        second["school_code"] = first["school_code"]
         second["guardian_id"] = first["guardian_id"]
 
     second["upi"] = random_upi()
-    if random.random() < 0.10:
+    if random.random() < 0.02:
+        second["upi"] = first["upi"]
+    if random.random() < 0.01:
         second["birth_certificate_number"] = first["birth_certificate_number"]
 
     return second
 
 
 def feature_row(first: dict[str, str], second: dict[str, str], label: int, group_id: int) -> dict[str, object]:
-    first_name = clean_name(first["full_name"])
-    second_name = clean_name(second["full_name"])
     return {
         "name_1": first["full_name"],
         "name_2": second["full_name"],
@@ -160,12 +169,7 @@ def feature_row(first: dict[str, str], second: dict[str, str], label: int, group
         "upi_1": first["upi"],
         "upi_2": second["upi"],
         "group_id": group_id,
-        "jaro_winkler": jellyfish.jaro_winkler_similarity(first_name, second_name),
-        "dob_match": int(first["date_of_birth"] == second["date_of_birth"]),
-        "school_match": int(first["school_code"] == second["school_code"]),
-        "guardian_match": int(first["guardian_id"] == second["guardian_id"]),
-        "upi_match": int(first["upi"] == second["upi"]),
-        "birth_certificate_match": int(first["birth_certificate_number"] == second["birth_certificate_number"]),
+        **build_pair_features(first, second),
         "label": label,
     }
 
@@ -191,10 +195,16 @@ def generate_dataset() -> pd.DataFrame:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate labelled synthetic student pairs.")
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    parser.add_argument("--name", help="Optional feature CSV name without extension; keeps default filenames when omitted.")
+    arguments = parser.parse_args()
+
     dataset = generate_dataset()
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    raw_path = OUTPUT_DIR / "raw_pairs.csv"
-    features_path = OUTPUT_DIR / "features.csv"
+    arguments.output_dir.mkdir(parents=True, exist_ok=True)
+    prefix = f"{arguments.name}_" if arguments.name else ""
+    raw_path = arguments.output_dir / f"{prefix}raw_pairs.csv"
+    features_path = arguments.output_dir / f"{arguments.name or 'features'}.csv"
     dataset.to_csv(raw_path, index=False)
     dataset.to_csv(features_path, index=False)
     print(f"Generated {len(dataset)} labelled student pairs.")

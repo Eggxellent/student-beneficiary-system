@@ -1,0 +1,5 @@
+ALTER TABLE students ADD COLUMN IF NOT EXISTS national_id_number VARCHAR(100);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS primary_phone VARCHAR(50);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS qr_token VARCHAR(100);
+ALTER TABLE students ALTER COLUMN upi DROP NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS students_qr_token_unique ON students(qr_token) WHERE qr_token IS NOT NULL;

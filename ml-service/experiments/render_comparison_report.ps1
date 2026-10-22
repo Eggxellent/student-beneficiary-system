@@ -98,7 +98,7 @@ function Draw-Table([string]$heading, $results, [int]$top) {
 Draw-Table '1. Random Forest vs XGBoost' $data.model_comparison 132
 Draw-Table '2. Jaro-Winkler vs normalized Levenshtein' $data.name_similarity_comparison 620
 
-$footer = 'Research on synthetic data only. Do not interpret these results as real-world beneficiary performance or as a production model change.'
+$footer = 'Saved historical synthetic results; not independently reproduced. Certificate match reveals the label in this dataset. Not real-world performance or a production model change.'
 $graphics.DrawString($footer, $footFont, $mutedBrush, 58, 1170)
 
 $directory = Split-Path -Parent $OutputFile

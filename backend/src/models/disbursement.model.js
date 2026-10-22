@@ -1,7 +1,7 @@
 const pool = require('../config/db');
 
-async function create({ student_id, amount, disbursement_date, created_by }) {
-  const { rows } = await pool.query(
+async function create({ student_id, amount, disbursement_date, created_by }, executor = pool) {
+  const { rows } = await executor.query(
     `INSERT INTO disbursements (student_id, amount, disbursement_date, created_by)
      VALUES ($1, $2, COALESCE($3, CURRENT_DATE), $4)
      RETURNING *`,
@@ -12,7 +12,7 @@ async function create({ student_id, amount, disbursement_date, created_by }) {
 
 async function getAll() {
   const { rows } = await pool.query(
-    `SELECT d.*, s.full_name AS student_name
+    `SELECT d.*, s.full_name AS student_name, s.is_synthetic AS student_is_synthetic
      FROM disbursements d
      JOIN students s ON d.student_id = s.id
      ORDER BY d.created_at DESC`

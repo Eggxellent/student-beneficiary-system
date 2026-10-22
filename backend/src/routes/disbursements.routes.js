@@ -7,6 +7,6 @@ const router = express.Router();
 
 router.use(authenticateToken);
 router.get('/', controller.list);
-router.post('/', requireRole('admin', 'field_officer'), controller.create);
+router.post('/', requireRole('field_officer'), controller.create);
 
 module.exports = router;

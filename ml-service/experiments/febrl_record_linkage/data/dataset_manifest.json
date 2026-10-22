@@ -1,0 +1,19 @@
+{
+  "dataset": "FEBRL 4A/4B",
+  "source_revision": "J535D165/recordlinkage v0.16 (commit b93d976)",
+  "downloaded_at_utc": "2026-10-22T07:48:26.191810+00:00",
+  "source_documentation": "https://recordlinkage.readthedocs.io/en/stable/guides/link_two_dataframes.html",
+  "dataset_api_documentation": "https://recordlinkage.readthedocs.io/en/stable/ref-datasets.html",
+  "files": {
+    "dataset4a.csv": {
+      "url": "https://raw.githubusercontent.com/J535D165/recordlinkage/v0.16/recordlinkage/datasets/febrl/dataset4a.csv",
+      "bytes": 519618,
+      "sha256": "07c7cb3f0a8d88180e80317f2a60499dee4e8324a44c38059f4e7fed0a8b4488"
+    },
+    "dataset4b.csv": {
+      "url": "https://raw.githubusercontent.com/J535D165/recordlinkage/v0.16/recordlinkage/datasets/febrl/dataset4b.csv",
+      "bytes": 515463,
+      "sha256": "2eed76c99fa2237be3ec013a123427926d4158abcb3a8f65874d6c7f1358cf2c"
+    }
+  }
+}

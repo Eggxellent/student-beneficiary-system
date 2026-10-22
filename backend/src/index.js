@@ -10,6 +10,8 @@ const disbursementsRouter = require('./routes/disbursements.routes');
 const settingsRouter = require('./routes/settings.routes');
 const reportsRouter = require('./routes/reports.routes');
 const eligibilityRouter = require('./routes/eligibility.routes');
+const adminDashboardRouter = require('./routes/adminDashboard.routes');
+const usersRouter = require('./routes/users.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -31,6 +33,8 @@ app.use('/api/disbursements', disbursementsRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/eligibility', eligibilityRouter);
+app.use('/api/admin/dashboard', adminDashboardRouter);
+app.use('/api/users', usersRouter);
 app.use(errorHandler);
 
 if (require.main === module) {

@@ -1,16 +1,18 @@
 const request = require("supertest");
+const bcrypt = require("bcrypt");
 const app = require("../src/index");
 const pool = require("../src/config/db");
 const { buildDuplicateFeatures, calculateDuplicateScore } = require("../src/services/duplicateCheck");
 
 describe("Students API", () => {
   let token;
+  let testUserId;
 
   beforeAll(async () => {
     const email = `studenttest${Date.now()}@example.com`;
     const password = "TestPassword123!";
 
-    await request(app)
+    const registration = await request(app)
       .post("/api/auth/register")
       .send({
         full_name: "Student Test Field Officer",
@@ -18,12 +20,21 @@ describe("Students API", () => {
         password,
         role: "field_officer",
       });
+    testUserId = registration.body.user?.id;
 
     const loginResponse = await request(app)
-      .post("/api/auth/login")
+      .post("/api/auth/login/field-officer")
       .send({ email, password });
 
     token = loginResponse.body.token;
+  });
+
+  afterAll(async () => {
+    if (testUserId) {
+      await pool.query("DELETE FROM audit_logs WHERE user_id = $1", [testUserId]);
+      await pool.query("DELETE FROM users WHERE id = $1", [testUserId]);
+    }
+    await pool.end();
   });
 
   test("GET /api/students should require authentication", async () => {
@@ -42,25 +53,39 @@ describe("Students API", () => {
     expect(Array.isArray(students)).toBe(true);
   });
 
+  test("school list contains only the five approved schools", async () => {
+    const response = await request(app).get("/api/students/schools").set("Authorization", `Bearer ${token}`);
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(["Nairobi School", "Alliance High", "Bishop Gatimu", "Loreto Limuru", "Maranda"]);
+  });
+
+  test("student registration rejects schools outside the approved list", async () => {
+    const response = await request(app).post("/api/students").set("Authorization", `Bearer ${token}`).send({
+      full_name: "Invalid School Student", school_code: "Other Academy",
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
   test("admin cannot access field-officer student or eligibility APIs", async () => {
     const email = `studentadmin${Date.now()}@example.com`;
     const password = "TestPassword123!";
-    const registration = await request(app)
-      .post("/api/auth/register")
-      .send({ full_name: "Student Review Admin", email, password, role: "admin" });
+    const password_hash = await bcrypt.hash(password, 12);
+    const registration = await pool.query(
+      "INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, 'admin') RETURNING id",
+      ["Student Review Admin", email, password_hash]
+    );
     const loginResponse = await request(app)
-      .post("/api/auth/login")
+      .post("/api/auth/login/admin")
       .send({ email, password });
     const adminToken = loginResponse.body.token;
 
     try {
-      expect(registration.statusCode).toBe(201);
       expect((await request(app).get("/api/students").set("Authorization", `Bearer ${adminToken}`)).statusCode).toBe(403);
       expect((await request(app).post("/api/students").set("Authorization", `Bearer ${adminToken}`).send({})).statusCode).toBe(403);
       expect((await request(app).post("/api/eligibility").set("Authorization", `Bearer ${adminToken}`).send({})).statusCode).toBe(403);
     } finally {
-      if (registration.body.user?.id) {
-        await pool.query("DELETE FROM users WHERE id = $1", [registration.body.user.id]);
+      if (registration.rows[0]?.id) {
+        await pool.query("DELETE FROM users WHERE id = $1", [registration.rows[0].id]);
       }
     }
   });
@@ -69,10 +94,11 @@ describe("Students API", () => {
     const student = {
       full_name: `Certificate Test ${Date.now()}`,
       date_of_birth: "2010-05-14",
-      school_code: "SCH-CERT-01",
+      school_code: "Nairobi School",
       guardian_id: "G-CERT-01",
       upi: `UPI-CERT-${Date.now()}`,
       birth_certificate_number: `BC-CERT-${Date.now()}`,
+      is_synthetic: true,
     };
 
     const response = await request(app)
@@ -82,6 +108,7 @@ describe("Students API", () => {
 
     expect(response.statusCode).toBe(201);
     expect(response.body.student.birth_certificate_number).toBe(student.birth_certificate_number);
+    expect(response.body.student.is_synthetic).toBe(false);
 
     await pool.query("DELETE FROM students WHERE id = $1", [response.body.student.id]);
   });
@@ -91,12 +118,12 @@ describe("Students API", () => {
     const firstResponse = await request(app)
       .post("/api/students")
       .set("Authorization", `Bearer ${token}`)
-      .send({ full_name: "UPI Baseline Student", upi });
+      .send({ full_name: "UPI Baseline Student", upi, school_code: "Nairobi School" });
 
     const duplicateResponse = await request(app)
       .post("/api/students")
       .set("Authorization", `Bearer ${token}`)
-      .send({ full_name: "Different Student", upi });
+      .send({ full_name: "Different Student", upi, school_code: "Nairobi School" });
 
     expect(firstResponse.statusCode).toBe(201);
     expect(duplicateResponse.statusCode).toBe(201);
@@ -125,7 +152,7 @@ describe("Students API", () => {
       .send({
         full_name: "Nia Wanjiku",
         date_of_birth: "2009-03-12",
-        school_code: "SCH-014",
+        school_code: "Alliance High",
         guardian_id: "G-481725",
         birth_certificate_number: `BC-2009-${suffix}`,
         upi: `UPI-${Math.floor(10000000 + Math.random() * 90000000)}`,
@@ -136,7 +163,7 @@ describe("Students API", () => {
       .send({
         full_name: "Tendo Kiptoo",
         date_of_birth: "2012-09-24",
-        school_code: "SCH-079",
+        school_code: "Maranda",
         guardian_id: "G-735402",
         birth_certificate_number: `BC-2009-${suffix}`,
         upi: `UPI-${Math.floor(10000000 + Math.random() * 90000000)}`,
@@ -161,7 +188,7 @@ describe("Students API", () => {
     const suffix = Date.now();
     const shared = {
       date_of_birth: "2010-05-14",
-      school_code: "SCH-042",
+      school_code: "Loreto Limuru",
       guardian_id: "G-384720",
     };
     const firstResponse = await request(app)
@@ -185,6 +212,7 @@ describe("Students API", () => {
         guardian_match: 1,
         upi_match: 0,
         birth_certificate_match: 0,
+        national_id_match: 0,
       });
       expect(calculateDuplicateScore(baselineFeatures)).toBe(0.2);
       const baselineMatch = await pool.query(

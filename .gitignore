@@ -10,6 +10,7 @@ build/
 ml-service/.venv/
 ml-service/model/*.joblib
 ml-service/data/raw_pairs.csv
+ml-service/data/raw_pairs.pre_realistic_backup.csv
 ml-service/data/features.csv
 backend/reports/*.pdf
 __pycache__/

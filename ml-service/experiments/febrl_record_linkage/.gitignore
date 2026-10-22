@@ -1,0 +1,6 @@
+/.venv/
+data/dataset4a.csv
+data/dataset4b.csv
+prepared/*.csv
+artifacts/*.joblib
+artifacts/*.pkl
