@@ -1,0 +1,133 @@
+{
+  "training_file": "training\\realistic_pairs_train.csv",
+  "training_sha256": "7b58568076865f9197505636b9ef293d754fbe8403ddb7e91ebaa787e0e9d6a5",
+  "training_rows": 12000,
+  "training_groups": 6000,
+  "training_class_counts": {
+    "0": 6000,
+    "1": 6000
+  },
+  "holdout_file": "evaluation\\realistic_pairs_holdout.csv",
+  "holdout_sha256": "533e1fc7e23afb5a1dd0000e03d0b8555659714249f8ae6f9fcecbca894935ee",
+  "holdout_rows": 12000,
+  "holdout_groups": 6000,
+  "holdout_class_counts": {
+    "0": 6000,
+    "1": 6000
+  },
+  "holdout_used_for_training_or_tuning": false,
+  "holdout_used_for_model_selection": true,
+  "split": "80/20 internal split by group_id; independent holdout generated from new latent identities and a separate random seed",
+  "selection": "XGBoost selected after same-holdout comparison; parameters match the evaluated XGBoost run; threshold fixed at 0.5",
+  "selected_parameters": {
+    "n_estimators": 250,
+    "max_depth": 4,
+    "learning_rate": 0.05,
+    "subsample": 0.9,
+    "colsample_bytree": 0.9,
+    "reg_lambda": 1.0
+  },
+  "selected_model_holdout_metrics": {
+    "threshold": 0.5,
+    "accuracy": 0.90775,
+    "balanced_accuracy": 0.9077500000000001,
+    "precision": 0.9204330641003609,
+    "recall": 0.8926666666666667,
+    "f1": 0.9063372535747525,
+    "average_precision": 0.9726932705276506,
+    "roc_auc": 0.9684866388888889,
+    "confusion_matrix_labels_0_1": [
+      [
+        5537,
+        463
+      ],
+      [
+        644,
+        5356
+      ]
+    ],
+    "true_negatives": 5537,
+    "false_positives": 463,
+    "false_negatives": 644,
+    "true_positives": 5356,
+    "illustrative_precision_at_assumed_prevalence": {
+      "0.01": 0.10462367901861586,
+      "0.05": 0.37843566734967854,
+      "0.1": 0.562427806363541
+    }
+  },
+  "independent_holdout_scenario_metrics": {
+    "common_name_same_school": {
+      "rows": 1492,
+      "label": 0,
+      "accuracy_or_recall": 0.9215817694369973,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.07841823056300268
+    },
+    "identifier_collision": {
+      "rows": 1202,
+      "label": 0,
+      "accuracy_or_recall": 0.7778702163061564,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.2221297836938436
+    },
+    "repeat_application": {
+      "rows": 6000,
+      "label": 1,
+      "accuracy_or_recall": 0.8926666666666667,
+      "positive_recall": 0.8926666666666667,
+      "negative_false_positive_rate": null
+    },
+    "siblings_shared_household": {
+      "rows": 1532,
+      "label": 0,
+      "accuracy_or_recall": 0.9902088772845953,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.0097911227154047
+    },
+    "twins_or_close_age": {
+      "rows": 1150,
+      "label": 0,
+      "accuracy_or_recall": 0.9443478260869566,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.05565217391304348
+    },
+    "unrelated_candidate": {
+      "rows": 624,
+      "label": 0,
+      "accuracy_or_recall": 1.0,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.0
+    }
+  },
+  "deployed_model_fit_rows": 12000,
+  "deployed_model_file": "model\\xgb_duplicate_model.joblib",
+  "deployed_model_sha256": "6ec9f2a3cbe6ed0dcf80c79b15f47364d9f4f7bd3e27da25c690d0436bb0a6f9",
+  "model_promoted": true,
+  "algorithm": "XGBClassifier",
+  "previous_holdout_exposure": "This holdout informed the Random Forest versus XGBoost comparison and algorithm choice; it is no longer an unbiased final test for the selected algorithm.",
+  "feature_columns": [
+    "jaro_winkler",
+    "dob_match",
+    "school_match",
+    "guardian_match",
+    "upi_match",
+    "birth_certificate_match"
+  ],
+  "features_recomputed_from_raw_fields": true,
+  "feature_semantics": "Names compare direct and token-order-tolerant Jaro-Winkler; DOB tolerates common formats and small day errors; IDs compare normalized text and fuzzy transcription similarity; school codes compare normalized exact values.",
+  "generator_scenarios": [
+    "repeat applications with misspelled/reordered/partial names, DOB entry errors, school transfers, changed guardians, and reissued or mistyped identifiers",
+    "siblings and twins sharing guardian, school, surname, or birth date",
+    "common-name/same-school collisions and occasional reused identifiers in non-duplicate pairs",
+    "missing fields independently distributed across both classes"
+  ],
+  "scikit_learn_version": "1.9.0",
+  "xgboost_version": "3.2.0",
+  "limitations": [
+    "The data is synthetic and cannot establish performance on real beneficiaries.",
+    "The balanced label mix is not the expected operational prevalence; assumed-prevalence precision values are illustrative only.",
+    "The holdout is independently generated from the same simulator, not an external organization or reviewed real-world sample.",
+    "Review confirmed pairs from separate entities before using this model to make operational decisions."
+  ]
+}

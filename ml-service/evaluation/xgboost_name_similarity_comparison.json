@@ -1,0 +1,171 @@
+{
+  "experiment": "Paired XGBoost comparison of name similarity features",
+  "dataset": {
+    "training_file": "training\\realistic_pairs_train.csv",
+    "training_sha256": "7b58568076865f9197505636b9ef293d754fbe8403ddb7e91ebaa787e0e9d6a5",
+    "training_rows": 12000,
+    "training_groups": 6000,
+    "training_class_counts": {
+      "0": 6000,
+      "1": 6000
+    },
+    "holdout_file": "evaluation\\realistic_pairs_holdout.csv",
+    "holdout_sha256": "533e1fc7e23afb5a1dd0000e03d0b8555659714249f8ae6f9fcecbca894935ee",
+    "holdout_rows": 12000,
+    "holdout_groups": 6000,
+    "holdout_class_counts": {
+      "0": 6000,
+      "1": 6000
+    },
+    "group_id_overlap": 0
+  },
+  "model": {
+    "algorithm": "XGBClassifier",
+    "parameters": {
+      "n_estimators": 250,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "subsample": 0.9,
+      "colsample_bytree": 0.9,
+      "reg_lambda": 1.0,
+      "objective": "binary:logistic",
+      "eval_metric": "logloss",
+      "tree_method": "hist",
+      "random_state": 20261021,
+      "n_jobs": -1,
+      "verbosity": 0
+    },
+    "preprocessing": "Median imputer fit within each training fold; validated features are complete.",
+    "threshold": 0.5
+  },
+  "feature_comparison": {
+    "shared_features": [
+      "dob_match",
+      "school_match",
+      "guardian_match",
+      "upi_match",
+      "birth_certificate_match"
+    ],
+    "jaro_winkler": "Existing stored feature, calculated with direct and token-order-tolerant Jaro-Winkler.",
+    "normalized_levenshtein": "Replace only the name feature with 1 - Levenshtein distance / longer cleaned-name length; missing names score 0.",
+    "both_name_features_calculated_from_raw_names_at_prediction_time": true
+  },
+  "results": {
+    "Jaro-Winkler": {
+      "training_grouped_cv_oof": {
+        "threshold": 0.5,
+        "accuracy": 0.9078333333333334,
+        "precision": 0.9182905982905983,
+        "recall": 0.8953333333333333,
+        "f1": 0.9066666666666666,
+        "roc_auc": 0.968916388888889,
+        "pr_auc_average_precision": 0.9728582689982406,
+        "confusion_matrix_actual_0_1_predicted_0_1": [
+          [
+            5522,
+            478
+          ],
+          [
+            628,
+            5372
+          ]
+        ],
+        "true_negatives": 5522,
+        "false_positives": 478,
+        "false_negatives": 628,
+        "true_positives": 5372
+      },
+      "heldout_test": {
+        "threshold": 0.5,
+        "accuracy": 0.90775,
+        "precision": 0.9204330641003609,
+        "recall": 0.8926666666666667,
+        "f1": 0.9063372535747525,
+        "roc_auc": 0.9684866388888889,
+        "pr_auc_average_precision": 0.9726932705276506,
+        "confusion_matrix_actual_0_1_predicted_0_1": [
+          [
+            5537,
+            463
+          ],
+          [
+            644,
+            5356
+          ]
+        ],
+        "true_negatives": 5537,
+        "false_positives": 463,
+        "false_negatives": 644,
+        "true_positives": 5356
+      },
+      "timing_seconds": {
+        "grouped_cv": 5.191610799985938,
+        "full_training_fit": 0.26041999997687526,
+        "heldout_evaluation": 0.013100999989546835
+      }
+    },
+    "Normalized Levenshtein": {
+      "training_grouped_cv_oof": {
+        "threshold": 0.5,
+        "accuracy": 0.9035833333333333,
+        "precision": 0.9181488516663788,
+        "recall": 0.8861666666666667,
+        "f1": 0.9018743109151047,
+        "roc_auc": 0.9642335555555556,
+        "pr_auc_average_precision": 0.9692697013420175,
+        "confusion_matrix_actual_0_1_predicted_0_1": [
+          [
+            5526,
+            474
+          ],
+          [
+            683,
+            5317
+          ]
+        ],
+        "true_negatives": 5526,
+        "false_positives": 474,
+        "false_negatives": 683,
+        "true_positives": 5317
+      },
+      "heldout_test": {
+        "threshold": 0.5,
+        "accuracy": 0.9011666666666667,
+        "precision": 0.9231715893108298,
+        "recall": 0.8751666666666666,
+        "f1": 0.8985284052019165,
+        "roc_auc": 0.963102625,
+        "pr_auc_average_precision": 0.9687794314055062,
+        "confusion_matrix_actual_0_1_predicted_0_1": [
+          [
+            5563,
+            437
+          ],
+          [
+            749,
+            5251
+          ]
+        ],
+        "true_negatives": 5563,
+        "false_positives": 437,
+        "false_negatives": 749,
+        "true_positives": 5251
+      },
+      "timing_seconds": {
+        "grouped_cv": 5.285541799996281,
+        "full_training_fit": 0.41025210000225343,
+        "heldout_evaluation": 0.023432100017089397
+      }
+    }
+  },
+  "limitations": [
+    "The datasets are synthetic and do not establish performance on real beneficiaries.",
+    "The holdout was previously used in the Random Forest versus XGBoost comparison, so it is not a pristine first-use evaluation.",
+    "The Jaro-Winkler and Levenshtein holdout results are descriptive; the training-only grouped OOF results are the cleaner basis for comparing name metrics."
+  ],
+  "versions": {
+    "xgboost": "3.2.0",
+    "scikit_learn": "1.9.0",
+    "pandas": "3.0.5"
+  }
+}

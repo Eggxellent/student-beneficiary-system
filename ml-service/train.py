@@ -1,9 +1,11 @@
-"""Compatibility entry point for the attachment-style branch experiment."""
+"""Generate realistic SBMS training data and train the application model."""
 
-from retrain_attachment_style import main as retrain_and_evaluate
+from generate_realistic_pairs import main as generate_data
+from retrain_realistic_pairs import main as retrain_and_evaluate
 
 
 def train_model() -> dict[str, object]:
+    generate_data()
     return retrain_and_evaluate()
 
 

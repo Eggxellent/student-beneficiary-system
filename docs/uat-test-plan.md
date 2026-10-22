@@ -9,7 +9,7 @@ The purpose of User Acceptance Testing is to verify that the Student Beneficiary
 - Backend: Node.js / Express
 - Frontend: React
 - Database: PostgreSQL
-- ML: Python / Random Forest
+- ML prediction service: Python / XGBoost
 - Environment: Local development environment
 
 ---
@@ -45,7 +45,7 @@ Field Officer
 5. Register a second student with highly similar details.
 
 ### Expected Result
-The student is registered successfully and the system performs a duplicate check using the Random Forest model.
+The student is registered successfully and the system performs a duplicate check using its configured similarity scoring policy. The Python XGBoost predictor is available separately; current backend controller code does not call it.
 
 If the probability exceeds the configured threshold, a duplicate flag is created.
 

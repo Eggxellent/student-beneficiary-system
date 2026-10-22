@@ -22,7 +22,7 @@ This is a local baseline rather than a production capacity target. Repeat the be
 
 ## ML Verification
 
-The Random Forest model evaluation is documented in [ml-evaluation.md](ml-evaluation.md). The serialized model is loaded successfully by both `predict.py` and the Node.js duplicate-check service.
+The Jaro-Winkler versus normalized-Levenshtein comparison is available in [jaro-winkler-name-similarity-report.pdf](jaro-winkler-name-similarity-report.pdf). The Python prediction service loads `ml-service/model/xgb_duplicate_model.joblib`. The Node.js duplicate-check service has an ML bridge, but a repository reference check found no current callers of its prediction function; current controller decisions therefore still use their own duplicate-scoring logic.
 
 ## Production Readiness Note
 

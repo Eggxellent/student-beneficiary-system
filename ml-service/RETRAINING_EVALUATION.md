@@ -1,30 +1,17 @@
-# Attachment-style model retraining and evaluation
+# SBMS model training and evaluation
 
-This experiment is isolated on the local branch `ml/retraining-evaluation`.
-
-## Source data and label correction
-
-The attached generator contains messy names, malformed dates, identifier noise, and cleaning steps worth retaining. Its original labels were shuffled independently of pair content, however, and its Jaro-Winkler score was sampled randomly rather than calculated from the names. Training on that output unchanged would teach arbitrary labels and arbitrary similarity scores.
-
-`generate_attachment_style_pairs.py` preserves the noisy scenarios but labels from a hidden identity relationship and recomputes comparison features from cleaned values. Duplicate pairs share a latent student; nonduplicate pairs can still have colliding demographics or similar names. The generator keeps the attachment's balanced 50/50 labels as a simulation setup, not a claim about real SBMS prevalence.
-
-## Run on this branch
-
-Generate two distinct CSVs, then train and evaluate:
+The standard command generates a new, reproducible synthetic set of candidate pairs and trains the application model:
 
 ```powershell
-& .\ml-service\.venv\Scripts\python.exe .\ml-service\generate_attachment_style_pairs.py
 & .\ml-service\.venv\Scripts\python.exe .\ml-service\train.py
 ```
 
-`train.py` and `train_model.py` both route to `retrain_attachment_style.py`. That runner reads `training/pairs_attachment_style_train.csv` and `evaluation/pairs_attachment_style_holdout.csv`; it does not use the old `data/features.csv`. It verifies that valid names, dates, guardian IDs, UPIs and birth-certificate values do not overlap between those datasets. The five allowed school categories are shared. Raw fields support the disjointness check; fitting uses only the six columns in `feature_engineering.FEATURE_COLUMNS`.
+`data/raw_pairs.csv` is a separate, more challenging synthetic dataset generated from latent student identities. It includes repeat applications with entry errors and difficult non-duplicate cases such as siblings, twins, common names, and identifier collisions. The prior version is kept as `data/raw_pairs.pre_realistic_backup.csv`, and `data/raw_pairs_metadata.json` records the seed, scenario mix, and file hashes. Regenerate only this CSV with `python improve_raw_pairs.py`; that command does not train the model. The standard training command does not read `raw_pairs.csv`: it generates its own training and independent holdout files under `training/` and `evaluation/`.
 
-The training CSV is split 50/50 by `group_id`, keeping related pairs together. Five-fold grouped cross-validation uses only the training half. The independent holdout is not used for fitting or tuning. The trained candidate is saved under `model/research/` and does not replace the deployed model. Metrics are written to `evaluation/attachment_style_retraining_metrics.json`.
+The Python prediction service loads an `XGBClassifier` from `model/xgb_duplicate_model.joblib`. The reproducible training command validates the generated pair features, trains on all generated training groups, scores the separate generated holdout at threshold 0.5, and writes `evaluation/realistic_pairs_xgboost_training_metrics.json`. It uses the configuration from the recorded XGBoost comparison: 250 estimators, depth 4, learning rate 0.05, row and column sampling 0.9, and L2 regularization 1.0. The median imputer is retained for compatibility, although the validated feature columns are complete.
 
-The old CSV is retained on disk for historical work so this branch does not remove files shared with the main checkout. It is no longer used by the standard training commands. Historical comparison scripts that explicitly load `data/features.csv` are not part of this workflow.
+The current comparison used this same holdout to choose XGBoost over Random Forest, so the holdout metrics are descriptive of that comparison and are no longer an unbiased final estimate for the selected model. A new independently generated, adjudicated dataset is needed for a fresh evaluation.
 
-## Latest independent holdout result
+On the shared 12,000-pair synthetic holdout, Random Forest scored 89.78% accuracy, 90.46% precision, 88.93% recall, and 89.69% F1. XGBoost scored 90.78% accuracy, 92.04% precision, 89.27% recall, and 90.63% F1, with 1,107 errors versus 1,227 for Random Forest. These results motivated the switch; because the holdout informed that model choice, treat the difference as preliminary rather than an unbiased final comparison.
 
-The run used 10,000 training pairs and a separate 10,000-pair holdout. At threshold 0.5, holdout accuracy was **76.41%**, balanced accuracy **76.41%**, precision **98.14%**, recall **53.84%**, and F1 **69.53%**. Confusion counts were 4,949 true negatives, 51 false positives, 2,308 false negatives, and 2,692 true positives.
-
-The high precision and lower recall reflect that this attached-style generator includes many positives whose records are severely corrupted or look unrelated. Metrics are synthetic diagnostics, not estimates of performance on verified SBMS cases.
+The scenario data is a transparent simulation, not labeled SBMS cases. Balanced test metrics do not reflect operational prevalence. The report includes illustrative precision at several assumed candidate-pair prevalence levels; real evaluation requires independently reviewed pairs with person-level groups kept separate between tuning and holdout.

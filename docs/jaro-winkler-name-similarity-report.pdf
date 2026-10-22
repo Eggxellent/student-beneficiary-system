@@ -1,0 +1,98 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+6 0 obj
+<< /Length 4615 >>
+stream
+0.1 0.22 0.36 rg BT /F2 17 Tf 1 0 0 1 48 790 Tm (SBMS | NAME SIMILARITY FEATURE COMPARISON) Tj ET
+0.34 0.39 0.45 rg BT /F1 10 Tf 1 0 0 1 48 770 Tm (XGBoost with Jaro-Winkler vs normalized Levenshtein) Tj ET
+0.1 0.22 0.36 RG 1.2 w 48 755 m 547 755 l S
+0.1 0.22 0.36 rg BT /F2 12 Tf 1 0 0 1 48 730 Tm (Purpose and setup) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 48 711 Tm (Compared the name feature while keeping the XGBoost model and five other pair features fixed.) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 48 696 Tm (Training: 12,000 pairs \(6,000 per class\).) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 48 681 Tm (Holdout: 12,000 pairs \(6,000 per class\); group overlap: 0.) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 48 666 Tm (Both runs used five-fold grouped OOF evaluation, threshold 0.50, and identical model settings.) Tj ET
+0.1 0.22 0.36 rg 48 620 499 22 re f
+1 1 1 rg BT /F2 9 Tf 1 0 0 1 58 627 Tm (Metric) Tj ET
+1 1 1 rg BT /F2 9 Tf 1 0 0 1 326 627 Tm (Jaro-Winkler) Tj ET
+1 1 1 rg BT /F2 9 Tf 1 0 0 1 440 627 Tm (Levenshtein) Tj ET
+0.95 0.965 0.98 rg 48 598 499 22 re f
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 58 605 Tm (Grouped OOF F1) Tj ET
+0.12 0.16 0.22 rg BT /F2 9 Tf 1 0 0 1 326 605 Tm (90.67%) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 440 605 Tm (90.19%) Tj ET
+0.82 0.85 0.88 RG 0.7 w 48 598 m 547 598 l S
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 58 583 Tm (Holdout accuracy) Tj ET
+0.12 0.16 0.22 rg BT /F2 9 Tf 1 0 0 1 326 583 Tm (90.77%) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 440 583 Tm (90.12%) Tj ET
+0.82 0.85 0.88 RG 0.7 w 48 576 m 547 576 l S
+0.95 0.965 0.98 rg 48 554 499 22 re f
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 58 561 Tm (Holdout precision) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 326 561 Tm (92.04%) Tj ET
+0.12 0.16 0.22 rg BT /F2 9 Tf 1 0 0 1 440 561 Tm (92.32%) Tj ET
+0.82 0.85 0.88 RG 0.7 w 48 554 m 547 554 l S
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 58 539 Tm (Holdout recall) Tj ET
+0.12 0.16 0.22 rg BT /F2 9 Tf 1 0 0 1 326 539 Tm (89.27%) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 440 539 Tm (87.52%) Tj ET
+0.82 0.85 0.88 RG 0.7 w 48 532 m 547 532 l S
+0.95 0.965 0.98 rg 48 510 499 22 re f
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 58 517 Tm (Holdout F1) Tj ET
+0.12 0.16 0.22 rg BT /F2 9 Tf 1 0 0 1 326 517 Tm (90.63%) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 440 517 Tm (89.85%) Tj ET
+0.82 0.85 0.88 RG 0.7 w 48 510 m 547 510 l S
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 58 495 Tm (Holdout ROC-AUC) Tj ET
+0.12 0.16 0.22 rg BT /F2 9 Tf 1 0 0 1 326 495 Tm (96.85%) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 440 495 Tm (96.31%) Tj ET
+0.82 0.85 0.88 RG 0.7 w 48 488 m 547 488 l S
+0.95 0.965 0.98 rg 48 466 499 22 re f
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 58 473 Tm (Holdout PR-AUC) Tj ET
+0.12 0.16 0.22 rg BT /F2 9 Tf 1 0 0 1 326 473 Tm (97.27%) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 440 473 Tm (96.88%) Tj ET
+0.82 0.85 0.88 RG 0.7 w 48 466 m 547 466 l S
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 58 451 Tm (False positives) Tj ET
+0.12 0.16 0.22 rg BT /F2 9 Tf 1 0 0 1 326 451 Tm (463) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 440 451 Tm (437) Tj ET
+0.82 0.85 0.88 RG 0.7 w 48 444 m 547 444 l S
+0.95 0.965 0.98 rg 48 422 499 22 re f
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 58 429 Tm (False negatives) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 326 429 Tm (644) Tj ET
+0.12 0.16 0.22 rg BT /F2 9 Tf 1 0 0 1 440 429 Tm (749) Tj ET
+0.82 0.85 0.88 RG 0.7 w 48 422 m 547 422 l S
+0.1 0.22 0.36 rg BT /F2 12 Tf 1 0 0 1 48 392 Tm (Interpretation) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 48 372 Tm (Jaro-Winkler led on grouped OOF F1 and most holdout metrics. It made 1,107 total holdout) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 48 358 Tm (errors versus 1,186 for Levenshtein. Levenshtein had 26 fewer false positives, but 105) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 48 344 Tm (more false negatives. Jaro-Winkler remains the selected name feature for the XGBoost model.) Tj ET
+0.1 0.22 0.36 rg BT /F2 12 Tf 1 0 0 1 48 315 Tm (Limitations) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 48 295 Tm (These are synthetic pairs, not real beneficiary records. The holdout was previously used in) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 48 281 Tm (the Random Forest vs XGBoost comparison, so it is not a pristine first-use evaluation. The) Tj ET
+0.12 0.16 0.22 rg BT /F1 9 Tf 1 0 0 1 48 267 Tm (grouped OOF comparison is the cleaner evidence here; real-world accuracy remains unknown.) Tj ET
+0.82 0.85 0.88 RG 0.7 w 48 54 m 547 54 l S
+0.34 0.39 0.45 rg BT /F1 7 Tf 1 0 0 1 48 39 Tm (Source: ml-service/evaluation/xgboost_name_similarity_comparison.json) Tj ET
+endstream
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000000321 00000 n 
+0000000396 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+5063
+%%EOF

@@ -1,33 +1,19 @@
-"""Score a student pair from JSON input using the trained Random Forest."""
+"""Score student pairs using the deployed XGBoost duplicate model."""
 
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
 
-import jellyfish
 import joblib
 import pandas as pd
+from feature_engineering import FEATURE_COLUMNS, build_pair_features
 
-MODEL_FILE = Path(__file__).parent / "model" / "rf_duplicate_model.joblib"
-FEATURE_COLUMNS = ["jaro_winkler", "dob_match", "school_match", "guardian_match", "upi_match", "birth_certificate_match"]
-
-
-def clean_name(value: str) -> str:
-    return re.sub(r"[^a-z]", "", value.lower())
-
-
+MODEL_FILE = Path(__file__).parent / "model" / "xgb_duplicate_model.joblib"
 def build_features(first: dict[str, str], second: dict[str, str]) -> list[float]:
-    return [
-        jellyfish.jaro_winkler_similarity(clean_name(first["full_name"]), clean_name(second["full_name"])),
-        int(first["date_of_birth"] == second["date_of_birth"]),
-        int(first["school_code"] == second["school_code"]),
-        int(first["guardian_id"] == second["guardian_id"]),
-        int(first.get("upi") and first.get("upi") == second.get("upi")),
-        int(bool(first.get("birth_certificate_number") and first.get("birth_certificate_number") == second.get("birth_certificate_number"))),
-    ]
+    features = build_pair_features(first, second)
+    return [features[column] for column in FEATURE_COLUMNS]
 
 
 def predict(data: dict[str, float | int], model=None) -> dict[str, float]:
