@@ -4,6 +4,7 @@ const logAudit = require('../services/auditLog');
 const {
   buildDuplicateFeatures,
   calculateDuplicateScore,
+  checkDuplicates,
   classifyDuplicate,
   duplicateReviewReason,
   hasCorroboratingMajority,
@@ -21,6 +22,20 @@ const studentSchema = z.object({
   upi: z.string().min(1),
   birth_certificate_number: z.string().optional()
 });
+
+function buildModelFeatures(first, second, heuristicFeatures) {
+  // Keep the ML feature contract aligned with ml-service/predict.py:
+  // name similarity plus exact-match indicators for DOB, school, guardian and IDs.
+  return {
+    ...heuristicFeatures,
+    dob_match: Number(Boolean(first.date_of_birth && second.date_of_birth
+      && dateValue(first.date_of_birth) === dateValue(second.date_of_birth))),
+    school_match: Number(Boolean(first.school_code && second.school_code
+      && String(first.school_code).trim().toLowerCase() === String(second.school_code).trim().toLowerCase())),
+    guardian_match: Number(Boolean(first.guardian_id && second.guardian_id
+      && String(first.guardian_id).trim().toLowerCase() === String(second.guardian_id).trim().toLowerCase())),
+  };
+}
 
 function dateValue(value) {
   if (!value) return null;
@@ -88,13 +103,27 @@ async function create(req, res, next) {
       });
     }
 
-    const duplicateResults = duplicateCandidates.length > 0
-      ? duplicateCandidates.map(({ candidate, features }) => ({
-        candidate,
-        features,
-        probability: calculateDuplicateScore(features),
-      }))
-      : [];
+    let duplicateResults = [];
+    if (duplicateCandidates.length > 0) {
+      if (process.env.SBMS_DUPLICATE_SCORING === 'model') {
+        // Explicit opt-in for model evaluation. Do not enable until a compatible,
+        // evaluated model artifact is supplied and tested.
+        const predictions = await checkDuplicates(duplicateCandidates.map(({ candidate, features }) =>
+          buildModelFeatures({ date_of_birth, school_code, guardian_id }, candidate, features)
+        ));
+        duplicateResults = duplicateCandidates.map(({ candidate, features }, index) => ({
+          candidate,
+          features,
+          probability: predictions[index].probability,
+        }));
+      } else {
+        duplicateResults = duplicateCandidates.map(({ candidate, features }) => ({
+          candidate,
+          features,
+          probability: calculateDuplicateScore(features),
+        }));
+      }
+    }
 
     const student = await studentModel.create({ full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number });
     const qrCode = await QRCode.toDataURL(student.id);
@@ -142,4 +171,4 @@ async function get(req, res, next) {
   } catch (error) { next(error); }
 }
 
-module.exports = { create, list, get };
+module.exports = { create, list, get, buildModelFeatures };

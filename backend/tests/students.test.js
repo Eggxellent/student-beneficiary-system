@@ -2,6 +2,46 @@ const request = require("supertest");
 const app = require("../src/index");
 const pool = require("../src/config/db");
 const { buildDuplicateFeatures, calculateDuplicateScore } = require("../src/services/duplicateCheck");
+const { buildModelFeatures } = require("../src/controllers/students.controller");
+
+describe("ML feature contract", () => {
+  test("model input uses exact-match indicators for DOB, school, and guardian", () => {
+    const first = { date_of_birth: "2010-05-14", school_code: "SCH-01", guardian_id: "G-01" };
+    const second = { date_of_birth: "2010-05-15", school_code: "SCH-010", guardian_id: "G-010" };
+    const heuristicFeatures = {
+      jaro_winkler: 0.91,
+      dob_match: 0.997,
+      school_match: 0.95,
+      guardian_match: 0.95,
+      upi_match: 0,
+      birth_certificate_match: 0,
+    };
+
+    expect(buildModelFeatures(first, second, heuristicFeatures)).toEqual({
+      ...heuristicFeatures,
+      dob_match: 0,
+      school_match: 0,
+      guardian_match: 0,
+    });
+  });
+
+  test("model input preserves exact identifier match features", () => {
+    const features = {
+      jaro_winkler: 1,
+      dob_match: 1,
+      school_match: 1,
+      guardian_match: 1,
+      upi_match: 1,
+      birth_certificate_match: 0,
+    };
+
+    expect(buildModelFeatures(
+      { date_of_birth: "2010-05-14", school_code: "SCH-01", guardian_id: "G-01" },
+      { date_of_birth: "2010-05-14", school_code: "sch-01", guardian_id: "g-01" },
+      features
+    )).toMatchObject({ dob_match: 1, school_match: 1, guardian_match: 1, upi_match: 1 });
+  });
+});
 
 describe("Students API", () => {
   let token;
@@ -42,22 +82,22 @@ describe("Students API", () => {
     expect(Array.isArray(students)).toBe(true);
   });
 
-  test("admin cannot access field-officer student or eligibility APIs", async () => {
-    const email = `studentadmin${Date.now()}@example.com`;
+  test("public registration cannot elevate its role to admin", async () => {
+    const email = `studentrolecheck${Date.now()}@example.com`;
     const password = "TestPassword123!";
     const registration = await request(app)
       .post("/api/auth/register")
-      .send({ full_name: "Student Review Admin", email, password, role: "admin" });
-    const loginResponse = await request(app)
-      .post("/api/auth/login")
-      .send({ email, password });
-    const adminToken = loginResponse.body.token;
+      .send({ full_name: "Student Role Check", email, password, role: "admin" });
 
     try {
       expect(registration.statusCode).toBe(201);
-      expect((await request(app).get("/api/students").set("Authorization", `Bearer ${adminToken}`)).statusCode).toBe(403);
-      expect((await request(app).post("/api/students").set("Authorization", `Bearer ${adminToken}`).send({})).statusCode).toBe(403);
-      expect((await request(app).post("/api/eligibility").set("Authorization", `Bearer ${adminToken}`).send({})).statusCode).toBe(403);
+      expect(registration.body.user.role).toBe("field_officer");
+      const loginResponse = await request(app)
+        .post("/api/auth/login")
+        .send({ email, password });
+      expect(loginResponse.statusCode).toBe(200);
+      expect((await request(app).get("/api/students")
+        .set("Authorization", `Bearer ${loginResponse.body.token}`)).statusCode).toBe(200);
     } finally {
       if (registration.body.user?.id) {
         await pool.query("DELETE FROM users WHERE id = $1", [registration.body.user.id]);

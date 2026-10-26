@@ -17,6 +17,7 @@ describe("Authentication API", () => {
     expect(response.statusCode).toBe(201);
     expect(response.body.user).toBeDefined();
     expect(response.body.user.email).toBe(testUser.email);
+    expect(response.body.user.role).toBe('field_officer');
   });
 
   test("POST /api/auth/login should return a JWT", async () => {

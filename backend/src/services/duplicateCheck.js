@@ -3,7 +3,8 @@ const readline = require('readline');
 const path = require('path');
 const fs = require('fs');
 
-const configuredPythonExecutable = path.join(
+const configuredPythonExecutable = process.env.PYTHON_BIN;
+const windowsPythonExecutable = path.join(
   __dirname,
   '..',
   '..',
@@ -13,20 +14,20 @@ const configuredPythonExecutable = path.join(
   'Scripts',
   'python.exe'
 );
-const workspacePythonExecutable = path.join(
+const unixPythonExecutable = path.join(
   __dirname,
   '..',
   '..',
   '..',
-  '..',
+  'ml-service',
   '.venv',
-  'Scripts',
-  'python.exe'
+  'bin',
+  'python'
 );
-const pythonExecutable = fs.existsSync(configuredPythonExecutable)
-  ? configuredPythonExecutable
-  : workspacePythonExecutable;
+const pythonExecutable = configuredPythonExecutable
+  || (fs.existsSync(windowsPythonExecutable) ? windowsPythonExecutable : unixPythonExecutable);
 const predictor = path.join(__dirname, '..', '..', '..', 'ml-service', 'predict.py');
+const modelFile = process.env.SBMS_MODEL_PATH || path.join(__dirname, '..', '..', '..', 'ml-service', 'model', 'rf_duplicate_model.joblib');
 const DUPLICATE_SCORE_MAXIMUMS = Object.freeze({
   name: 0.08,
   date_of_birth: 0.04,
@@ -206,7 +207,12 @@ function checkDuplicate(features) {
 
 function checkDuplicates(features) {
   return new Promise((resolve, reject) => {
-    ensurePredictor();
+    try {
+      ensurePredictor();
+    } catch (error) {
+      reject(error);
+      return;
+    }
     pendingRequests.push({ resolve, reject });
     const preparedFeatures = features.map((feature) => ({
       ...feature,
@@ -218,6 +224,9 @@ function checkDuplicates(features) {
 
 function ensurePredictor() {
   if (predictorProcess) return;
+  if (!fs.existsSync(modelFile)) {
+    throw new Error('Duplicate-detection model is not installed');
+  }
   predictorProcess = spawn(pythonExecutable, [predictor, '--server'], {
     windowsHide: true,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -251,8 +260,6 @@ function handlePredictorFailure(error) {
   pendingRequests = [];
   for (const request of requests) request.reject(error);
 }
-
-ensurePredictor();
 
 module.exports = {
   checkDuplicate,

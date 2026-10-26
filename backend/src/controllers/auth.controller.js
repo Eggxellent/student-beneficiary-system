@@ -7,7 +7,6 @@ const registerSchema = z.object({
   full_name: z.string().trim().min(2).max(255),
   email: z.string().trim().email().max(255).transform((value) => value.toLowerCase()),
   password: z.string().min(8).max(72),
-  role: z.string().trim().min(1).max(50).optional(),
 });
 
 async function register(req, res) {
@@ -16,14 +15,15 @@ async function register(req, res) {
     return res.status(400).json({ error: 'Invalid registration data', details: result.error.flatten() });
   }
 
-  const { full_name, email, password, role = 'field_officer' } = result.data;
+  const { full_name, email, password } = result.data;
   const existingUser = await Auth.findByEmail(email);
   if (existingUser) {
     return res.status(409).json({ error: 'Email is already registered' });
   }
 
   const password_hash = await bcrypt.hash(password, 12);
-  const user = await Auth.createUser({ full_name, email, password_hash, role });
+  // Public registration must never choose a privileged role.
+  const user = await Auth.createUser({ full_name, email, password_hash, role: 'field_officer' });
 
   res.status(201).json({
     message: 'User registered successfully',
