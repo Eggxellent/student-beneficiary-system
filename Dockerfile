@@ -1,8 +1,8 @@
 FROM node:22-bookworm-slim AS frontend-build
 WORKDIR /app
-COPY frontend/package.json ./frontend/package.json
+COPY frontend/package*.json ./frontend/
 WORKDIR /app/frontend
-RUN npm install --package-lock=false
+RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
@@ -10,9 +10,9 @@ FROM node:22-bookworm-slim
 ENV NODE_ENV=production
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv python3-pip build-essential && rm -rf /var/lib/apt/lists/*
-COPY backend/package.json ./backend/package.json
+COPY backend/package*.json ./backend/
 WORKDIR /app/backend
-RUN npm install --omit=dev --package-lock=false
+RUN npm ci --omit=dev
 COPY backend/src ./src
 COPY backend/src/db ./src/db
 COPY ml-service /app/ml-service
