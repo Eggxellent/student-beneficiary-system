@@ -4,6 +4,7 @@ const logAudit = require('../services/auditLog');
 const {
   buildDuplicateFeatures,
   calculateDuplicateScore,
+  checkDuplicates,
   classifyDuplicate,
   duplicateReviewReason,
   hasCorroboratingMajority,
@@ -88,13 +89,25 @@ async function create(req, res, next) {
       });
     }
 
-    const duplicateResults = duplicateCandidates.length > 0
-      ? duplicateCandidates.map(({ candidate, features }) => ({
-        candidate,
-        features,
-        probability: calculateDuplicateScore(features),
-      }))
-      : [];
+    let duplicateResults = [];
+    if (duplicateCandidates.length > 0) {
+      if (process.env.SBMS_DUPLICATE_SCORING === 'model') {
+        // Explicit opt-in for model evaluation. Do not enable until a compatible,
+        // evaluated model artifact is supplied and tested.
+        const predictions = await checkDuplicates(duplicateCandidates.map(({ features }) => features));
+        duplicateResults = duplicateCandidates.map(({ candidate, features }, index) => ({
+          candidate,
+          features,
+          probability: predictions[index].probability,
+        }));
+      } else {
+        duplicateResults = duplicateCandidates.map(({ candidate, features }) => ({
+          candidate,
+          features,
+          probability: calculateDuplicateScore(features),
+        }));
+      }
+    }
 
     const student = await studentModel.create({ full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number });
     const qrCode = await QRCode.toDataURL(student.id);
