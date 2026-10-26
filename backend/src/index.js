@@ -20,13 +20,18 @@ const PORT = process.env.PORT || 5000;
 const configuredOrigins = (process.env.CORS_ORIGIN || '').split(',').map((origin) => origin.trim()).filter(Boolean);
 const allowedOrigins = configuredOrigins.length
   ? configuredOrigins
-  : (process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173', 'http://localhost:5174']);
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error('Origin is not allowed by CORS'));
-  },
-}));
+  : ['http://localhost:5173', 'http://localhost:5174'];
+
+// The production frontend and API share an origin, so CORS is unnecessary unless
+// a separate frontend origin has explicitly been configured.
+if (process.env.NODE_ENV !== 'production' || configuredOrigins.length > 0) {
+  app.use(cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error('Origin is not allowed by CORS'));
+    },
+  }));
+}
 app.use(express.json());
 
 app.get('/api/health', (req, res) => {
