@@ -43,7 +43,7 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/eligibility', eligibilityRouter);
 
-const frontendDist = path.join(__dirname, '..', '..', '..', 'frontend', 'dist');
+const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
 if (fs.existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
   app.get('*', (req, res, next) => {
