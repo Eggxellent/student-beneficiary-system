@@ -42,22 +42,22 @@ describe("Students API", () => {
     expect(Array.isArray(students)).toBe(true);
   });
 
-  test("admin cannot access field-officer student or eligibility APIs", async () => {
-    const email = `studentadmin${Date.now()}@example.com`;
+  test("public registration cannot elevate its role to admin", async () => {
+    const email = `studentrolecheck${Date.now()}@example.com`;
     const password = "TestPassword123!";
     const registration = await request(app)
       .post("/api/auth/register")
-      .send({ full_name: "Student Review Admin", email, password, role: "admin" });
-    const loginResponse = await request(app)
-      .post("/api/auth/login")
-      .send({ email, password });
-    const adminToken = loginResponse.body.token;
+      .send({ full_name: "Student Role Check", email, password, role: "admin" });
 
     try {
       expect(registration.statusCode).toBe(201);
-      expect((await request(app).get("/api/students").set("Authorization", `Bearer ${adminToken}`)).statusCode).toBe(403);
-      expect((await request(app).post("/api/students").set("Authorization", `Bearer ${adminToken}`).send({})).statusCode).toBe(403);
-      expect((await request(app).post("/api/eligibility").set("Authorization", `Bearer ${adminToken}`).send({})).statusCode).toBe(403);
+      expect(registration.body.user.role).toBe("field_officer");
+      const loginResponse = await request(app)
+        .post("/api/auth/login")
+        .send({ email, password });
+      expect(loginResponse.statusCode).toBe(200);
+      expect((await request(app).get("/api/students")
+        .set("Authorization", `Bearer ${loginResponse.body.token}`)).statusCode).toBe(200);
     } finally {
       if (registration.body.user?.id) {
         await pool.query("DELETE FROM users WHERE id = $1", [registration.body.user.id]);
