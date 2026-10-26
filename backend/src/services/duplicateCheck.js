@@ -3,7 +3,8 @@ const readline = require('readline');
 const path = require('path');
 const fs = require('fs');
 
-const configuredPythonExecutable = path.join(
+const configuredPythonExecutable = process.env.PYTHON_BIN;
+const windowsPythonExecutable = path.join(
   __dirname,
   '..',
   '..',
@@ -13,19 +14,18 @@ const configuredPythonExecutable = path.join(
   'Scripts',
   'python.exe'
 );
-const workspacePythonExecutable = path.join(
+const unixPythonExecutable = path.join(
   __dirname,
   '..',
   '..',
   '..',
-  '..',
+  'ml-service',
   '.venv',
-  'Scripts',
-  'python.exe'
+  'bin',
+  'python'
 );
-const pythonExecutable = fs.existsSync(configuredPythonExecutable)
-  ? configuredPythonExecutable
-  : workspacePythonExecutable;
+const pythonExecutable = configuredPythonExecutable
+  || (fs.existsSync(windowsPythonExecutable) ? windowsPythonExecutable : unixPythonExecutable);
 const predictor = path.join(__dirname, '..', '..', '..', 'ml-service', 'predict.py');
 const DUPLICATE_SCORE_MAXIMUMS = Object.freeze({
   name: 0.08,
