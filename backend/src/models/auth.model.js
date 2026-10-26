@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 async function findByEmail(email) {
   const { rows } = await pool.query(
-    'SELECT id, full_name, email, password_hash, role FROM users WHERE email = $1',
+    'SELECT id, full_name, email, password_hash, role, is_active FROM users WHERE email = $1',
     [email]
   );
   return rows[0];

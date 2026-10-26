@@ -8,8 +8,8 @@ async function audit(userId, action, beneficiaryId) {
       action: `${action}:${beneficiaryId}`,
       table_name: 'beneficiaries',
     });
-  } catch (error) {
-    console.error('Audit log failed:', error.message);
+  } catch {
+    console.error('Audit log failed');
   }
 }
 

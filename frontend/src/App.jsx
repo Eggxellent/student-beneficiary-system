@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
+import Verification from "./pages/Verification";
 import AdminDashboard from "./pages/AdminDashboard";
 import Students from "./pages/Students";
 import StudentRegistration from "./pages/StudentRegistration";
@@ -55,6 +56,7 @@ function ProtectedPage({ children, allowedRoles }) {
 export default function App() {
   return (
     <Routes>
+      <Route path="/verify" element={<Verification />} />
       <Route path="/login" element={<Login />} />
       <Route path="/admin/login" element={<Login role="admin" />} />
       <Route path="/field-officer/login" element={<Login role="field_officer" />} />
@@ -85,7 +87,7 @@ export default function App() {
       <Route
         path="/disbursements"
         element={
-          <ProtectedPage allowedRoles={["field_officer"]}>
+          <ProtectedPage allowedRoles={["admin", "field_officer"]}>
             <Disbursements />
           </ProtectedPage>
         }

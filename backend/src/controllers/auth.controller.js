@@ -44,7 +44,7 @@ async function login(req, res, expectedRole) {
   }
 
   const user = await Auth.findByEmail(result.data.email);
-  if (!user || !(await bcrypt.compare(result.data.password, user.password_hash))) {
+  if (!user || !user.is_active || !(await bcrypt.compare(result.data.password, user.password_hash))) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
   if (expectedRole && user.role !== expectedRole) {

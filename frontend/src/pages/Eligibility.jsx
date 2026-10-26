@@ -49,13 +49,12 @@ export default function Eligibility() {
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold mb-2">Eligibility Assessment</h1>
-      <p className="text-gray-600 mb-6">Calculate a student's bursary eligibility score.</p>
+      <h1 className="text-3xl font-bold mb-2">Eligibility</h1>
 
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow">
         <label className="block font-medium mb-2">Student (optional)</label>
         <select name="student_id" value={form.student_id} onChange={handleChange} className="w-full border rounded p-3 mb-5">
-          <option value="">Calculate without saving an assessment</option>
+          <option value="">No student (don't save)</option>
           {students.map((student) => (
             <option key={student.id} value={student.id}>{student.full_name} - {student.upi}</option>
           ))}
@@ -74,7 +73,7 @@ export default function Eligibility() {
           <option value="high">High</option>
         </select>
 
-        <label className="block font-medium mb-2">Siblings Currently in School</label>
+        <label className="block font-medium mb-2">Siblings in school</label>
         <input type="number" min="0" name="siblings_in_school" value={form.siblings_in_school} onChange={handleChange} className="w-full border rounded p-3 mb-5" required />
 
         <label className="block font-medium mb-2">Prior Bursary History</label>
@@ -84,7 +83,7 @@ export default function Eligibility() {
           <option value="high">High</option>
         </select>
 
-        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded hover:bg-blue-700 disabled:opacity-50">{loading ? "Calculating..." : "Calculate Eligibility"}</button>
+        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded hover:bg-blue-700 disabled:opacity-50">{loading ? "Calculating..." : "Calculate"}</button>
       </form>
 
       {error && <div className="mt-6 bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg">{error}</div>}
@@ -97,7 +96,7 @@ export default function Eligibility() {
             {result.category.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())}
           </p>
           <div className="mt-5 text-left border-t pt-4">
-            <p className="font-semibold mb-2">Assessment reasons</p>
+            <p className="font-semibold mb-2">Reasons</p>
             {result.reasons.map((reason, index) => (
               <div key={reason} className="flex justify-between gap-4 py-1 text-sm">
                 <span>{reason}</span>
@@ -105,7 +104,7 @@ export default function Eligibility() {
               </div>
             ))}
           </div>
-          <p className="mt-4 text-xs text-gray-500">This score supports review and does not replace authorized approval.</p>
+          <p className="mt-4 text-xs text-gray-500">This score supports review; authorized approval is still required.</p>
         </div>
       )}
     </div>

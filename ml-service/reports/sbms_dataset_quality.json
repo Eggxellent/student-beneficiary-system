@@ -1,0 +1,273 @@
+{
+  "dataset_archive": "C:\\Users\\user\\Downloads\\sbms_dataset.zip",
+  "archive_sha256": "dd7766fb28444a2a6940c2835c4e4302087d3798e397e5588bc97fe53d3d0d9a",
+  "generator_seed": 42,
+  "generator_config": {
+    "seed": 42,
+    "n_pairs": 24000,
+    "split_fractions": {
+      "train": 0.7,
+      "val": 0.1,
+      "test": 0.2
+    },
+    "neg_per_pos": 3.0,
+    "review_fraction": 0.06,
+    "difficulty_mix": {
+      "easy": 0.15,
+      "moderate": 0.3,
+      "hard": 0.35,
+      "adversarial": 0.2
+    },
+    "n_schools": 160,
+    "heldout_school_fraction": 0.15,
+    "heldout_school_share_in_test": 0.2,
+    "heldout_combo_fraction": 0.2,
+    "clusters_per_pair": 0.15,
+    "p_namesake": 0.45,
+    "p_neighbor_family": 0.35,
+    "p_twin": 0.12
+  },
+  "python": "3.11.9",
+  "pandas": "3.0.5",
+  "scikit_learn": "1.9.0",
+  "xgboost": "3.2.0",
+  "jellyfish": "1.2.1",
+  "joblib": "1.6.0",
+  "splits": {
+    "train": {
+      "rows": 16800,
+      "label_counts": {
+        "non_match": 11844,
+        "match": 3948,
+        "review": 1008
+      },
+      "binary_positive_prevalence_excluding_review": 0.25,
+      "missing_cells": {
+        "a_middle_name": 6783,
+        "a_dob": 1192,
+        "a_ward": 2122,
+        "a_guardian_name": 1837,
+        "a_guardian_phone": 2952,
+        "a_guardian_id_no": 1837,
+        "b_middle_name": 6926,
+        "b_dob": 1202,
+        "b_ward": 2186,
+        "b_guardian_name": 1909,
+        "b_guardian_phone": 2997,
+        "b_guardian_id_no": 1909
+      }
+    },
+    "val": {
+      "rows": 2400,
+      "label_counts": {
+        "non_match": 1692,
+        "match": 564,
+        "review": 144
+      },
+      "binary_positive_prevalence_excluding_review": 0.25,
+      "missing_cells": {
+        "a_middle_name": 966,
+        "a_dob": 173,
+        "a_ward": 294,
+        "a_guardian_name": 250,
+        "a_guardian_phone": 404,
+        "a_guardian_id_no": 250,
+        "b_middle_name": 959,
+        "b_dob": 174,
+        "b_ward": 269,
+        "b_guardian_name": 259,
+        "b_guardian_phone": 430,
+        "b_guardian_id_no": 259
+      }
+    },
+    "test": {
+      "rows": 4800,
+      "label_counts": {
+        "non_match": 3384,
+        "match": 1128,
+        "review": 288
+      },
+      "binary_positive_prevalence_excluding_review": 0.25,
+      "missing_cells": {
+        "a_middle_name": 1939,
+        "a_dob": 387,
+        "a_ward": 616,
+        "a_guardian_name": 606,
+        "a_guardian_phone": 899,
+        "a_guardian_id_no": 606,
+        "b_middle_name": 1935,
+        "b_dob": 350,
+        "b_ward": 612,
+        "b_guardian_name": 569,
+        "b_guardian_phone": 885,
+        "b_guardian_id_no": 569
+      }
+    }
+  },
+  "group_overlap_counts": {
+    "identity_overlap_train_val": 0,
+    "identity_overlap_train_test": 0,
+    "identity_overlap_val_test": 0,
+    "cluster_overlap_train_val": 0,
+    "cluster_overlap_train_test": 0,
+    "cluster_overlap_val_test": 0
+  },
+  "exact_pair_overlap_counts": {
+    "exact_pair_overlap_train_val": 0,
+    "exact_pair_overlap_train_test": 0,
+    "exact_pair_overlap_val_test": 0
+  },
+  "exact_pair_duplicates_within_split": {
+    "train": 0,
+    "val": 0,
+    "test": 0
+  },
+  "challenge_subsets": {
+    "test_contradiction": {
+      "rows": 609,
+      "label_counts": {
+        "review": 133,
+        "non_match": 367,
+        "match": 109
+      },
+      "subset_of_primary_test": true
+    },
+    "test_hard_negative": {
+      "rows": 1735,
+      "label_counts": {
+        "non_match": 1735
+      },
+      "subset_of_primary_test": true
+    },
+    "test_hard_positive": {
+      "rows": 632,
+      "label_counts": {
+        "match": 632
+      },
+      "subset_of_primary_test": true
+    },
+    "test_missing_data": {
+      "rows": 1321,
+      "label_counts": {
+        "match": 303,
+        "non_match": 871,
+        "review": 147
+      },
+      "subset_of_primary_test": true
+    },
+    "test_unseen_school": {
+      "rows": 1866,
+      "label_counts": {
+        "non_match": 1413,
+        "match": 365,
+        "review": 88
+      },
+      "subset_of_primary_test": true
+    },
+    "test_unseen_transform": {
+      "rows": 916,
+      "label_counts": {
+        "match": 247,
+        "non_match": 669
+      },
+      "subset_of_primary_test": true
+    }
+  },
+  "supplied_validation_flags": [],
+  "supplied_validation_report": {
+    "identity_overlap_train_val": 0,
+    "cluster_overlap_train_val": 0,
+    "identity_overlap_train_test": 0,
+    "cluster_overlap_train_test": 0,
+    "identity_overlap_val_test": 0,
+    "cluster_overlap_val_test": 0,
+    "heldout_combos_in_train_val": 0,
+    "heldout_schools_in_train_val": 0,
+    "class_counts": {
+      "train": {
+        "non_match": 11844,
+        "match": 3948,
+        "review": 1008
+      },
+      "val": {
+        "non_match": 1692,
+        "match": 564,
+        "review": 144
+      },
+      "test": {
+        "non_match": 3384,
+        "match": 1128,
+        "review": 288
+      }
+    },
+    "exact_duplicate_pairs_within_split": 0,
+    "exact_duplicate_pairs_across_splits": 0,
+    "identity_pair_reuse": {
+      "train": {
+        "max": 9,
+        "mean": 1.57
+      },
+      "val": {
+        "max": 10,
+        "mean": 1.61
+      },
+      "test": {
+        "max": 7,
+        "mean": 1.54
+      }
+    },
+    "mean_missing_fields_by_difficulty_and_class": {
+      "adversarial": {
+        "match": 3.48,
+        "non_match": 3.0
+      },
+      "easy": {
+        "match": 0.65,
+        "non_match": 0.66
+      },
+      "hard": {
+        "match": 2.32,
+        "non_match": 2.1
+      },
+      "moderate": {
+        "match": 1.36,
+        "non_match": 1.31
+      }
+    },
+    "class_distribution_tvd": {
+      "county": {
+        "observed_tvd": 0.021,
+        "shuffled_label_tvd_mean": 0.02
+      },
+      "application_year": {
+        "observed_tvd": 0.052,
+        "shuffled_label_tvd_mean": 0.007
+      },
+      "school": {
+        "observed_tvd": 0.149,
+        "shuffled_label_tvd_mean": 0.143
+      },
+      "surname": {
+        "observed_tvd": 0.144,
+        "shuffled_label_tvd_mean": 0.145
+      }
+    },
+    "single_feature_auc": {
+      "total_missing_fields (non-semantic)": 0.508,
+      "abs_year_gap (non-semantic)": 0.506,
+      "a_year_minus_b_year, signed (non-semantic)": 0.5,
+      "pair_id_hash (non-semantic)": 0.487,
+      "pair_id_first_hex_char (non-semantic)": 0.503,
+      "normalised_full_name_equal (semantic, informational)": 0.618,
+      "exact_dob_equal (semantic, informational)": 0.797,
+      "guardian_id_equal (semantic, informational)": 0.776
+    },
+    "flags": []
+  },
+  "private_metadata_used_as_features": false,
+  "missingness": {
+    "train": 33852,
+    "val": 4687,
+    "test": 9973
+  }
+}

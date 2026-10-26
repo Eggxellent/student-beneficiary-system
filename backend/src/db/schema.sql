@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   role VARCHAR(50) NOT NULL DEFAULT 'field_officer',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
   CONSTRAINT users_role_supported_check CHECK (role IN ('admin', 'field_officer')),
   created_at TIMESTAMP DEFAULT NOW()
 );

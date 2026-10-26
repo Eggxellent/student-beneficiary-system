@@ -18,7 +18,7 @@ async function authenticateToken(req, res, next) {
     if (!userId) return res.status(401).json({ message: 'Invalid authentication token' });
     // The signed role claim is retained for old-token compatibility, but the
     // current role always comes from the server-side user record.
-    const { rows } = await pool.query('SELECT id, role FROM users WHERE id = $1', [userId]);
+    const { rows } = await pool.query('SELECT id, role FROM users WHERE id = $1 AND is_active = TRUE', [userId]);
     if (!rows.length) return res.status(401).json({ message: 'User account no longer exists' });
     req.user = { ...decoded, id: rows[0].id, role: rows[0].role };
     next();

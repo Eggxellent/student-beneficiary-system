@@ -29,12 +29,10 @@ export default function Students() {
     <main className="mx-auto max-w-6xl p-6">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-blue-600">Students</p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">Student Directory</h1>
-          <p className="mt-1 text-sm text-slate-500">Search and review registered beneficiary records.</p>
+          <h1 className="text-2xl font-bold text-slate-900">Students</h1>
         </div>
         <Link to="/students/register" className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
-          + Register Student
+          Register Student
         </Link>
       </div>
 

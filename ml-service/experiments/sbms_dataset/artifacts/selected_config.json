@@ -1,0 +1,21 @@
+{
+  "seed": 42,
+  "parameters": {
+    "n_estimators": 120,
+    "max_depth": 4,
+    "learning_rate": 0.1
+  },
+  "validation_threshold": 0.41624149680137634,
+  "features": [
+    "jaro_winkler",
+    "dob_match",
+    "school_match",
+    "guardian_match",
+    "name_both_present",
+    "dob_both_present",
+    "school_both_present",
+    "guardian_both_present",
+    "dob_conflict",
+    "guardian_conflict"
+  ]
+}

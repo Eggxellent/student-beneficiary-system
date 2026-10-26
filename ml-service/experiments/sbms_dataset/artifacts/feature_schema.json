@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "columns": [
+    "jaro_winkler",
+    "dob_match",
+    "school_match",
+    "guardian_match",
+    "name_both_present",
+    "dob_both_present",
+    "school_both_present",
+    "guardian_both_present",
+    "dob_conflict",
+    "guardian_conflict"
+  ]
+}

@@ -22,9 +22,7 @@ export default function AuditLogs() {
 
   return (
     <main className="mx-auto max-w-7xl p-6">
-      <p className="text-sm font-medium text-blue-600">Accountability</p>
-      <h1 className="mt-1 text-2xl font-bold text-slate-900">Audit Logs</h1>
-      <p className="mt-1 text-sm text-slate-500">Review recorded system actions and duplicate-review decisions.</p>
+      <h1 className="text-2xl font-bold text-slate-900">Audit Logs</h1>
 
       {error && <p className="mt-5 rounded-lg bg-red-50 p-4 text-sm text-red-700">{error}</p>}
 
@@ -55,7 +53,7 @@ export default function AuditLogs() {
               </tr>
             ))}
             {!loading && logs.length === 0 && (
-              <tr><td colSpan="6" className="px-5 py-10 text-center text-slate-500">No audit events found.</td></tr>
+              <tr><td colSpan="6" className="px-5 py-10 text-center text-slate-500">No audit events.</td></tr>
             )}
             {loading && <tr><td colSpan="6" className="px-5 py-10 text-center text-slate-500">Loading audit logs...</td></tr>}
           </tbody>

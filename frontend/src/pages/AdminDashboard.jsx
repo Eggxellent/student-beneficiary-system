@@ -55,10 +55,10 @@ function formatRelativeTime(value) {
 }
 
 function activityDetails(action) {
-  if (action?.includes("DUPLICATE")) return { label: "Duplicate Alert", detail: "Duplicate record review updated", icon: ShieldAlert, color: "bg-orange-50 text-orange-600" };
-  if (action?.includes("DISBURSEMENT")) return { label: "Disbursement", detail: "Disbursement record created", icon: Wallet, color: "bg-purple-50 text-purple-600" };
-  if (action?.includes("CREATE")) return { label: "Student Registration", detail: "New student registration completed", icon: Plus, color: "bg-blue-50 text-blue-600" };
-  return { label: action?.replaceAll("_", " ") || "System Activity", detail: "System activity recorded", icon: FileText, color: "bg-slate-100 text-slate-600" };
+  if (action?.includes("DUPLICATE")) return { label: "Duplicate review", detail: "Review updated", icon: ShieldAlert, color: "bg-orange-50 text-orange-600" };
+  if (action?.includes("DISBURSEMENT")) return { label: "Disbursement", detail: "Created", icon: Wallet, color: "bg-purple-50 text-purple-600" };
+  if (action?.includes("CREATE")) return { label: "Registration", detail: "Student added", icon: Plus, color: "bg-blue-50 text-blue-600" };
+  return { label: action?.replaceAll("_", " ") || "System activity", detail: "Activity logged", icon: FileText, color: "bg-slate-100 text-slate-600" };
 }
 
 export default function AdminDashboard() {
@@ -109,19 +109,32 @@ export default function AdminDashboard() {
   const totalStudents = cachedDashboard?.totalStudents ?? 0;
   const eligibleStudents = cachedDashboard?.eligibleStudents ?? 0;
   const duplicateCount = cachedDashboard?.duplicateCount ?? 0;
+  const accountability = cachedDashboard?.accountability || {};
+  const accountabilityCards = [
+    { label: "Approved awards", value: Number(accountability.approved_awards || 0).toLocaleString() },
+    { label: "Awards without payment", value: Number(accountability.no_payment_awards || 0).toLocaleString() },
+    { label: "Awards with payment recorded", value: Number(accountability.disbursed_awards || 0).toLocaleString() },
+    { label: "Issued or cleared amount", value: `KSh ${Number(accountability.disbursed_amount || 0).toLocaleString()}` },
+    { label: "Awaiting clearance", value: Number(accountability.awaiting_clearance || 0).toLocaleString() },
+    { label: "Awaiting receipt", value: Number(accountability.awaiting_receipt || 0).toLocaleString() },
+    { label: "Overdue receipt", value: cachedDashboard?.acknowledgementOverdueDays == null ? "Not set" : Number(accountability.overdue_receipts || 0).toLocaleString(), detail: cachedDashboard?.acknowledgementOverdueDays == null ? "Set ACKNOWLEDGEMENT_OVERDUE_DAYS" : `${cachedDashboard.acknowledgementOverdueDays}-day deadline` },
+    { label: "Amount discrepancies", value: Number(accountability.amount_discrepancies || 0).toLocaleString() },
+    { label: "Partial awards", value: Number(accountability.partial_awards || 0).toLocaleString() },
+    { label: "Awaiting verification", value: Number(accountability.awards_awaiting_verification || 0).toLocaleString() },
+  ];
   const statistics = [
-    { label: "Total Students", value: totalStudents.toLocaleString(), detail: "Registered students", icon: Users, color: "bg-blue-50 text-blue-600" },
-    { label: "Eligible Students", value: eligibleStudents.toLocaleString(), detail: "Stored eligible assessments", icon: BadgeCheck, color: "bg-green-50 text-green-600" },
-    { label: "Duplicate Alerts", value: duplicateCount.toLocaleString(), detail: "Potential duplicate records", icon: ShieldAlert, color: "bg-orange-50 text-orange-600" },
-    { label: "Pending Reviews", value: duplicateCount.toLocaleString(), detail: "Cases requiring review", icon: Clock3, color: "bg-purple-50 text-purple-600" },
+    { label: "Students", value: totalStudents.toLocaleString(), detail: "Registered", icon: Users, color: "bg-blue-50 text-blue-600" },
+    { label: "Eligible", value: eligibleStudents.toLocaleString(), detail: "Eligible assessments", icon: BadgeCheck, color: "bg-green-50 text-green-600" },
+    { label: "Duplicate Alerts", value: duplicateCount.toLocaleString(), detail: "Potential matches", icon: ShieldAlert, color: "bg-orange-50 text-orange-600" },
+    { label: "Pending Reviews", value: duplicateCount.toLocaleString(), detail: "Need review", icon: Clock3, color: "bg-purple-50 text-purple-600" },
   ];
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <aside className="fixed left-0 top-0 z-30 hidden h-screen w-56 flex-col border-r border-slate-200 bg-blue-50/70 sm:flex">
-        <div className="flex h-12 items-center gap-2 border-b border-slate-200 px-4">
-          <div className="flex h-5 w-5 items-center justify-center rounded bg-blue-600 text-white"><GraduationCap size={13} aria-hidden="true" /></div>
-          <span className="text-sm font-bold tracking-tight text-slate-800">SBMS</span>
+      <aside className="fixed left-0 top-0 z-30 hidden h-screen w-56 flex-col border-r border-[#245747] bg-[#173D35] text-white sm:flex">
+        <div className="flex h-12 items-center gap-2 border-b border-white/15 px-4">
+          <div className="flex h-5 w-5 items-center justify-center rounded bg-[#C8A45D] text-[#173D35]"><GraduationCap size={13} aria-hidden="true" /></div>
+          <span className="text-sm font-bold tracking-tight text-white">SBMS</span>
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-4">
@@ -134,31 +147,31 @@ export default function AdminDashboard() {
                 to={item.path}
                 className={`flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-medium transition ${
                   isActive
-                    ? "bg-blue-50 text-blue-600"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    ? "bg-white/15 text-white"
+                    : "text-white/75 hover:bg-white/10 hover:text-white"
                 }`}
               >
                 <item.icon size={15} strokeWidth={1.8} aria-hidden="true" />
                 <span>{item.name}</span>
-                {isActive && <span className="ml-auto text-blue-500">›</span>}
+                {isActive && <ArrowRight size={13} className="ml-auto" aria-hidden="true" />}
               </Link>
             );
           })}
 
           <Link
             to="/settings"
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+            className="flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
           >
             <Settings size={15} strokeWidth={1.8} aria-hidden="true" />
             <span>Settings</span>
           </Link>
         </nav>
 
-        <div className="border-t border-slate-200 p-3">
+        <div className="border-t border-white/15 p-3">
           <button
             type="button"
             onClick={logout}
-            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-[11px] font-medium text-slate-600 transition hover:bg-red-50 hover:text-red-600"
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-[11px] font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
           >
             <LogOut size={14} aria-hidden="true" />
             <span>Logout</span>
@@ -201,23 +214,15 @@ export default function AdminDashboard() {
           <div className="mb-4 flex flex-col justify-between gap-4 rounded-md border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-center">
             <div>
               <p className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-emerald-600">
-                System Active
+                Active
               </p>
-              <h2 className="text-xl font-bold text-slate-900">Good morning, {user?.full_name?.split(" ")[0] || "Admin"} 👋</h2>
+              <h2 className="text-xl font-bold text-slate-900">Welcome, {user?.full_name?.split(" ")[0] || "Admin"}</h2>
               <p className="mt-1 max-w-xl text-[11px] text-slate-500">
-                Here&apos;s an overview of your student beneficiaries and the activities that require your attention.
+                Overview and items needing attention.
               </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Link
-                  to="/duplicate-review"
-                  className="rounded border border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Review Duplicates
-                </Link>
-              </div>
             </div>
 
-            <div className="hidden h-24 w-40 items-center justify-center rounded-sm bg-[linear-gradient(135deg,#17477d,#e69d35)] text-white shadow-inner md:flex">
+            <div className="hidden h-24 w-40 items-center justify-center rounded-sm bg-[#173D35] text-[#C8A45D] md:flex">
               <GraduationCap size={42} strokeWidth={1.4} aria-hidden="true" />
             </div>
           </div>
@@ -240,38 +245,47 @@ export default function AdminDashboard() {
           </div>
           <p className="mt-2 text-right text-[10px] text-slate-500">Synthetic test records included in totals: {cachedDashboard?.syntheticStudents ?? 0}</p>
 
-          <div className="mt-4 grid gap-4 xl:grid-cols-3">
-            <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
+          <section aria-label="Bursary accountability" className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {accountabilityCards.map((item) => (
+              <article key={item.label} className="rounded-md border border-slate-200 bg-white p-3 shadow-sm">
+                <p className="text-[9px] font-medium uppercase text-slate-500">{item.label}</p>
+                <p className="mt-1 text-xl font-bold text-slate-900">{item.value}</p>
+                {item.detail && <p className="mt-1 text-[9px] text-slate-500">{item.detail}</p>}
+              </article>
+            ))}
+          </section>
+
+          <div className="mt-4 grid gap-4">
+            <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-800">Student Overview</h3>
-                  <p className="mt-1 text-sm text-slate-500">Student registration and disbursement trends</p>
+                  <h3 className="text-lg font-semibold text-slate-800">Students and Disbursements</h3>
+                  <p className="mt-1 text-sm text-slate-500">Registration and disbursement trends</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button type="button" onClick={loadDashboard} disabled={loading} className="text-sm font-medium text-slate-500 hover:text-blue-700 disabled:opacity-50">
                     {loading ? "Refreshing..." : "Refresh"}
                   </button>
-                  <Link to="/reports" className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700">View Full Report <ArrowRight size={14} aria-hidden="true" /></Link>
                 </div>
               </div>
 
               <div className="mt-6 flex items-center gap-6 text-xs text-slate-500">
                 <div className="flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-                  Total Students
+                  Students
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
                   Disbursements
                 </div>
               </div>
 
-              <div className="mt-5 h-40 border-b border-slate-200 bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_31px,#e2e8f0_32px)] px-2">
+              <div className="mt-5 h-40 border-b border-slate-200 bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_31px,#dfe6e1_32px)] px-2">
                 <svg viewBox="0 0 600 160" className="h-full w-full" role="img" aria-label="Student registration trend">
                   <defs>
                     <linearGradient id="studentTrend" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="#2563eb" stopOpacity="0.22" />
-                      <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+                      <stop offset="0%" stopColor="#173D35" stopOpacity="0.18" />
+                      <stop offset="100%" stopColor="#173D35" stopOpacity="0" />
                     </linearGradient>
                   </defs>
                   <path
@@ -281,13 +295,13 @@ export default function AdminDashboard() {
                   <polyline
                     points={trend.map((item, index) => `${(index / (trend.length - 1 || 1)) * 600},${160 - (item.total / maxTrend) * 130}`).join(" ")}
                     fill="none"
-                    stroke="#2563eb"
+                    stroke="#173D35"
                     strokeWidth="3"
                   />
                   <polyline
                     points={disbursementTrend.map((item, index) => `${(index / (disbursementTrend.length - 1 || 1)) * 600},${160 - (item.total / maxTrend) * 130}`).join(" ")}
                     fill="none"
-                    stroke="#0f766e"
+                    stroke="#C8A45D"
                     strokeWidth="2"
                   />
                 </svg>
@@ -297,38 +311,10 @@ export default function AdminDashboard() {
                 {trend.map((item) => <span key={item.key}>{item.label}</span>)}
               </div>
               <p className="mt-3 text-right text-[9px] text-slate-400">
-                {lastUpdated ? `Live · updated ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · refreshes every 30 seconds` : "Loading dashboard data"}
+                {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · refreshes every 30s` : "Loading data"}
               </p>
             </div>
 
-            <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-800">Quick Actions</h3>
-              <p className="mt-1 text-sm text-slate-500">Commonly performed operations.</p>
-
-              <div className="mt-6 space-y-3">
-                <Link
-                  to="/duplicate-review"
-                  className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                >
-                  <span className="flex items-center gap-2"><ShieldAlert size={15} aria-hidden="true" /> Review Duplicates</span>
-                  <ArrowRight size={15} aria-hidden="true" />
-                </Link>
-                <Link
-                  to="/audit"
-                  className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                >
-                  <span className="flex items-center gap-2"><Clock3 size={15} aria-hidden="true" /> View Audit Logs</span>
-                  <ArrowRight size={15} aria-hidden="true" />
-                </Link>
-                <Link
-                  to="/reports"
-                  className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                >
-                  <span className="flex items-center gap-2"><FileText size={15} aria-hidden="true" /> View Reports</span>
-                  <ArrowRight size={15} aria-hidden="true" />
-                </Link>
-              </div>
-            </div>
           </div>
 
           <div className="mt-4 grid gap-4 xl:grid-cols-3">
@@ -336,19 +322,19 @@ export default function AdminDashboard() {
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-800">Duplicate Review</h3>
-                  <p className="mt-1 text-sm text-slate-500">Potential duplicate records requiring review.</p>
+                  <p className="mt-1 text-sm text-slate-500">Potential matches</p>
                 </div>
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50 text-orange-600"><ShieldAlert size={19} aria-hidden="true" /></div>
               </div>
 
               <div className="mt-6">
                 <p className="text-4xl font-bold text-slate-900">{duplicateCount}</p>
-                <p className="mt-1 text-sm text-slate-500">Potential duplicates</p>
+                <p className="mt-1 text-sm text-slate-500">Flagged cases</p>
               </div>
 
               <div className="mt-5 rounded-lg bg-orange-50 p-4">
                 <p className="text-sm font-medium text-orange-800">{duplicateCount} require human review</p>
-                <p className="mt-1 text-xs text-orange-700">Review flagged records before taking further action.</p>
+                <p className="mt-1 text-xs text-orange-700">Review flags before action.</p>
               </div>
 
               <Link
@@ -360,13 +346,7 @@ export default function AdminDashboard() {
             </div>
 
             <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-800">Recent Activity</h3>
-                  <p className="mt-1 text-sm text-slate-500">Recent updates from the student beneficiary management system.</p>
-                </div>
-                <button type="button" className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700">See All <ArrowRight size={14} aria-hidden="true" /></button>
-              </div>
+              <h3 className="text-lg font-semibold text-slate-800">Recent Activity</h3>
 
               <div className="mt-6 divide-y divide-slate-100">
                 {activities.slice(0, 4).map((activity) => {
@@ -382,7 +362,7 @@ export default function AdminDashboard() {
                     </div>
                   );
                 })}
-                {activities.length === 0 && <p className="py-6 text-sm text-slate-500">No recent activity recorded.</p>}
+                {activities.length === 0 && <p className="py-6 text-sm text-slate-500">No recent activity.</p>}
               </div>
             </div>
           </div>

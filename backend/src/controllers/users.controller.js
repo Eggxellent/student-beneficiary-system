@@ -12,7 +12,7 @@ const roleSchema = z.object({ role: z.enum(['admin', 'field_officer']) });
 
 async function list(req, res, next) {
   try {
-    const { rows } = await pool.query('SELECT id, full_name, email, role, created_at FROM users ORDER BY created_at DESC');
+    const { rows } = await pool.query('SELECT id, full_name, email, role, created_at FROM users WHERE is_active = TRUE ORDER BY created_at DESC');
     res.json(rows);
   } catch (error) { next(error); }
 }
@@ -53,7 +53,7 @@ async function updateRole(req, res, next) {
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(8831, 7745)');
-      const target = await client.query('SELECT id, role FROM users WHERE id = $1 FOR UPDATE', [req.params.id]);
+      const target = await client.query('SELECT id, role FROM users WHERE id = $1 AND is_active = TRUE FOR UPDATE', [req.params.id]);
       if (!target.rows.length) {
         await client.query('ROLLBACK');
         return res.status(404).json({ message: 'User not found.' });
@@ -64,7 +64,7 @@ async function updateRole(req, res, next) {
         return res.status(409).json({ message: 'You cannot remove your own administrator role.' });
       }
       if (priorRole === 'admin' && role !== 'admin') {
-        const { rows } = await client.query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin'");
+        const { rows } = await client.query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin' AND is_active = TRUE");
         if (rows[0].count <= 1) {
           await client.query('ROLLBACK');
           return res.status(409).json({ message: 'The last administrator role cannot be removed.' });

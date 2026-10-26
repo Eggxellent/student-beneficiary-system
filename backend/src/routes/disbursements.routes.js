@@ -7,6 +7,10 @@ const router = express.Router();
 
 router.use(authenticateToken);
 router.get('/', controller.list);
-router.post('/', requireRole('field_officer'), controller.create);
+router.get('/exceptions', requireRole('admin', 'field_officer'), controller.listExceptions);
+router.post('/', requireRole('admin', 'field_officer'), controller.create);
+router.patch('/:id/award', requireRole('admin'), controller.linkLegacyPayment);
+router.patch('/:id/payment-status', requireRole('admin', 'field_officer'), controller.updatePaymentStatus);
+router.patch('/:id/acknowledgement', requireRole('admin', 'field_officer'), controller.acknowledgeReceipt);
 
 module.exports = router;

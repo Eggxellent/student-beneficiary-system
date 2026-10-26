@@ -1,0 +1,735 @@
+{
+  "experiment": "sbms_synthetic_archive_research_only_v1",
+  "seed": 42,
+  "dataset": {
+    "dataset_archive": "C:\\Users\\user\\Downloads\\sbms_dataset.zip",
+    "archive_sha256": "dd7766fb28444a2a6940c2835c4e4302087d3798e397e5588bc97fe53d3d0d9a",
+    "generator_seed": 42,
+    "generator_config": {
+      "seed": 42,
+      "n_pairs": 24000,
+      "split_fractions": {
+        "train": 0.7,
+        "val": 0.1,
+        "test": 0.2
+      },
+      "neg_per_pos": 3.0,
+      "review_fraction": 0.06,
+      "difficulty_mix": {
+        "easy": 0.15,
+        "moderate": 0.3,
+        "hard": 0.35,
+        "adversarial": 0.2
+      },
+      "n_schools": 160,
+      "heldout_school_fraction": 0.15,
+      "heldout_school_share_in_test": 0.2,
+      "heldout_combo_fraction": 0.2,
+      "clusters_per_pair": 0.15,
+      "p_namesake": 0.45,
+      "p_neighbor_family": 0.35,
+      "p_twin": 0.12
+    },
+    "python": "3.11.9",
+    "pandas": "3.0.5",
+    "scikit_learn": "1.9.0",
+    "xgboost": "3.2.0",
+    "jellyfish": "1.2.1",
+    "joblib": "1.6.0",
+    "splits": {
+      "train": {
+        "rows": 16800,
+        "label_counts": {
+          "non_match": 11844,
+          "match": 3948,
+          "review": 1008
+        },
+        "binary_positive_prevalence_excluding_review": 0.25,
+        "missing_cells": {
+          "a_middle_name": 6783,
+          "a_dob": 1192,
+          "a_ward": 2122,
+          "a_guardian_name": 1837,
+          "a_guardian_phone": 2952,
+          "a_guardian_id_no": 1837,
+          "b_middle_name": 6926,
+          "b_dob": 1202,
+          "b_ward": 2186,
+          "b_guardian_name": 1909,
+          "b_guardian_phone": 2997,
+          "b_guardian_id_no": 1909
+        }
+      },
+      "val": {
+        "rows": 2400,
+        "label_counts": {
+          "non_match": 1692,
+          "match": 564,
+          "review": 144
+        },
+        "binary_positive_prevalence_excluding_review": 0.25,
+        "missing_cells": {
+          "a_middle_name": 966,
+          "a_dob": 173,
+          "a_ward": 294,
+          "a_guardian_name": 250,
+          "a_guardian_phone": 404,
+          "a_guardian_id_no": 250,
+          "b_middle_name": 959,
+          "b_dob": 174,
+          "b_ward": 269,
+          "b_guardian_name": 259,
+          "b_guardian_phone": 430,
+          "b_guardian_id_no": 259
+        }
+      },
+      "test": {
+        "rows": 4800,
+        "label_counts": {
+          "non_match": 3384,
+          "match": 1128,
+          "review": 288
+        },
+        "binary_positive_prevalence_excluding_review": 0.25,
+        "missing_cells": {
+          "a_middle_name": 1939,
+          "a_dob": 387,
+          "a_ward": 616,
+          "a_guardian_name": 606,
+          "a_guardian_phone": 899,
+          "a_guardian_id_no": 606,
+          "b_middle_name": 1935,
+          "b_dob": 350,
+          "b_ward": 612,
+          "b_guardian_name": 569,
+          "b_guardian_phone": 885,
+          "b_guardian_id_no": 569
+        }
+      }
+    },
+    "group_overlap_counts": {
+      "identity_overlap_train_val": 0,
+      "identity_overlap_train_test": 0,
+      "identity_overlap_val_test": 0,
+      "cluster_overlap_train_val": 0,
+      "cluster_overlap_train_test": 0,
+      "cluster_overlap_val_test": 0
+    },
+    "exact_pair_overlap_counts": {
+      "exact_pair_overlap_train_val": 0,
+      "exact_pair_overlap_train_test": 0,
+      "exact_pair_overlap_val_test": 0
+    },
+    "exact_pair_duplicates_within_split": {
+      "train": 0,
+      "val": 0,
+      "test": 0
+    },
+    "challenge_subsets": {
+      "test_contradiction": {
+        "rows": 609,
+        "label_counts": {
+          "review": 133,
+          "non_match": 367,
+          "match": 109
+        },
+        "subset_of_primary_test": true
+      },
+      "test_hard_negative": {
+        "rows": 1735,
+        "label_counts": {
+          "non_match": 1735
+        },
+        "subset_of_primary_test": true
+      },
+      "test_hard_positive": {
+        "rows": 632,
+        "label_counts": {
+          "match": 632
+        },
+        "subset_of_primary_test": true
+      },
+      "test_missing_data": {
+        "rows": 1321,
+        "label_counts": {
+          "match": 303,
+          "non_match": 871,
+          "review": 147
+        },
+        "subset_of_primary_test": true
+      },
+      "test_unseen_school": {
+        "rows": 1866,
+        "label_counts": {
+          "non_match": 1413,
+          "match": 365,
+          "review": 88
+        },
+        "subset_of_primary_test": true
+      },
+      "test_unseen_transform": {
+        "rows": 916,
+        "label_counts": {
+          "match": 247,
+          "non_match": 669
+        },
+        "subset_of_primary_test": true
+      }
+    },
+    "supplied_validation_flags": [],
+    "supplied_validation_report": {
+      "identity_overlap_train_val": 0,
+      "cluster_overlap_train_val": 0,
+      "identity_overlap_train_test": 0,
+      "cluster_overlap_train_test": 0,
+      "identity_overlap_val_test": 0,
+      "cluster_overlap_val_test": 0,
+      "heldout_combos_in_train_val": 0,
+      "heldout_schools_in_train_val": 0,
+      "class_counts": {
+        "train": {
+          "non_match": 11844,
+          "match": 3948,
+          "review": 1008
+        },
+        "val": {
+          "non_match": 1692,
+          "match": 564,
+          "review": 144
+        },
+        "test": {
+          "non_match": 3384,
+          "match": 1128,
+          "review": 288
+        }
+      },
+      "exact_duplicate_pairs_within_split": 0,
+      "exact_duplicate_pairs_across_splits": 0,
+      "identity_pair_reuse": {
+        "train": {
+          "max": 9,
+          "mean": 1.57
+        },
+        "val": {
+          "max": 10,
+          "mean": 1.61
+        },
+        "test": {
+          "max": 7,
+          "mean": 1.54
+        }
+      },
+      "mean_missing_fields_by_difficulty_and_class": {
+        "adversarial": {
+          "match": 3.48,
+          "non_match": 3.0
+        },
+        "easy": {
+          "match": 0.65,
+          "non_match": 0.66
+        },
+        "hard": {
+          "match": 2.32,
+          "non_match": 2.1
+        },
+        "moderate": {
+          "match": 1.36,
+          "non_match": 1.31
+        }
+      },
+      "class_distribution_tvd": {
+        "county": {
+          "observed_tvd": 0.021,
+          "shuffled_label_tvd_mean": 0.02
+        },
+        "application_year": {
+          "observed_tvd": 0.052,
+          "shuffled_label_tvd_mean": 0.007
+        },
+        "school": {
+          "observed_tvd": 0.149,
+          "shuffled_label_tvd_mean": 0.143
+        },
+        "surname": {
+          "observed_tvd": 0.144,
+          "shuffled_label_tvd_mean": 0.145
+        }
+      },
+      "single_feature_auc": {
+        "total_missing_fields (non-semantic)": 0.508,
+        "abs_year_gap (non-semantic)": 0.506,
+        "a_year_minus_b_year, signed (non-semantic)": 0.5,
+        "pair_id_hash (non-semantic)": 0.487,
+        "pair_id_first_hex_char (non-semantic)": 0.503,
+        "normalised_full_name_equal (semantic, informational)": 0.618,
+        "exact_dob_equal (semantic, informational)": 0.797,
+        "guardian_id_equal (semantic, informational)": 0.776
+      },
+      "flags": []
+    },
+    "private_metadata_used_as_features": false,
+    "missingness": {
+      "train": 33852,
+      "val": 4687,
+      "test": 9973
+    }
+  },
+  "feature_schema": [
+    "jaro_winkler",
+    "dob_match",
+    "school_match",
+    "guardian_match",
+    "name_both_present",
+    "dob_both_present",
+    "school_both_present",
+    "guardian_both_present",
+    "dob_conflict",
+    "guardian_conflict"
+  ],
+  "feature_schema_notes": {
+    "uses_private_metadata": false,
+    "uses_fields_not_in_current_app": false,
+    "guardian_id_mapping": "Archive guardian_id_no mapped experimentally to app guardian_id by name only; semantic equivalence is unverified.",
+    "school_values": "Generated school strings; not application-approved schools or official codes.",
+    "excluded_production_features": [
+      "upi_match",
+      "birth_certificate_match"
+    ],
+    "raw_name_parts": "Concatenated in first/middle/surname order to approximate app full_name."
+  },
+  "search": {
+    "method": "8 fixed configurations, chosen by validation average precision then F1@0.5",
+    "candidate_count": 8,
+    "random_seed": 42,
+    "duration_seconds": 36.3,
+    "selected_parameters": {
+      "n_estimators": 120,
+      "max_depth": 4,
+      "learning_rate": 0.1
+    }
+  },
+  "results": {
+    "full_name_jaro_winkler": {
+      "validation_threshold": 0.8594652406417113,
+      "validation_threshold_selection": {
+        "f1": 0.6253521126760564,
+        "recall": 0.7872340425531915,
+        "precision": 0.5186915887850467
+      },
+      "validation_at_selected_threshold": {
+        "n": 2256,
+        "positive_prevalence": 0.25,
+        "threshold": 0.8594652406417113,
+        "precision": 0.5186915887850467,
+        "recall": 0.7872340425531915,
+        "f1": 0.6253521126760564,
+        "average_precision_pr_auc": 0.5784069487772496,
+        "roc_auc": 0.8261766887983502,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 444,
+          "fp": 412,
+          "tn": 1280,
+          "fn": 120
+        },
+        "false_positive_rate": 0.24349881796690306,
+        "false_negative_rate": 0.2127659574468085
+      },
+      "test_at_default_0_5": {
+        "n": 4512,
+        "positive_prevalence": 0.25,
+        "threshold": 0.5,
+        "precision": 0.27261583721500365,
+        "recall": 0.9858156028368794,
+        "f1": 0.42711734203956214,
+        "average_precision_pr_auc": 0.5957351662538543,
+        "roc_auc": 0.8304885422430126,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 1112,
+          "fp": 2967,
+          "tn": 417,
+          "fn": 16
+        },
+        "false_positive_rate": 0.87677304964539,
+        "false_negative_rate": 0.014184397163120567
+      },
+      "test_at_validation_threshold": {
+        "n": 4512,
+        "positive_prevalence": 0.25,
+        "threshold": 0.8594652406417113,
+        "precision": 0.5232419547079857,
+        "recall": 0.7783687943262412,
+        "f1": 0.6258018531717747,
+        "average_precision_pr_auc": 0.5957351662538543,
+        "roc_auc": 0.8304885422430126,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 878,
+          "fp": 800,
+          "tn": 2584,
+          "fn": 250
+        },
+        "false_positive_rate": 0.2364066193853428,
+        "false_negative_rate": 0.22163120567375885
+      }
+    },
+    "transparent_rule": {
+      "rule": "exact parsed DOB AND (full-name Jaro-Winkler >= validation-selected cutoff OR exact guardian-ID similarity)",
+      "validation_name_cutoff": 0.75,
+      "validation_at_selected_cutoff": {
+        "n": 2256,
+        "positive_prevalence": 0.25,
+        "threshold": 0.5,
+        "precision": 0.8323699421965318,
+        "recall": 0.7659574468085106,
+        "f1": 0.7977839335180056,
+        "average_precision_pr_auc": 0.6960705940228755,
+        "roc_auc": 0.8572695035460992,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 432,
+          "fp": 87,
+          "tn": 1605,
+          "fn": 132
+        },
+        "false_positive_rate": 0.051418439716312055,
+        "false_negative_rate": 0.23404255319148937
+      },
+      "test_at_selected_cutoff": {
+        "n": 4512,
+        "positive_prevalence": 0.25,
+        "threshold": 0.5,
+        "precision": 0.8185328185328186,
+        "recall": 0.75177304964539,
+        "f1": 0.7837338262476895,
+        "average_precision_pr_auc": 0.6774076508119061,
+        "roc_auc": 0.8481087470449172,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 848,
+          "fp": 188,
+          "tn": 3196,
+          "fn": 280
+        },
+        "false_positive_rate": 0.05555555555555555,
+        "false_negative_rate": 0.24822695035460993
+      }
+    },
+    "xgboost": {
+      "validation_selected_parameters": {
+        "n_estimators": 120,
+        "max_depth": 4,
+        "learning_rate": 0.1
+      },
+      "validation_threshold": 0.41624149680137634,
+      "validation_threshold_selection": {
+        "f1": 0.8817204301075269,
+        "recall": 0.8723404255319149,
+        "precision": 0.8913043478260869
+      },
+      "validation_at_default_0_5": {
+        "n": 2256,
+        "positive_prevalence": 0.25,
+        "threshold": 0.5,
+        "precision": 0.9073359073359073,
+        "recall": 0.8333333333333334,
+        "f1": 0.8687615526802218,
+        "average_precision_pr_auc": 0.9505874238049641,
+        "roc_auc": 0.9770231837768053,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 470,
+          "fp": 48,
+          "tn": 1644,
+          "fn": 94
+        },
+        "false_positive_rate": 0.028368794326241134,
+        "false_negative_rate": 0.16666666666666666
+      },
+      "validation_at_selected_threshold": {
+        "n": 2256,
+        "positive_prevalence": 0.25,
+        "threshold": 0.41624149680137634,
+        "precision": 0.8913043478260869,
+        "recall": 0.8723404255319149,
+        "f1": 0.8817204301075269,
+        "average_precision_pr_auc": 0.9505874238049641,
+        "roc_auc": 0.9770231837768053,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 492,
+          "fp": 60,
+          "tn": 1632,
+          "fn": 72
+        },
+        "false_positive_rate": 0.03546099290780142,
+        "false_negative_rate": 0.1276595744680851
+      },
+      "test_at_default_0_5": {
+        "n": 4512,
+        "positive_prevalence": 0.25,
+        "threshold": 0.5,
+        "precision": 0.905982905982906,
+        "recall": 0.8457446808510638,
+        "f1": 0.874828060522696,
+        "average_precision_pr_auc": 0.9533266956323448,
+        "roc_auc": 0.9779322384856564,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 954,
+          "fp": 99,
+          "tn": 3285,
+          "fn": 174
+        },
+        "false_positive_rate": 0.02925531914893617,
+        "false_negative_rate": 0.15425531914893617
+      },
+      "test_at_validation_threshold": {
+        "n": 4512,
+        "positive_prevalence": 0.25,
+        "threshold": 0.41624149680137634,
+        "precision": 0.8741197183098591,
+        "recall": 0.8803191489361702,
+        "f1": 0.877208480565371,
+        "average_precision_pr_auc": 0.9533266956323448,
+        "roc_auc": 0.9779322384856564,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 993,
+          "fp": 143,
+          "tn": 3241,
+          "fn": 135
+        },
+        "false_positive_rate": 0.04225768321513002,
+        "false_negative_rate": 0.1196808510638298
+      },
+      "search_candidates": [
+        {
+          "n_estimators": 120,
+          "max_depth": 2,
+          "learning_rate": 0.05,
+          "validation_average_precision": 0.9487767907321732,
+          "validation_f1_at_0_5": 0.8685927306616962
+        },
+        {
+          "n_estimators": 120,
+          "max_depth": 2,
+          "learning_rate": 0.1,
+          "validation_average_precision": 0.9494892203676748,
+          "validation_f1_at_0_5": 0.8722222222222222
+        },
+        {
+          "n_estimators": 120,
+          "max_depth": 4,
+          "learning_rate": 0.05,
+          "validation_average_precision": 0.9499707062983971,
+          "validation_f1_at_0_5": 0.8640148011100832
+        },
+        {
+          "n_estimators": 120,
+          "max_depth": 4,
+          "learning_rate": 0.1,
+          "validation_average_precision": 0.9505874238049641,
+          "validation_f1_at_0_5": 0.8687615526802218
+        },
+        {
+          "n_estimators": 240,
+          "max_depth": 2,
+          "learning_rate": 0.05,
+          "validation_average_precision": 0.9500274292977052,
+          "validation_f1_at_0_5": 0.871177015755329
+        },
+        {
+          "n_estimators": 240,
+          "max_depth": 2,
+          "learning_rate": 0.1,
+          "validation_average_precision": 0.9503017569277601,
+          "validation_f1_at_0_5": 0.8698060941828255
+        },
+        {
+          "n_estimators": 240,
+          "max_depth": 4,
+          "learning_rate": 0.05,
+          "validation_average_precision": 0.9501275598299913,
+          "validation_f1_at_0_5": 0.866112650046168
+        },
+        {
+          "n_estimators": 240,
+          "max_depth": 4,
+          "learning_rate": 0.1,
+          "validation_average_precision": 0.9499237995791775,
+          "validation_f1_at_0_5": 0.8658649398704903
+        }
+      ]
+    }
+  },
+  "review_case_diagnostics": {
+    "n_review_annotations": 288,
+    "score_mean": 0.17696017026901245,
+    "score_median": 0.15010859072208405,
+    "fraction_between_0_4_and_0_6_descriptive_only": 0.017361111111111112,
+    "policy": "No UNCERTAIN thresholds selected; review annotation is an evidence-policy label, not binary identity truth. A validated abstention cost/policy is needed before operational cutoffs are chosen."
+  },
+  "challenge_subsets": {
+    "test_contradiction": {
+      "rows_including_review": 609,
+      "binary_rows": 476,
+      "overlaps_primary_test": true,
+      "at_validation_threshold": {
+        "n": 476,
+        "positive_prevalence": 0.22899159663865545,
+        "threshold": 0.41624149680137634,
+        "precision": 0.9021739130434783,
+        "recall": 0.7614678899082569,
+        "f1": 0.8258706467661692,
+        "average_precision_pr_auc": 0.912502566965869,
+        "roc_auc": 0.9514161437892159,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 83,
+          "fp": 9,
+          "tn": 358,
+          "fn": 26
+        },
+        "false_positive_rate": 0.02452316076294278,
+        "false_negative_rate": 0.23853211009174313
+      }
+    },
+    "test_hard_negative": {
+      "rows_including_review": 1735,
+      "binary_rows": 1735,
+      "overlaps_primary_test": true,
+      "at_validation_threshold": {
+        "n": 1735,
+        "positive_prevalence": 0.0,
+        "threshold": 0.41624149680137634,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "average_precision_pr_auc": null,
+        "roc_auc": null,
+        "ranking_metrics_note": "Undefined for this single-class slice.",
+        "confusion_matrix": {
+          "tp": 0,
+          "fp": 135,
+          "tn": 1600,
+          "fn": 0
+        },
+        "false_positive_rate": 0.07780979827089338,
+        "false_negative_rate": 0.0
+      }
+    },
+    "test_hard_positive": {
+      "rows_including_review": 632,
+      "binary_rows": 632,
+      "overlaps_primary_test": true,
+      "at_validation_threshold": {
+        "n": 632,
+        "positive_prevalence": 1.0,
+        "threshold": 0.41624149680137634,
+        "precision": 1.0,
+        "recall": 0.8069620253164557,
+        "f1": 0.8931698774080561,
+        "average_precision_pr_auc": null,
+        "roc_auc": null,
+        "ranking_metrics_note": "Undefined for this single-class slice.",
+        "confusion_matrix": {
+          "tp": 510,
+          "fp": 0,
+          "tn": 0,
+          "fn": 122
+        },
+        "false_positive_rate": 0.0,
+        "false_negative_rate": 0.1930379746835443
+      }
+    },
+    "test_missing_data": {
+      "rows_including_review": 1321,
+      "binary_rows": 1174,
+      "overlaps_primary_test": true,
+      "at_validation_threshold": {
+        "n": 1174,
+        "positive_prevalence": 0.2580919931856899,
+        "threshold": 0.41624149680137634,
+        "precision": 0.7272727272727273,
+        "recall": 0.7656765676567657,
+        "f1": 0.7459807073954984,
+        "average_precision_pr_auc": 0.8330983382044109,
+        "roc_auc": 0.9203373839106069,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 232,
+          "fp": 87,
+          "tn": 784,
+          "fn": 71
+        },
+        "false_positive_rate": 0.09988518943742825,
+        "false_negative_rate": 0.23432343234323433
+      }
+    },
+    "test_unseen_school": {
+      "rows_including_review": 1866,
+      "binary_rows": 1778,
+      "overlaps_primary_test": true,
+      "at_validation_threshold": {
+        "n": 1778,
+        "positive_prevalence": 0.20528683914510687,
+        "threshold": 0.41624149680137634,
+        "precision": 0.8675675675675676,
+        "recall": 0.8794520547945206,
+        "f1": 0.8734693877551021,
+        "average_precision_pr_auc": 0.9597845150288415,
+        "roc_auc": 0.9856217704485744,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 321,
+          "fp": 49,
+          "tn": 1364,
+          "fn": 44
+        },
+        "false_positive_rate": 0.03467799009200283,
+        "false_negative_rate": 0.12054794520547946
+      }
+    },
+    "test_unseen_transform": {
+      "rows_including_review": 916,
+      "binary_rows": 916,
+      "overlaps_primary_test": true,
+      "at_validation_threshold": {
+        "n": 916,
+        "positive_prevalence": 0.26965065502183405,
+        "threshold": 0.41624149680137634,
+        "precision": 0.8535564853556485,
+        "recall": 0.8259109311740891,
+        "f1": 0.8395061728395061,
+        "average_precision_pr_auc": 0.9292936928713852,
+        "roc_auc": 0.9652027619929436,
+        "ranking_metrics_note": null,
+        "confusion_matrix": {
+          "tp": 204,
+          "fp": 35,
+          "tn": 634,
+          "fn": 43
+        },
+        "false_positive_rate": 0.052316890881913304,
+        "false_negative_rate": 0.17408906882591094
+      }
+    }
+  },
+  "production_integration": "NOT COMPATIBLE / NOT INTEGRATED; active predictor/model/API unchanged.",
+  "limitations": [
+    "Synthetic case-control prevalence is 25% among non-review pairs; operational precision/PR-AUC will differ.",
+    "Challenge subsets overlap the primary test set.",
+    "Identity clusters are synthetic, and canonical pairs repeat within partitions.",
+    "Archive school values and guardian ID semantics are not verified against real SBMS data.",
+    "No real-data validation or uncertainty intervals were available.",
+    "The validation set selected hyperparameters and thresholds; the test set was used only after selection."
+  ],
+  "model_artifact": {
+    "path": "ml-service/experiments/sbms_dataset/artifacts/sbms_dataset_xgb_research_only.joblib",
+    "sha256": "72a005b030167512783c6371132d3a5024d4fff2845f95d9455a18696a448567",
+    "bytes": 183445,
+    "version": "sbms_dataset_xgb_research_only_v1"
+  }
+}

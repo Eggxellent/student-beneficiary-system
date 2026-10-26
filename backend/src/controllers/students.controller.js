@@ -3,11 +3,13 @@ const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
 const { exactNationalIdMatch, scorePairs, configuredThreshold } = require('../services/mlDuplicateReview');
 const QRCode = require('qrcode');
-const { randomUUID } = require('crypto');
+const { randomBytes } = require('crypto');
+const { buildStudentVerificationUrl } = require('../config/publicAppUrl');
 const { z } = require('zod');
 const { APPROVED_SCHOOLS } = require('../config/schools');
 const { cleanOptional, normalizeIdentifier, normalizeKenyanPhone, validIsoDate } = require('../services/studentRecordFormat');
 
+// QR tokens are intentionally excluded; the server generates the authoritative token.
 const studentSchema = z.object({
   full_name: z.string().trim().transform((value) => value.replace(/\s+/g, ' ')).pipe(z.string().min(2).max(255)),
   date_of_birth: z.preprocess(cleanOptional, z.string().refine(validIsoDate, 'Date of birth must use YYYY-MM-DD').optional()),
@@ -17,7 +19,6 @@ const studentSchema = z.object({
   birth_certificate_number: z.preprocess(normalizeIdentifier, z.string().max(100).optional()),
   national_id_number: z.preprocess(normalizeIdentifier, z.string().max(100).optional()),
   primary_phone: z.preprocess(normalizeKenyanPhone, z.string().regex(/^\+254[17]\d{8}$/, 'Phone must be a Kenyan mobile number').optional()),
-  qr_token: z.preprocess(cleanOptional, z.string().max(100).optional()),
 });
 
 function dateValue(value) {
@@ -45,13 +46,13 @@ async function create(req, res, next) {
       birth_certificate_number,
       national_id_number,
       primary_phone,
-      qr_token,
     } = validation.data;
 
     const submitted = { full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number, national_id_number };
     const threshold = configuredThreshold();
-    const token = qr_token || randomUUID();
-    const qrCode = await QRCode.toDataURL(token);
+    const token = randomBytes(32).toString('hex');
+    const verificationUrl = buildStudentVerificationUrl(token);
+    const qrCode = await QRCode.toDataURL(verificationUrl);
     const flags = [];
     const client = await pool.connect();
     let student;

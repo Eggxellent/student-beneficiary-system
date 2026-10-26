@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, CreditCard, Phone, QrCode } from "lucide-react";
+import { CalendarDays, CreditCard, Phone } from "lucide-react";
 import api from "../services/api";
 
-const emptyForm = { first_name: "", last_name: "", date_of_birth: "", school_code: "", national_id_number: "", primary_phone: "", qr_token: "" };
+const emptyForm = { first_name: "", last_name: "", date_of_birth: "", school_code: "", national_id_number: "", primary_phone: "" };
 
 export default function StudentRegistration() {
   const [form, setForm] = useState(emptyForm);
@@ -19,11 +19,6 @@ export default function StudentRegistration() {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
   }
 
-  function linkToken() {
-    setForm((current) => ({ ...current, qr_token: crypto.randomUUID() }));
-    setError("");
-  }
-
   async function handleSubmit(event) {
     event.preventDefault();
     setLoading(true);
@@ -36,7 +31,6 @@ export default function StudentRegistration() {
         school_code: form.school_code,
         national_id_number: form.national_id_number.trim(),
         primary_phone: form.primary_phone.trim(),
-        qr_token: form.qr_token,
       });
       setResult(response.data);
       setForm(emptyForm);
@@ -58,7 +52,7 @@ export default function StudentRegistration() {
         <section className={`mb-5 border p-4 text-sm ${critical ? "border-red-300 bg-red-50 text-red-900" : duplicate ? "border-amber-300 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-green-800"}`} role="status">
           <h2 className="font-bold">Student registered</h2>
           <p className="mt-1">{result.message}</p>
-          {duplicate && <p className="mt-2">A possible match was found. An administrator must review it before disbursement.</p>}
+          {duplicate && <p className="mt-2">Possible match found. Admin review is required before disbursement.</p>}
           {result.duplicate_flags?.filter((flag) => flag.review_reason).map((flag) => <p key={flag.id} className="mt-1">{flag.review_reason}</p>)}
           {result.qr_code && <img src={result.qr_code} alt="Student QR code" className="mt-3 h-36 w-36 border bg-white p-2" />}
         </section>
@@ -66,17 +60,17 @@ export default function StudentRegistration() {
 
       <section className="overflow-hidden border border-slate-300 bg-white">
         <header className="border-b border-slate-300 px-5 py-4">
-          <h1 className="text-[11px] font-bold tracking-[0.12em] text-slate-800">PANEL 01 — FIELD OFFICER REGISTRATION FORM</h1>
+          <h1 className="text-[11px] font-bold tracking-[0.12em] text-slate-800">Register Student</h1>
         </header>
         <form onSubmit={handleSubmit} className="mx-auto max-w-[340px] px-0 py-7 sm:py-8">
           {error && <div className="mb-4 border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</div>}
 
           <div className="mb-3 grid grid-cols-2 gap-3">
             <label className={labelClass}>First name
-              <input name="first_name" value={form.first_name} onChange={handleChange} className={fieldClass} placeholder="Enter first name" required />
+              <input name="first_name" value={form.first_name} onChange={handleChange} className={fieldClass} placeholder="First name" required />
             </label>
             <label className={labelClass}>Last name
-              <input name="last_name" value={form.last_name} onChange={handleChange} className={fieldClass} placeholder="Enter last name" required />
+              <input name="last_name" value={form.last_name} onChange={handleChange} className={fieldClass} placeholder="Last name" required />
             </label>
           </div>
 
@@ -86,7 +80,7 @@ export default function StudentRegistration() {
 
           <label className={`${labelClass} mb-3`}>Select school
             <select name="school_code" value={form.school_code} onChange={handleChange} className={fieldClass} required>
-              <option value="" disabled>Choose institution...</option>
+              <option value="" disabled>Choose school...</option>
               {schools.map((school) => <option key={school} value={school}>{school}</option>)}
             </select>
           </label>
@@ -99,11 +93,8 @@ export default function StudentRegistration() {
             <span className="relative block"><Phone size={14} className="pointer-events-none absolute left-2 top-[14px] text-slate-600" aria-hidden="true" /><input type="tel" name="primary_phone" value={form.primary_phone} onChange={handleChange} className={`${fieldClass} pl-8`} placeholder="+254712345678 or 0712345678" required /></span>
           </label>
 
-          <button type="button" onClick={linkToken} className={`mb-2 flex h-10 w-full items-center justify-center gap-2 border text-xs font-semibold ${form.qr_token ? "border-green-300 bg-green-50 text-green-800" : "border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100"}`}>
-            <QrCode size={15} aria-hidden="true" /> {form.qr_token ? "QR CODE TOKEN LINKED" : "LINK QR CODE TOKEN"}
-          </button>
-          <button type="submit" disabled={loading || !form.qr_token} className="h-10 w-full bg-sky-500 text-sm font-bold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60">
-            {loading ? "SUBMITTING..." : "SUBMIT REGISTRATION"}
+          <button type="submit" disabled={loading} className="h-10 w-full bg-sky-500 text-sm font-bold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60">
+            {loading ? "Registering..." : "Register Student"}
           </button>
         </form>
       </section>
