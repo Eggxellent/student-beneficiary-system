@@ -27,6 +27,7 @@ const unixPythonExecutable = path.join(
 const pythonExecutable = configuredPythonExecutable
   || (fs.existsSync(windowsPythonExecutable) ? windowsPythonExecutable : unixPythonExecutable);
 const predictor = path.join(__dirname, '..', '..', '..', 'ml-service', 'predict.py');
+const modelFile = path.join(__dirname, '..', '..', '..', 'ml-service', 'model', 'rf_duplicate_model.joblib');
 const DUPLICATE_SCORE_MAXIMUMS = Object.freeze({
   name: 0.08,
   date_of_birth: 0.04,
@@ -218,6 +219,9 @@ function checkDuplicates(features) {
 
 function ensurePredictor() {
   if (predictorProcess) return;
+  if (!fs.existsSync(modelFile)) {
+    throw new Error('Duplicate-detection model is not installed');
+  }
   predictorProcess = spawn(pythonExecutable, [predictor, '--server'], {
     windowsHide: true,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -251,8 +255,6 @@ function handlePredictorFailure(error) {
   pendingRequests = [];
   for (const request of requests) request.reject(error);
 }
-
-ensurePredictor();
 
 module.exports = {
   checkDuplicate,
