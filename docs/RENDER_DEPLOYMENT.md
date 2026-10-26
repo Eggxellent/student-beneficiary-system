@@ -15,7 +15,7 @@ This repository now has a Docker-based deployment path for a single Render web s
 - `DATABASE_URL`: the **internal** connection URL for the Render PostgreSQL database in the same workspace/region where possible
 - `JWT_SECRET`: a long, randomly generated secret; set it in Render's environment settings, never commit it
 - `NODE_ENV=production`
-- `CORS_ORIGIN`: optional comma-separated list of trusted frontend origins if the frontend is hosted separately. For the single-service deployment, frontend and API share an origin and this can remain unset.
+- `CORS_ORIGIN`: set this to the exact deployed frontend origin, for example `https://your-service.onrender.com`. If hosting the frontend separately, use its trusted origin(s), comma-separated. The current CORS middleware requires the request origin to be allowlisted.
 
 Do not commit credentials or paste database URLs into source control.
 
