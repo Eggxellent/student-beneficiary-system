@@ -2,6 +2,46 @@ const request = require("supertest");
 const app = require("../src/index");
 const pool = require("../src/config/db");
 const { buildDuplicateFeatures, calculateDuplicateScore } = require("../src/services/duplicateCheck");
+const { buildModelFeatures } = require("../src/controllers/students.controller");
+
+describe("ML feature contract", () => {
+  test("model input uses exact-match indicators for DOB, school, and guardian", () => {
+    const first = { date_of_birth: "2010-05-14", school_code: "SCH-01", guardian_id: "G-01" };
+    const second = { date_of_birth: "2010-05-15", school_code: "SCH-010", guardian_id: "G-010" };
+    const heuristicFeatures = {
+      jaro_winkler: 0.91,
+      dob_match: 0.997,
+      school_match: 0.95,
+      guardian_match: 0.95,
+      upi_match: 0,
+      birth_certificate_match: 0,
+    };
+
+    expect(buildModelFeatures(first, second, heuristicFeatures)).toEqual({
+      ...heuristicFeatures,
+      dob_match: 0,
+      school_match: 0,
+      guardian_match: 0,
+    });
+  });
+
+  test("model input preserves exact identifier match features", () => {
+    const features = {
+      jaro_winkler: 1,
+      dob_match: 1,
+      school_match: 1,
+      guardian_match: 1,
+      upi_match: 1,
+      birth_certificate_match: 0,
+    };
+
+    expect(buildModelFeatures(
+      { date_of_birth: "2010-05-14", school_code: "SCH-01", guardian_id: "G-01" },
+      { date_of_birth: "2010-05-14", school_code: "sch-01", guardian_id: "g-01" },
+      features
+    )).toMatchObject({ dob_match: 1, school_match: 1, guardian_match: 1, upi_match: 1 });
+  });
+});
 
 describe("Students API", () => {
   let token;
