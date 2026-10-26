@@ -23,6 +23,20 @@ const studentSchema = z.object({
   birth_certificate_number: z.string().optional()
 });
 
+function buildModelFeatures(first, second, heuristicFeatures) {
+  // Keep the ML feature contract aligned with ml-service/predict.py:
+  // name similarity plus exact-match indicators for DOB, school, guardian and IDs.
+  return {
+    ...heuristicFeatures,
+    dob_match: Number(Boolean(first.date_of_birth && second.date_of_birth
+      && dateValue(first.date_of_birth) === dateValue(second.date_of_birth))),
+    school_match: Number(Boolean(first.school_code && second.school_code
+      && String(first.school_code).trim().toLowerCase() === String(second.school_code).trim().toLowerCase())),
+    guardian_match: Number(Boolean(first.guardian_id && second.guardian_id
+      && String(first.guardian_id).trim().toLowerCase() === String(second.guardian_id).trim().toLowerCase())),
+  };
+}
+
 function dateValue(value) {
   if (!value) return null;
   return value instanceof Date ? value.toISOString().split('T')[0] : String(value).slice(0, 10);
@@ -94,7 +108,9 @@ async function create(req, res, next) {
       if (process.env.SBMS_DUPLICATE_SCORING === 'model') {
         // Explicit opt-in for model evaluation. Do not enable until a compatible,
         // evaluated model artifact is supplied and tested.
-        const predictions = await checkDuplicates(duplicateCandidates.map(({ features }) => features));
+        const predictions = await checkDuplicates(duplicateCandidates.map(({ candidate, features }) =>
+          buildModelFeatures({ date_of_birth, school_code, guardian_id }, candidate, features)
+        ));
         duplicateResults = duplicateCandidates.map(({ candidate, features }, index) => ({
           candidate,
           features,
@@ -155,4 +171,4 @@ async function get(req, res, next) {
   } catch (error) { next(error); }
 }
 
-module.exports = { create, list, get };
+module.exports = { create, list, get, buildModelFeatures };
