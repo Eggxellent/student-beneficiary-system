@@ -207,7 +207,12 @@ function checkDuplicate(features) {
 
 function checkDuplicates(features) {
   return new Promise((resolve, reject) => {
-    ensurePredictor();
+    try {
+      ensurePredictor();
+    } catch (error) {
+      reject(error);
+      return;
+    }
     pendingRequests.push({ resolve, reject });
     const preparedFeatures = features.map((feature) => ({
       ...feature,
