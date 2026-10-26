@@ -27,7 +27,7 @@ const unixPythonExecutable = path.join(
 const pythonExecutable = configuredPythonExecutable
   || (fs.existsSync(windowsPythonExecutable) ? windowsPythonExecutable : unixPythonExecutable);
 const predictor = path.join(__dirname, '..', '..', '..', 'ml-service', 'predict.py');
-const modelFile = path.join(__dirname, '..', '..', '..', 'ml-service', 'model', 'rf_duplicate_model.joblib');
+const modelFile = process.env.SBMS_MODEL_PATH || path.join(__dirname, '..', '..', '..', 'ml-service', 'model', 'rf_duplicate_model.joblib');
 const DUPLICATE_SCORE_MAXIMUMS = Object.freeze({
   name: 0.08,
   date_of_birth: 0.04,
