@@ -88,6 +88,13 @@ where they describe an earlier implementation state.
 
 **Next dependency:** in Render Dashboard, verify the existing PostgreSQL instance's status/version/plan/region, expiry, backup/restore posture, and migration state without sharing its URL; confirm that `experiment/febrl-record-linkage` is the intended deployment branch or choose another branch; choose the API plan. Then use the Render CLI (`render blueprints validate render.yaml`, v2.7.0+) or authenticated Validate Blueprint API, after the desired files exist on the selected remote branch. Review the exact two-service create/deploy plan and approve a staging Blueprint sync. Keep database migration and production deployment as separately approved actions.
 
+## Publication follow-up (2026-10-27)
+
+- Committed the staged SBMS remediation and deployment changes as `643d4d0` (`Prepare SBMS for Render deployment`, 43 files) and pushed to GitHub `dev` with a normal fast-forward push (`117ac78..643d4d0`). This includes the four ancestor commits already present in the local history. No force push, merge, Render sync, service creation, database connection, migration, or deployment occurred.
+- The local checkout remains on `experiment/febrl-record-linkage`; its working tree is clean, while that branch still reports five commits ahead of its own tracking ref because publication targeted `dev`.
+
+**Next dependency:** verify the existing PostgreSQL instance in Render Dashboard and run actual Blueprint validation against the `dev` branch using Render CLI/API. Then review the two-service create/deploy plan and explicitly approve a staging sync. Database migration and production deployment remain separate approvals.
+
 ## Priority issues and next steps
 
 1. **Render readiness:** review `render.yaml` with the selected branch and service names, verify the existing hosted PostgreSQL status, and confirm service cost/compute limits. The YAML has not been validated by Render and no services have been created.
