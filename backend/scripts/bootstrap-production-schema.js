@@ -36,18 +36,30 @@ async function bootstrapIfDatabaseIsEmpty() {
     `);
     const current = inventory.rows[0];
     if (current.users) {
-      return { status: 'already_initialized' };
+      await client.query(
+        'ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE'
+      );
+      return { status: 'already_initialized_or_activation_column_repaired' };
     }
 
     const existingCoreTables = Object.entries(current)
       .filter(([name, value]) => name !== 'users' && value !== null)
       .map(([name]) => name);
     if (existingCoreTables.length) {
-      throw new Error(
-        'Refusing automatic schema bootstrap because users is missing but existing SBMS tables were found: ' +
-        existingCoreTables.join(', ') +
-        '. Reconcile this partial database explicitly; no schema changes were made.'
-      );
+      // Repair the specific login blocker without altering existing tables or data.
+      await client.query(`
+        CREATE TABLE public.users (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          full_name VARCHAR(255) NOT NULL,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          role VARCHAR(50) NOT NULL DEFAULT 'field_officer',
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          CONSTRAINT users_role_supported_check CHECK (role IN ('admin', 'field_officer')),
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      return { status: 'users_table_created_for_existing_database', existingCoreTables };
     }
 
     await client.query('BEGIN');
