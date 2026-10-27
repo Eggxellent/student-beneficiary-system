@@ -27,7 +27,7 @@ async function provisionAdminIfConfigured(client) {
   if (!email || !password) {
     throw new Error('Admin bootstrap requires both SBMS_BOOTSTRAP_ADMIN_EMAIL and SBMS_BOOTSTRAP_ADMIN_PASSWORD.');
   }
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || password.length < 12 || password.length > 72) {
+  if (!email.includes('@') || email.startsWith('@') || email.endsWith('@') || !email.includes('.', email.indexOf('@')) || password.length < 12 || password.length > 72) {
     throw new Error('Admin bootstrap email is invalid or password must be 12–72 characters.');
   }
 
