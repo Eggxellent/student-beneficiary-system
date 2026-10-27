@@ -50,6 +50,14 @@ secret.
 Open `http://localhost:4174`. The frontend runs on port 4174, and the API runs
 on port 5000 and is proxied by Vite.
 
+API startup verifies the expected database name and the required `public.users`
+login columns before listening. `GET /api/health` is process liveness after
+startup; `GET /api/ready` checks the configured database identity and required
+application tables using the API pool. Readiness returns only
+`{"status":"ready"}` or a generic `503` response. Set
+`SBMS_EXPECTED_DATABASE_NAME` to the intended database name. Neither endpoint
+initializes the database.
+
 `PUBLIC_APP_URL` must be set to the frontend origin used in student QR links.
 For local development, use `http://localhost:4174`; production requires the
 public HTTPS origin and rejects localhost. Student QR images point to
@@ -78,6 +86,19 @@ baseline schema in `backend/src/db/schema.sql` and each file in
 verify the backup can be restored into a separate disposable database, and
 apply changes through an authorized operator. Never point restore or test
 commands at the production database.
+
+`npm run migrate --prefix backend` is restricted by its guard to loopback test
+databases named `sbms_test` or `sbms_test_runner`; it is not a production
+initializer. Do not execute `schema.sql` directly: it contains ALTER/DROP and
+data-normalization operations, and it does not create the legacy
+`beneficiaries` table used by the mounted compatibility API. For a separately
+confirmed empty database only, `npm run db:bootstrap-empty --prefix backend`
+requires explicit target approval and private initial-admin credentials; it
+rejects pre-existing public relations, routines, and custom types, and commits
+schema, automatic migrations, ledger, and bcrypt-hashed initial admin
+atomically. It does not repair partial schemas, and public admin registration
+remains disabled. Review the production database state and recovery plan before
+any production operation.
 
 Configure PostgreSQL libpq service entries named `sbms-backup` and
 `sbms-restore` in a permission-protected service file, with passwords in a

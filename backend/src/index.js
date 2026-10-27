@@ -2,6 +2,9 @@ require('dotenv').config();
 const { configureJwtSecret } = require('./config/jwtSecret');
 const express = require('express');
 const cors = require('cors');
+const pool = require('./config/db');
+const { checkDatabaseReadiness } = require('./services/databaseReadiness');
+const { assertAuthenticationSchemaReady } = require('./services/databaseStartup');
 const beneficiariesRouter = require('./routes/beneficiaries.routes');
 const authRouter = require('./routes/auth.routes');
 const auditRouter = require('./routes/audit.routes');
@@ -46,6 +49,21 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.get('/api/ready', async (req, res) => {
+  try {
+    const expectedDatabaseName = process.env.SBMS_EXPECTED_DATABASE_NAME
+      ?? (process.env.NODE_ENV === 'production' ? '' : undefined);
+    const { ready } = await checkDatabaseReadiness(
+      (query, values) => pool.query(query, values),
+      { expectedDatabaseName },
+    );
+    return res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready' });
+  } catch {
+    console.error('Database readiness check failed');
+    return res.status(503).json({ status: 'not_ready' });
+  }
+});
+
 app.use('/api/beneficiaries', beneficiariesRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/audit-logs', auditRouter);
@@ -64,17 +82,15 @@ app.use(errorHandler);
 if (require.main === module) {
   (async () => {
     configureJwtSecret(process.env.JWT_SECRET);
-    const { bootstrapIfDatabaseIsEmpty } = require('../scripts/bootstrap-production-schema');
-    const result = await bootstrapIfDatabaseIsEmpty();
-    console.log(`SBMS database schema status: ${result.status}`);
-    if (result.appliedMigrations) {
-      console.log(`SBMS schema bootstrap applied ${result.appliedMigrations} migrations.`);
-    }
+    await assertAuthenticationSchemaReady(
+      (query, values) => pool.query(query, values),
+      { expectedDatabaseName: process.env.SBMS_EXPECTED_DATABASE_NAME },
+    );
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
-  })().catch((error) => {
-    console.error('Startup blocked: SBMS database initialization failed:', error.message);
+  })().catch(() => {
+    console.error('Startup blocked: required SBMS authentication database is unavailable or incompatible.');
     process.exit(1);
   });
 }
