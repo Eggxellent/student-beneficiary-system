@@ -2,6 +2,7 @@ services:
   - type: web
     name: sbms-api
     runtime: docker
+    region: singapore
     plan: 1c-2g
     dockerfilePath: ./Dockerfile
     dockerContext: .
