@@ -3,7 +3,7 @@ services:
     name: sbms-api
     runtime: docker
     region: singapore
-    plan: 1c-2g
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     autoDeployTrigger: off
