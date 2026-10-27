@@ -14,6 +14,7 @@ RUN python3 -m venv /app/ml-service/.venv \
     && /app/ml-service/.venv/bin/python -m pip install --no-cache-dir -r /app/ml-service/requirements.txt
 
 COPY backend/src ./backend/src
+COPY backend/scripts ./backend/scripts
 COPY ml-service/predict.py ml-service/feature_engineering.py ./ml-service/
 COPY ml-service/model/xgb_duplicate_model.joblib ./ml-service/model/xgb_duplicate_model.joblib
 

@@ -62,9 +62,20 @@ app.use('/api/users', usersRouter);
 app.use(errorHandler);
 
 if (require.main === module) {
-  configureJwtSecret(process.env.JWT_SECRET);
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  (async () => {
+    configureJwtSecret(process.env.JWT_SECRET);
+    const { bootstrapIfDatabaseIsEmpty } = require('../scripts/bootstrap-production-schema');
+    const result = await bootstrapIfDatabaseIsEmpty();
+    console.log(`SBMS database schema status: ${result.status}`);
+    if (result.appliedMigrations) {
+      console.log(`SBMS schema bootstrap applied ${result.appliedMigrations} migrations.`);
+    }
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  })().catch((error) => {
+    console.error('Startup blocked: SBMS database initialization failed:', error.message);
+    process.exit(1);
   });
 }
 
