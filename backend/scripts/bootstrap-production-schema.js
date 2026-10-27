@@ -18,6 +18,44 @@ const migrations = [
   '20261024_add_user_activation_flag.sql',
 ];
 
+async function provisionAdminIfConfigured(client) {
+  const email = (process.env.SBMS_BOOTSTRAP_ADMIN_EMAIL || '').trim().toLowerCase();
+  const password = process.env.SBMS_BOOTSTRAP_ADMIN_PASSWORD || '';
+  const fullName = (process.env.SBMS_BOOTSTRAP_ADMIN_NAME || 'SBMS Administrator').trim();
+
+  if (!email && !password) return 'not_configured';
+  if (!email || !password) {
+    throw new Error('Admin bootstrap requires both SBMS_BOOTSTRAP_ADMIN_EMAIL and SBMS_BOOTSTRAP_ADMIN_PASSWORD.');
+  }
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || password.length < 12 || password.length > 72) {
+    throw new Error('Admin bootstrap email is invalid or password must be 12–72 characters.');
+  }
+
+  const { rows: admins } = await client.query(
+    "SELECT id FROM public.users WHERE role = 'admin' LIMIT 1"
+  );
+  if (admins.length) return 'existing_admin_preserved';
+
+  const { rows: matchingUsers } = await client.query(
+    'SELECT id, role FROM public.users WHERE email = $1 LIMIT 1',
+    [email]
+  );
+  if (matchingUsers.length) {
+    if (matchingUsers[0].role !== 'admin') {
+      throw new Error('Admin bootstrap email already belongs to a non-admin account; no role was changed.');
+    }
+    return 'existing_admin_preserved';
+  }
+
+  const bcrypt = require('bcrypt');
+  const passwordHash = await bcrypt.hash(password, 12);
+  await client.query(
+    "INSERT INTO public.users (full_name, email, password_hash, role, is_active) VALUES ($1, $2, $3, 'admin', TRUE)",
+    [fullName, email, passwordHash]
+  );
+  return 'admin_created';
+}
+
 // Only initialize a genuinely empty SBMS database. Never attempt to repair a
 // partially-created production schema automatically or rewrite existing records.
 async function bootstrapIfDatabaseIsEmpty() {
@@ -39,7 +77,8 @@ async function bootstrapIfDatabaseIsEmpty() {
       await client.query(
         'ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE'
       );
-      return { status: 'already_initialized_or_activation_column_repaired' };
+      const adminStatus = await provisionAdminIfConfigured(client);
+      return { status: 'already_initialized_or_activation_column_repaired', adminStatus };
     }
 
     const existingCoreTables = Object.entries(current)
@@ -59,7 +98,8 @@ async function bootstrapIfDatabaseIsEmpty() {
           created_at TIMESTAMP DEFAULT NOW()
         )
       `);
-      return { status: 'users_table_created_for_existing_database', existingCoreTables };
+      const adminStatus = await provisionAdminIfConfigured(client);
+      return { status: 'users_table_created_for_existing_database', existingCoreTables, adminStatus };
     }
 
     await client.query('BEGIN');
@@ -102,7 +142,8 @@ async function bootstrapIfDatabaseIsEmpty() {
     if (Object.values(verify.rows[0]).some((value) => value !== true)) {
       throw new Error('Schema bootstrap verification failed; refusing to start the API.');
     }
-    return { status: 'initialized', appliedMigrations: migrations.length };
+    const adminStatus = await provisionAdminIfConfigured(client);
+    return { status: 'initialized', appliedMigrations: migrations.length, adminStatus };
   } finally {
     await client.query("SELECT pg_advisory_unlock(hashtext('sbms.production.schema.bootstrap'))").catch(() => {});
     client.release();
