@@ -5,7 +5,7 @@ const {
   MIN_NAME_SIMILARITY,
 } = require('../services/duplicateCheck');
 const { getReviewThreshold } = require('../config/settings');
-const { scorePairs, exactNationalIdMatch, configuredThreshold } = require('../services/mlDuplicateReview');
+const { scorePairs, exactNationalIdMatch, exactReviewIdentifierMatches, configuredThreshold } = require('../services/mlDuplicateReview');
 const { z } = require('zod');
 const { APPROVED_SCHOOLS } = require('../config/schools');
 
@@ -146,7 +146,7 @@ async function evaluate(req, res) {
       model_features: prediction.results[index].features,
       model_version: prediction.model_version,
       review_threshold: threshold,
-      requires_human_review: prediction.results[index].score >= threshold || exactNationalIdMatch(first, second),
+      requires_human_review: prediction.results[index].score >= threshold || exactReviewIdentifierMatches(first, second).length > 0,
       score_is_calibrated_probability: false,
     }));
     return res.json({ results, model_version: prediction.model_version, review_threshold: threshold });
@@ -184,7 +184,7 @@ async function scanExisting(req, res, next) {
       candidatesScored += batch.length;
       const matches = batch.flatMap(({ first, second }, index) => {
         const result = prediction.results[index];
-        return result.score >= reviewThreshold || exactNationalIdMatch(first, second)
+        return result.score >= reviewThreshold || exactReviewIdentifierMatches(first, second).length > 0
           ? [{ first, second, score: result.score, features: result.features }]
           : [];
       });

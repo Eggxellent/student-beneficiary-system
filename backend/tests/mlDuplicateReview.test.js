@@ -3,7 +3,7 @@ jest.mock('../src/services/duplicateCheck', () => ({
 }));
 
 const { scoreStudentPairs } = require('../src/services/duplicateCheck');
-const { scorePairs, PREDICTION_BATCH_SIZE, exactNationalIdMatch } = require('../src/services/mlDuplicateReview');
+const { scorePairs, PREDICTION_BATCH_SIZE, exactNationalIdMatch, exactReviewIdentifierMatches } = require('../src/services/mlDuplicateReview');
 
 function scoredBatch(pairs) {
   return {
@@ -42,5 +42,16 @@ describe('ML duplicate review adapter', () => {
   test('rejects normalized exact national IDs as a separate review signal', () => {
     expect(exactNationalIdMatch({ national_id_number: '1234 5678-X' }, { national_id_number: '12345678-x' })).toBe(true);
     expect(exactNationalIdMatch({ national_id_number: 'UNKNOWN' }, { national_id_number: 'UNKNOWN' })).toBe(false);
+  });
+
+  test('treats exact UPI and birth-certificate identifiers as human-review signals', () => {
+    expect(exactReviewIdentifierMatches(
+      { upi: 'UPI-12345', birth_certificate_number: 'BC-2012-45678' },
+      { upi: 'upi 12345', birth_certificate_number: 'bc201245678' }
+    )).toEqual(['UPI', 'birth certificate number']);
+    expect(exactReviewIdentifierMatches(
+      { upi: 'UNKNOWN', birth_certificate_number: '000000' },
+      { upi: 'UNKNOWN', birth_certificate_number: '000000' }
+    )).toEqual([]);
   });
 });

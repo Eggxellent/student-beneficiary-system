@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
+const { getJwtSecret } = require('../config/jwtSecret');
 
 async function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -13,7 +14,7 @@ async function authenticateToken(req, res, next) {
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
     const userId = decoded.id || decoded.sub;
     if (!userId) return res.status(401).json({ message: 'Invalid authentication token' });
     // The signed role claim is retained for old-token compatibility, but the

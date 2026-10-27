@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS bursary_awards (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id UUID NOT NULL REFERENCES students(id) ON DELETE RESTRICT,
@@ -115,5 +113,3 @@ CREATE TABLE IF NOT EXISTS disbursement_reconciliation_events (
 
 CREATE INDEX IF NOT EXISTS disbursement_reconciliation_events_disbursement_idx
   ON disbursement_reconciliation_events(disbursement_id, created_at DESC);
-
-COMMIT;

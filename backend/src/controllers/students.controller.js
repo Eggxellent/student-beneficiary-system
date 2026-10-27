@@ -1,7 +1,7 @@
 const studentModel = require('../models/student.model');
 const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
-const { exactNationalIdMatch, scorePairs, configuredThreshold } = require('../services/mlDuplicateReview');
+const { exactReviewIdentifierMatches, scorePairs, configuredThreshold } = require('../services/mlDuplicateReview');
 const QRCode = require('qrcode');
 const { randomBytes } = require('crypto');
 const { buildStudentVerificationUrl } = require('../config/publicAppUrl');
@@ -76,9 +76,9 @@ async function create(req, res, next) {
       }
       const duplicateResults = candidates.flatMap((candidate, index) => {
         const result = prediction.results[index];
-        const nationalIdMatch = exactNationalIdMatch(submitted, candidate);
-        return result.score >= threshold || nationalIdMatch
-          ? [{ candidate, score: result.score, features: result.features }]
+        const exactIdentifiers = exactReviewIdentifierMatches(submitted, candidate);
+        return result.score >= threshold || exactIdentifiers.length > 0
+          ? [{ candidate, score: result.score, features: result.features, exactIdentifiers }]
           : [];
       });
       student = await studentModel.create({ full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number, national_id_number, primary_phone, qr_token: token }, client);
@@ -94,8 +94,8 @@ async function create(req, res, next) {
           ...rows[0],
           model_score: result.score,
           risk_level: 'review',
-          review_reason: exactNationalIdMatch(submitted, result.candidate)
-            ? 'Exact National ID match; an administrator must verify the source documents.'
+          review_reason: result.exactIdentifiers.length
+            ? `Exact ${result.exactIdentifiers.join(' and ')} match; an administrator must verify the source documents.`
             : `Model score met the provisional human-review cutoff (${threshold.toFixed(2)}).`,
         });
       }

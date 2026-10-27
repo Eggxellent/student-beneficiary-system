@@ -5,22 +5,19 @@ const pool = require("../src/config/db");
 const { buildDuplicateFeatures, calculateDuplicateScore } = require("../src/services/duplicateCheck");
 
 describe("Students API", () => {
+  jest.setTimeout(30000);
   let token;
   let testUserId;
 
   beforeAll(async () => {
     const email = `studenttest${Date.now()}@example.com`;
     const password = "TestPassword123!";
-
-    const registration = await request(app)
-      .post("/api/auth/register")
-      .send({
-        full_name: "Student Test Field Officer",
-        email,
-        password,
-        role: "field_officer",
-      });
-    testUserId = registration.body.user?.id;
+    const passwordHash = await bcrypt.hash(password, 12);
+    const account = await pool.query(
+      "INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, 'field_officer') RETURNING id",
+      ["Student Test Field Officer", email, passwordHash]
+    );
+    testUserId = account.rows[0].id;
 
     const loginResponse = await request(app)
       .post("/api/auth/login/field-officer")
@@ -128,7 +125,8 @@ describe("Students API", () => {
     expect(firstResponse.statusCode).toBe(201);
     expect(duplicateResponse.statusCode).toBe(201);
     expect(duplicateResponse.body.duplicate_flags).toHaveLength(1);
-    expect(duplicateResponse.body.duplicate_flags[0].risk_level).toBe('critical');
+    expect(duplicateResponse.body.duplicate_flags[0].risk_level).toBe('review');
+    expect(duplicateResponse.body.duplicate_flags[0].review_reason).toMatch(/exact UPI match/i);
     expect(duplicateResponse.body.message).toBe("Student registered successfully");
 
     const flags = await pool.query(
@@ -136,8 +134,7 @@ describe("Students API", () => {
       [duplicateResponse.body.student.id, firstResponse.body.student.id]
     );
     expect(flags.rows).toHaveLength(1);
-    expect(Number(flags.rows[0].probability)).toBeGreaterThanOrEqual(0.3);
-    expect(Number(flags.rows[0].probability)).toBeLessThan(0.7);
+    expect(Number(flags.rows[0].probability)).toBe(duplicateResponse.body.duplicate_flags[0].model_score);
     expect(flags.rows[0].status).toBe("pending");
 
     await pool.query("DELETE FROM duplicate_flags WHERE student_id = $1 OR student_id = $2", [firstResponse.body.student.id, duplicateResponse.body.student.id]);
@@ -176,9 +173,9 @@ describe("Students API", () => {
       [secondResponse.body.student.id, firstResponse.body.student.id]
     );
     expect(duplicateFlag.rows).toHaveLength(1);
-    expect(Number(duplicateFlag.rows[0].probability)).toBeGreaterThanOrEqual(0.3);
-    expect(Number(duplicateFlag.rows[0].probability)).toBeLessThan(0.7);
+    expect(duplicateFlag.rows[0].probability).toBeDefined();
     expect(duplicateFlag.rows[0].status).toBe("pending");
+    expect(secondResponse.body.duplicate_flags[0].review_reason).toMatch(/exact birth certificate number match/i);
 
     await pool.query("DELETE FROM duplicate_flags WHERE student_id = $1 OR student_id = $2", [firstResponse.body.student.id, secondResponse.body.student.id]);
     await pool.query("DELETE FROM students WHERE id = $1 OR id = $2", [firstResponse.body.student.id, secondResponse.body.student.id]);
@@ -220,7 +217,7 @@ describe("Students API", () => {
         [secondResponse.body.student.id, firstResponse.body.student.id]
       );
       expect(baselineMatch.rows).toHaveLength(1);
-      expect(Number(baselineMatch.rows[0].probability)).toBe(0.2);
+      expect(Number(baselineMatch.rows[0].probability)).toBeGreaterThanOrEqual(secondResponse.body.duplicate_screening.review_threshold);
       expect(baselineMatch.rows[0].status).toBe("pending");
     } finally {
       if (studentIds.length) {

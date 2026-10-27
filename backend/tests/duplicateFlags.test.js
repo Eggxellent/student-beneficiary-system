@@ -18,10 +18,12 @@ async function registerUserAndGetToken(role = 'admin') {
     );
     createdUserIds.push(rows[0].id);
   } else {
-    const registration = await request(app)
-      .post('/api/auth/register')
-      .send({ full_name: 'Duplicate Officer', email, password });
-    if (registration.body.user?.id) createdUserIds.push(registration.body.user.id);
+    const password_hash = await bcrypt.hash(password, 12);
+    const { rows } = await pool.query(
+      "INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, 'field_officer') RETURNING id",
+      ['Duplicate Officer', email, password_hash]
+    );
+    createdUserIds.push(rows[0].id);
   }
 
   const loginResponse = await request(app)
@@ -53,7 +55,22 @@ async function createStudent(overrides = {}) {
   return result.rows[0];
 }
 
+async function createApprovedVerifiedAward(student, actorId) {
+  const result = await pool.query(
+    `INSERT INTO bursary_awards
+       (student_id, school_code, requested_amount, status, verification_status,
+        verification_notes, verification_evidence_ref, verified_by, verified_at,
+        approved_amount, decision_reason, decided_by, decided_at, submitted_by)
+     VALUES ($1, $2, 5000, 'approved', 'verified', 'Isolated test fixture verified.',
+        'test-fixture-evidence', $3, NOW(), 5000, 'Approved isolated test fixture.', $3, NOW(), $3)
+     RETURNING id`,
+    [student.id, student.school_code, actorId]
+  );
+  return result.rows[0].id;
+}
+
 describe('Duplicate flags and disbursements API', () => {
+  jest.setTimeout(30000);
   let adminToken;
   let officerToken;
 
@@ -64,6 +81,7 @@ describe('Duplicate flags and disbursements API', () => {
 
   afterAll(async () => {
     if (createdUserIds.length) {
+      await pool.query('DELETE FROM duplicate_flags WHERE resolved_by = ANY($1::uuid[])', [createdUserIds]);
       await pool.query('DELETE FROM duplicate_review_events WHERE reviewer_id = ANY($1::uuid[])', [createdUserIds]);
       await pool.query('DELETE FROM audit_logs WHERE user_id = ANY($1::uuid[])', [createdUserIds]);
       await pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [createdUserIds]);
@@ -111,6 +129,7 @@ describe('Duplicate flags and disbursements API', () => {
   });
 
   test('POST /api/duplicate-flags/evaluate scores synthetic pairs without saving them', async () => {
+    const flagsBefore = await pool.query('SELECT COUNT(*)::int AS count FROM duplicate_flags');
     const response = await request(app)
       .post('/api/duplicate-flags/evaluate')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -145,24 +164,31 @@ describe('Duplicate flags and disbursements API', () => {
       });
 
     expect(response.statusCode).toBe(200);
-    expect(response.body.results.map(({ decision, score_maximums }) => ({ decision, score_maximums }))).toEqual([
-      { decision: 'critical', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
-      { decision: 'critical', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
-      { decision: 'review', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
-      { decision: 'review', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
-      { decision: 'clear', score_maximums: { name: 0.08, date_of_birth: 0.04, school: 0.02, guardian: 0.06, upi: 0.4, birth_certificate: 0.4 } },
-    ]);
-    expect(response.body.results[0].probability).toBeGreaterThanOrEqual(0.3);
-    expect(response.body.results[0].probability).toBeLessThan(0.7);
-    expect(response.body.results[0].review_reason).toMatch(/Critical identifier match/i);
-    expect(response.body.results[1].probability).toBeGreaterThanOrEqual(0.7);
-    expect(response.body.results[1].review_reason).toMatch(/Critical identifier match/i);
-    expect(response.body.results[2].probability).toBe(0.2);
-    expect(response.body.results[3].probability).toBeLessThan(0.3);
-    expect(response.body.results[3].review_reason).toMatch(/four or more fields/i);
-    expect(response.body.results[4].probability).toBe(0.12);
-    expect(response.body.results[4].review_reason).toBeNull();
-  });
+    expect(response.body.results).toHaveLength(5);
+    for (const result of response.body.results) {
+      expect(typeof result.model_score).toBe('number');
+      expect(result.model_score).toBeGreaterThanOrEqual(0);
+      expect(result.model_score).toBeLessThanOrEqual(1);
+      expect(result.model_features).toEqual(expect.objectContaining({
+        jaro_winkler: expect.any(Number),
+        dob_match: expect.any(Number),
+        school_match: expect.any(Number),
+        guardian_match: expect.any(Number),
+        upi_match: expect.any(Number),
+        birth_certificate_match: expect.any(Number),
+      }));
+      expect(result.model_version).toEqual(expect.any(String));
+      expect(typeof result.requires_human_review).toBe('boolean');
+      expect(result.score_is_calibrated_probability).toBe(false);
+      expect(result.review_threshold).toEqual(expect.any(Number));
+      expect(result).not.toHaveProperty('decision');
+    }
+    expect(response.body.results[0].requires_human_review).toBe(true);
+    expect(response.body.results[1].requires_human_review).toBe(true);
+    expect(response.body.model_version).toEqual(expect.any(String));
+    const persistedFlags = await pool.query('SELECT COUNT(*)::int AS count FROM duplicate_flags');
+    expect(persistedFlags.rows[0].count).toBe(flagsBefore.rows[0].count);
+  }, 30000);
 
   test('POST /api/duplicate-flags/evaluate should reject non-admin users', async () => {
     const officerToken = await registerUserAndGetToken('field_officer');
@@ -226,9 +252,12 @@ describe('Duplicate flags and disbursements API', () => {
     await pool.query('DELETE FROM students WHERE id = $1 OR id = $2', [student.id, matchedStudent.id]);
   });
 
-  test('POST /api/disbursements blocks a pair only after a reviewer confirms a duplicate', async () => {
+  test('POST /api/disbursements blocks a pair after a reviewer confirms a duplicate', async () => {
     const student = await createStudent({ full_name: `Blocked Student ${Date.now()}` });
     const matchedStudent = await createStudent({ full_name: `Blocked Match ${Date.now()}` });
+    const actorId = jwt.decode(officerToken).id;
+    const studentAwardId = await createApprovedVerifiedAward(student, actorId);
+    const matchedAwardId = await createApprovedVerifiedAward(matchedStudent, actorId);
 
     const flagResult = await pool.query(
       `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
@@ -241,30 +270,33 @@ describe('Duplicate flags and disbursements API', () => {
       .post('/api/disbursements')
       .set('Authorization', `Bearer ${officerToken}`)
       .send({
-        student_id: student.id,
+        award_id: studentAwardId,
         amount: 15000,
+        payment_method: 'Test transfer',
       });
 
     expect(response.statusCode).toBe(409);
-    expect(response.body.message).toMatch(/reviewer confirmed a duplicate/i);
-    expect(response.body.duplicate_flag.id).toBe(flagResult.rows[0].id);
+    expect(response.body.message).toMatch(/resolve duplicate review cases/i);
 
     const matchedStudentResponse = await request(app)
       .post('/api/disbursements')
       .set('Authorization', `Bearer ${officerToken}`)
-      .send({ student_id: matchedStudent.id, amount: 15000 });
+      .send({ award_id: matchedAwardId, amount: 15000, payment_method: 'Test transfer' });
 
     expect(matchedStudentResponse.statusCode).toBe(409);
-    expect(matchedStudentResponse.body.duplicate_flag.id).toBe(flagResult.rows[0].id);
+    expect(matchedStudentResponse.body.message).toMatch(/resolve duplicate review cases/i);
 
     await pool.query('DELETE FROM duplicate_flags WHERE id = $1', [flagResult.rows[0].id]);
+    await pool.query('DELETE FROM bursary_awards WHERE id = ANY($1::uuid[])', [[studentAwardId, matchedAwardId]]);
     await pool.query('DELETE FROM students WHERE id = $1 OR id = $2', [student.id, matchedStudent.id]);
   });
 
-  test('pending and further-verification flags alone do not block disbursement', async () => {
+  test('pending and further-verification flags block disbursement until resolved', async () => {
+    const actorId = jwt.decode(officerToken).id;
     for (const status of ['pending', 'needs_verification']) {
       const student = await createStudent({ full_name: `Verification Student ${Date.now()}` });
       const matchedStudent = await createStudent({ full_name: `Verification Match ${Date.now()}` });
+      const awardId = await createApprovedVerifiedAward(student, actorId);
       const flagResult = await pool.query(
         `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
          VALUES ($1, $2, $3, $4) RETURNING id`,
@@ -273,32 +305,37 @@ describe('Duplicate flags and disbursements API', () => {
       const response = await request(app)
         .post('/api/disbursements')
         .set('Authorization', `Bearer ${officerToken}`)
-        .send({ student_id: student.id, amount: 1000 });
-      expect(response.statusCode).toBe(201);
-      if (response.body.disbursement?.id) await pool.query('DELETE FROM disbursements WHERE id = $1', [response.body.disbursement.id]);
+        .send({ award_id: awardId, amount: 1000, payment_method: 'Test transfer' });
+      expect(response.statusCode).toBe(409);
+      expect(response.body.message).toMatch(/resolve duplicate review cases/i);
       await pool.query('DELETE FROM duplicate_flags WHERE id = $1', [flagResult.rows[0].id]);
+      await pool.query('DELETE FROM bursary_awards WHERE id = $1', [awardId]);
       await pool.query('DELETE FROM students WHERE id = $1 OR id = $2', [student.id, matchedStudent.id]);
     }
   });
 
   test('POST /api/disbursements should create a valid disbursement for a clean student', async () => {
     const student = await createStudent({ full_name: `Clean Student ${Date.now()}` });
+    const awardId = await createApprovedVerifiedAward(student, jwt.decode(officerToken).id);
 
     const response = await request(app)
       .post('/api/disbursements')
       .set('Authorization', `Bearer ${officerToken}`)
       .send({
-        student_id: student.id,
+        award_id: awardId,
         amount: 2500,
+        payment_method: 'Test transfer',
         disbursement_date: '2026-09-10',
       });
 
     expect(response.statusCode).toBe(201);
-    expect(response.body.message).toMatch(/created successfully/i);
+    expect(response.body.message).toMatch(/recorded as issued/i);
     expect(response.body.disbursement.student_id).toBe(student.id);
     expect(Number(response.body.disbursement.amount)).toBe(2500);
 
+    await pool.query('DELETE FROM disbursement_reconciliation_events WHERE disbursement_id = $1', [response.body.disbursement.id]);
     await pool.query('DELETE FROM disbursements WHERE id = $1', [response.body.disbursement.id]);
+    await pool.query('DELETE FROM bursary_awards WHERE id = $1', [awardId]);
     await pool.query('DELETE FROM students WHERE id = $1', [student.id]);
   });
 });

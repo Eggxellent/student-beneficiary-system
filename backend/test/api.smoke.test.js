@@ -46,30 +46,6 @@ test('admin can authenticate, read admin resources, and is blocked from field wo
   assert.equal(flags.response.status, 200);
 });
 
-test('duplicate flagged student disbursement is blocked', async () => {
-  const login = await request('/api/auth/login/admin', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(credentials),
-  });
-  assert.equal(login.response.status, 200);
-
-  const response = await request('/api/disbursements', {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${login.body.token}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      student_id: process.env.DUPLICATE_STUDENT_ID || '0bcb3ec5-c744-4318-9071-4b8bd139c400',
-      amount: 15000,
-    }),
-  });
-
-  assert.equal(response.response.status, 409);
-  assert.match(response.body.message, /duplicate issue/i);
-});
-
 test('report export validates its date range', async () => {
   const login = await request('/api/auth/login/admin', {
     method: 'POST',

@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const Auth = require('../models/auth.model');
 const pool = require('../config/db');
+const { getJwtSecret } = require('../config/jwtSecret');
 
 const registerSchema = z.object({
   full_name: z.string().trim().min(2).max(255),
@@ -53,7 +54,7 @@ async function login(req, res, expectedRole) {
 
   const token = jwt.sign(
     { id: user.id, role: user.role },
-    process.env.JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: '8h' }
   );
 

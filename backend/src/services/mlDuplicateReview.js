@@ -3,6 +3,11 @@ const { getMlReviewScoreThreshold } = require('../config/settings');
 
 const PREDICTION_BATCH_SIZE = 200;
 const MISSING_IDENTIFIERS = new Set(['', 'na', 'nan', 'none', 'null', 'unknown', 'notprovided', 'notavailable']);
+const REVIEW_IDENTIFIER_FIELDS = Object.freeze([
+  ['upi', 'UPI'],
+  ['birth_certificate_number', 'birth certificate number'],
+  ['national_id_number', 'National ID'],
+]);
 
 function configuredThreshold() {
   const value = getMlReviewScoreThreshold();
@@ -22,9 +27,15 @@ function usableIdentifier(value) {
 }
 
 function exactNationalIdMatch(first, second) {
-  const left = normalizedIdentifier(first.national_id_number);
-  const right = normalizedIdentifier(second.national_id_number);
-  return usableIdentifier(left) && usableIdentifier(right) && left === right;
+  return exactReviewIdentifierMatches(first, second).includes('National ID');
+}
+
+function exactReviewIdentifierMatches(first, second) {
+  return REVIEW_IDENTIFIER_FIELDS.flatMap(([field, label]) => {
+    const left = normalizedIdentifier(first[field]);
+    const right = normalizedIdentifier(second[field]);
+    return usableIdentifier(left) && usableIdentifier(right) && left === right ? [label] : [];
+  });
 }
 
 async function scorePairs(pairs) {
@@ -64,5 +75,6 @@ module.exports = {
   PREDICTION_BATCH_SIZE,
   configuredThreshold,
   exactNationalIdMatch,
+  exactReviewIdentifierMatches,
   scorePairs,
 };

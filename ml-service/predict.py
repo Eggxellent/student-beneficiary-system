@@ -12,13 +12,25 @@ import pandas as pd
 from feature_engineering import FEATURE_COLUMNS, build_pair_features
 
 MODEL_FILE = Path(__file__).parent / "model" / "xgb_duplicate_model.joblib"
+
+
+def load_model(model_file: Path = MODEL_FILE):
+    """Load the production XGBoost artifact from the requested path only."""
+    try:
+        return joblib.load(model_file)
+    except FileNotFoundError as error:
+        raise FileNotFoundError(f"Production XGBoost model artifact is missing: {model_file}") from error
+    except Exception as error:
+        raise RuntimeError(f"Production XGBoost model artifact could not be loaded: {model_file}") from error
+
+
 def build_features(first: dict[str, str], second: dict[str, str]) -> list[float]:
     features = build_pair_features(first, second)
     return [features[column] for column in FEATURE_COLUMNS]
 
 
 def predict(data: dict[str, float | int], model=None) -> dict[str, float]:
-    model = model or joblib.load(MODEL_FILE)
+    model = model if model is not None else load_model()
     feature_values = {column: data[column] for column in FEATURE_COLUMNS}
     feature_frame = pd.DataFrame([feature_values], columns=FEATURE_COLUMNS)
     probability = float(model.predict_proba(feature_frame)[0][1])
@@ -26,7 +38,7 @@ def predict(data: dict[str, float | int], model=None) -> dict[str, float]:
 
 
 def predict_many(data: list[dict[str, float | int]], model=None) -> list[dict[str, float]]:
-    model = model or joblib.load(MODEL_FILE)
+    model = model if model is not None else load_model()
     feature_frame = pd.DataFrame(
         [{column: item[column] for column in FEATURE_COLUMNS} for item in data],
         columns=FEATURE_COLUMNS,
@@ -70,7 +82,7 @@ def predict_duplicate(first: dict[str, str], second: dict[str, str], threshold: 
 
 
 def run_server() -> None:
-    model = joblib.load(MODEL_FILE)
+    model = load_model()
     version = model_version()
     for line in sys.stdin:
         if not line.strip():

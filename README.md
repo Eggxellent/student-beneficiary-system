@@ -33,14 +33,35 @@ start the API and frontend together from this directory:
 npm start
 ```
 
+Generate `JWT_SECRET` locally from at least 32 cryptographically random bytes:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Put the generated value in the ignored `backend/.env` file for local development
+or in the hosting platform's secret manager. Do not put the value in source
+control, documentation, or logs. The API refuses to start if the setting is
+missing, shorter than 32 bytes, or an obvious placeholder. This length check
+cannot prove that a manually supplied value is random; generate it with the
+command above. Use a separate test-only secret for tests, never the production
+secret.
+
 Open `http://localhost:4174`. The frontend runs on port 4174, and the API runs
 on port 5000 and is proxied by Vite.
 
 `PUBLIC_APP_URL` must be set to the frontend origin used in student QR links.
 For local development, use `http://localhost:4174`; production requires the
 public HTTPS origin and rejects localhost. Student QR images point to
-`/verify#token=...`. The verification page and endpoint are a later implementation
-phase, so new QR links cannot be verified until those are added.
+`/verify#token=...`. The frontend has a public `/verify` page that removes the
+token fragment from the visible URL and posts the token to `/api/verify`. The
+backend accepts a single 64-character lowercase hexadecimal token and returns
+whether a matching student record exists; invalid tokens return `found: false`,
+and lookup failures return a generic temporary-service error. The page does not
+display student details. This confirms record existence only, not identity,
+eligibility, award approval, or payment. The rate limiter is in-process and does
+not share counts across API instances. This source behavior has not been runtime
+verified in this environment.
 
 `CORS_ORIGINS` is a comma-separated allowlist of bare frontend origins (scheme
 and host, without a path). The example allows only the local Vite origin. In
@@ -109,5 +130,5 @@ applied as part of this change.
 
 The verification evidence reference is a generic audit pointer, not an upload
 or document checklist. Required document types and an independent school
-account flow remain policy decisions. QR verification is deferred; the current
-student QR code does not confirm award, identity, clearance, or receipt.
+account flow remain policy decisions. QR verification checks only whether a
+student record exists; it does not confirm identity, award, clearance, or receipt.

@@ -1,0 +1,15 @@
+.git
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.env
+**/.env.*
+frontend
+ml-service/data
+ml-service/evaluation
+ml-service/experiments
+ml-service/reports
+ml-service/training
+ml-service/model/*.joblib
+!ml-service/model/xgb_duplicate_model.joblib

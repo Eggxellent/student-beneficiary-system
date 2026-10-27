@@ -1,4 +1,5 @@
 require('dotenv').config();
+const { configureJwtSecret } = require('./config/jwtSecret');
 const express = require('express');
 const cors = require('cors');
 const beneficiariesRouter = require('./routes/beneficiaries.routes');
@@ -61,6 +62,7 @@ app.use('/api/users', usersRouter);
 app.use(errorHandler);
 
 if (require.main === module) {
+  configureJwtSecret(process.env.JWT_SECRET);
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });

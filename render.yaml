@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: sbms-api
+    runtime: docker
+    plan: 1c-2g
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeployTrigger: off
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PUBLIC_APP_URL
+        fromService:
+          type: web
+          name: sbms-frontend
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CORS_ORIGINS
+        fromService:
+          type: web
+          name: sbms-frontend
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - type: web
+    name: sbms-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeployTrigger: off
+    envVars:
+      - key: VITE_API_ORIGIN
+        fromService:
+          type: web
+          name: sbms-api
+          envVarKey: RENDER_EXTERNAL_URL
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
