@@ -29,4 +29,10 @@ function loginRateLimit(req, res, next) {
   next();
 }
 
+function resetLoginRateLimit() {
+  attemptsByIp.clear();
+  lastCleanup = 0;
+}
+
 module.exports = loginRateLimit;
+module.exports.reset = resetLoginRateLimit;

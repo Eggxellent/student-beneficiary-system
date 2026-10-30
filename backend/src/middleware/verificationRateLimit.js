@@ -16,8 +16,10 @@ function verificationRateLimit(req, res, next) {
     lastCleanup = now;
   }
 
-  // Use the direct socket address; forwarded headers are not trusted here.
-  const ip = req.socket?.remoteAddress || 'unknown';
+  // req.ip equals the direct socket address unless the operator configured
+  // TRUST_PROXY_HOPS, in which case Express resolves the real client from the forwarded
+  // headers. Forwarded headers are never trusted by default.
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   let state = requestsByIp.get(ip);
 
   if (!state && requestsByIp.size >= MAX_TRACKED_IPS) {
@@ -37,4 +39,10 @@ function verificationRateLimit(req, res, next) {
   next();
 }
 
+function resetVerificationRateLimit() {
+  requestsByIp.clear();
+  lastCleanup = 0;
+}
+
 module.exports = verificationRateLimit;
+module.exports.reset = resetVerificationRateLimit;

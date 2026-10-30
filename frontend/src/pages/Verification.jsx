@@ -1,31 +1,42 @@
 import { useEffect, useRef, useState } from "react";
 
+function readToken() {
+  return new URLSearchParams(window.location.hash.slice(1)).get("token");
+}
+
+function stripTokenFromUrl() {
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${window.location.pathname}${window.location.search}`
+  );
+}
+
 export default function Verification() {
   const [status, setStatus] = useState("loading");
-  const started = useRef(false);
+
+  // Captured during render, because the effect below removes the token from the URL and
+  // React StrictMode runs effects twice in development: reading the hash inside the effect
+  // would leave the second pass with nothing to verify.
+  const initialToken = useRef(readToken());
+  const [token, setToken] = useState(initialToken.current);
 
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-
-    const params = new URLSearchParams(window.location.hash.slice(1));
-    const token = params.get("token");
-
     try {
-      window.history.replaceState(
-        window.history.state,
-        "",
-        `${window.location.pathname}${window.location.search}`
-      );
+      stripTokenFromUrl();
     } catch {
       setStatus("invalid");
-      return;
     }
+  }, []);
 
+  useEffect(() => {
     if (!token) {
       setStatus("invalid");
-      return;
+      return undefined;
     }
+
+    let cancelled = false;
+    setStatus("loading");
 
     fetch("/api/verify", {
       method: "POST",
@@ -33,6 +44,7 @@ export default function Verification() {
       body: JSON.stringify({ token }),
     })
       .then(async (response) => {
+        if (cancelled) return;
         if (response.status === 503 || response.status >= 500 || response.status === 429) {
           setStatus("service-error");
           return;
@@ -42,9 +54,33 @@ export default function Verification() {
           return;
         }
         const result = await response.json();
-        setStatus(result.found === true ? "found" : "invalid");
+        if (!cancelled) setStatus(result.found === true ? "found" : "invalid");
       })
-      .catch(() => setStatus("service-error"));
+      .catch(() => {
+        if (!cancelled) setStatus("service-error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  // A second code opened in the same tab only changes the fragment, so the component is not
+  // remounted and the previous result would otherwise stay on screen.
+  useEffect(() => {
+    function handleHashChange() {
+      const next = readToken();
+      try {
+        stripTokenFromUrl();
+      } catch {
+        setStatus("invalid");
+        return;
+      }
+      setToken(next);
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
   const message = {

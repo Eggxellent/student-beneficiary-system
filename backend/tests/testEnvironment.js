@@ -8,3 +8,12 @@
 if (!process.env.PUBLIC_APP_URL) {
   process.env.PUBLIC_APP_URL = 'https://sbms-test-fixture.ac.ke';
 }
+
+// The sign-in and verification limiters keep in-process counters keyed by client IP, and
+// every supertest request arrives from 127.0.0.1. Because setupFiles runs once per test
+// file, resetting here gives each file its own budget: otherwise adding one more suite
+// that signs in pushes unrelated suites over the production limit and they fail with 429.
+// The limits themselves are unchanged, and tests that assert the limit still exhaust it
+// within their own file.
+require('../src/middleware/loginRateLimit').reset();
+require('../src/middleware/verificationRateLimit').reset();
