@@ -1,0 +1,1716 @@
+{
+  "provenance": {
+    "model_file": "C:\\Users\\user\\Desktop\\Projects\\student-beneficiary-system\\ml-service\\model\\xgb_duplicate_model.joblib",
+    "model_sha256": "6ec9f2a3cbe6ed0dcf80c79b15f47364d9f4f7bd3e27da25c690d0436bb0a6f9",
+    "model_version": "xgboost:6ec9f2a3cbe6ed0dcf80c79b15f47364d9f4f7bd3e27da25c690d0436bb0a6f9",
+    "holdout_file": "C:\\Users\\user\\Desktop\\Projects\\student-beneficiary-system\\ml-service\\evaluation\\realistic_pairs_holdout.csv",
+    "holdout_sha256": "533e1fc7e23afb5a1dd0000e03d0b8555659714249f8ae6f9fcecbca894935ee",
+    "scoring_path": "predict.predict_pairs -> feature_engineering.build_pair_features",
+    "score_resolution": "4 decimals, as returned by predict.predict_many",
+    "seed": 20261030,
+    "simulations": 2000,
+    "registry_sizes": [
+      100,
+      500,
+      1000,
+      5000
+    ],
+    "cutoffs": [
+      0.3,
+      0.35,
+      0.4,
+      0.45,
+      0.5,
+      0.55,
+      0.6,
+      0.65,
+      0.7,
+      0.75,
+      0.8,
+      0.85,
+      0.9,
+      0.95
+    ]
+  },
+  "label_coverage": {
+    "synthetic_holdout_file": "realistic_pairs_holdout.csv",
+    "adjudicated_files_found": [],
+    "adjudicated_pair_count": 0,
+    "template_path": "evaluation/reviewed_pairs_template.csv (header only, no rows)",
+    "consequence": "No human-adjudicated pairs exist, so precision, recall and miss rate below describe the synthetic generator only. They must not be reported as real-world accuracy. Decision D5 is what unblocks a real evaluation."
+  },
+  "feature_consistency": {
+    "checked": true,
+    "max_abs_difference": 0.0,
+    "rows_differing": 0,
+    "exact_match": true
+  },
+  "pair_level": {
+    "ranking": {
+      "pairs": 12000,
+      "positives": 6000,
+      "negatives": 6000,
+      "positive_base_rate": 0.5,
+      "roc_auc": 0.9685,
+      "average_precision_pr_auc": 0.9727,
+      "pr_auc_baseline": 0.5,
+      "best_f1_cutoff": 0.35,
+      "best_f1": 0.9065,
+      "score_summary": {
+        "positives_median": 0.9805,
+        "positives_5th_percentile": 0.2309,
+        "negatives_median": 0.0538,
+        "negatives_95th_percentile": 0.6224,
+        "negatives_max": 0.9935
+      },
+      "precision_recall_curve_by_cutoff": {
+        "0.30": {
+          "precision": 0.8694,
+          "recall": 0.9352,
+          "f1": 0.9011
+        },
+        "0.35": {
+          "precision": 0.8868,
+          "recall": 0.9272,
+          "f1": 0.9065
+        },
+        "0.40": {
+          "precision": 0.8985,
+          "recall": 0.9132,
+          "f1": 0.9058
+        },
+        "0.45": {
+          "precision": 0.9071,
+          "recall": 0.9052,
+          "f1": 0.9061
+        },
+        "0.50": {
+          "precision": 0.9204,
+          "recall": 0.8927,
+          "f1": 0.9063
+        },
+        "0.55": {
+          "precision": 0.9321,
+          "recall": 0.8792,
+          "f1": 0.9049
+        },
+        "0.60": {
+          "precision": 0.9404,
+          "recall": 0.8647,
+          "f1": 0.9009
+        },
+        "0.65": {
+          "precision": 0.9525,
+          "recall": 0.8463,
+          "f1": 0.8963
+        },
+        "0.70": {
+          "precision": 0.9607,
+          "recall": 0.827,
+          "f1": 0.8888
+        },
+        "0.75": {
+          "precision": 0.97,
+          "recall": 0.8042,
+          "f1": 0.8794
+        },
+        "0.80": {
+          "precision": 0.9791,
+          "recall": 0.7797,
+          "f1": 0.8681
+        },
+        "0.85": {
+          "precision": 0.9844,
+          "recall": 0.745,
+          "f1": 0.8481
+        },
+        "0.90": {
+          "precision": 0.9899,
+          "recall": 0.7037,
+          "f1": 0.8226
+        },
+        "0.95": {
+          "precision": 0.9939,
+          "recall": 0.6285,
+          "f1": 0.7701
+        }
+      }
+    },
+    "thresholds": [
+      {
+        "cutoff": 0.3,
+        "true_positives": 5611,
+        "false_positives": 843,
+        "false_negatives": 389,
+        "true_negatives": 5157,
+        "precision": 0.8694,
+        "recall": 0.9352,
+        "miss_rate": 0.0648,
+        "f1": 0.9011,
+        "specificity": 0.8595,
+        "false_positive_rate": 0.1405,
+        "review_share_of_pairs": 0.5378,
+        "youden_j": 0.7947
+      },
+      {
+        "cutoff": 0.35,
+        "true_positives": 5563,
+        "false_positives": 710,
+        "false_negatives": 437,
+        "true_negatives": 5290,
+        "precision": 0.8868,
+        "recall": 0.9272,
+        "miss_rate": 0.0728,
+        "f1": 0.9065,
+        "specificity": 0.8817,
+        "false_positive_rate": 0.1183,
+        "review_share_of_pairs": 0.5228,
+        "youden_j": 0.8088
+      },
+      {
+        "cutoff": 0.4,
+        "true_positives": 5479,
+        "false_positives": 619,
+        "false_negatives": 521,
+        "true_negatives": 5381,
+        "precision": 0.8985,
+        "recall": 0.9132,
+        "miss_rate": 0.0868,
+        "f1": 0.9058,
+        "specificity": 0.8968,
+        "false_positive_rate": 0.1032,
+        "review_share_of_pairs": 0.5082,
+        "youden_j": 0.81
+      },
+      {
+        "cutoff": 0.45,
+        "true_positives": 5431,
+        "false_positives": 556,
+        "false_negatives": 569,
+        "true_negatives": 5444,
+        "precision": 0.9071,
+        "recall": 0.9052,
+        "miss_rate": 0.0948,
+        "f1": 0.9061,
+        "specificity": 0.9073,
+        "false_positive_rate": 0.0927,
+        "review_share_of_pairs": 0.4989,
+        "youden_j": 0.8125
+      },
+      {
+        "cutoff": 0.5,
+        "true_positives": 5356,
+        "false_positives": 463,
+        "false_negatives": 644,
+        "true_negatives": 5537,
+        "precision": 0.9204,
+        "recall": 0.8927,
+        "miss_rate": 0.1073,
+        "f1": 0.9063,
+        "specificity": 0.9228,
+        "false_positive_rate": 0.0772,
+        "review_share_of_pairs": 0.4849,
+        "youden_j": 0.8155
+      },
+      {
+        "cutoff": 0.55,
+        "true_positives": 5275,
+        "false_positives": 384,
+        "false_negatives": 725,
+        "true_negatives": 5616,
+        "precision": 0.9321,
+        "recall": 0.8792,
+        "miss_rate": 0.1208,
+        "f1": 0.9049,
+        "specificity": 0.936,
+        "false_positive_rate": 0.064,
+        "review_share_of_pairs": 0.4716,
+        "youden_j": 0.8152
+      },
+      {
+        "cutoff": 0.6,
+        "true_positives": 5188,
+        "false_positives": 329,
+        "false_negatives": 812,
+        "true_negatives": 5671,
+        "precision": 0.9404,
+        "recall": 0.8647,
+        "miss_rate": 0.1353,
+        "f1": 0.9009,
+        "specificity": 0.9452,
+        "false_positive_rate": 0.0548,
+        "review_share_of_pairs": 0.4597,
+        "youden_j": 0.8098
+      },
+      {
+        "cutoff": 0.65,
+        "true_positives": 5078,
+        "false_positives": 253,
+        "false_negatives": 922,
+        "true_negatives": 5747,
+        "precision": 0.9525,
+        "recall": 0.8463,
+        "miss_rate": 0.1537,
+        "f1": 0.8963,
+        "specificity": 0.9578,
+        "false_positive_rate": 0.0422,
+        "review_share_of_pairs": 0.4442,
+        "youden_j": 0.8042
+      },
+      {
+        "cutoff": 0.7,
+        "true_positives": 4962,
+        "false_positives": 203,
+        "false_negatives": 1038,
+        "true_negatives": 5797,
+        "precision": 0.9607,
+        "recall": 0.827,
+        "miss_rate": 0.173,
+        "f1": 0.8888,
+        "specificity": 0.9662,
+        "false_positive_rate": 0.0338,
+        "review_share_of_pairs": 0.4304,
+        "youden_j": 0.7932
+      },
+      {
+        "cutoff": 0.75,
+        "true_positives": 4825,
+        "false_positives": 149,
+        "false_negatives": 1175,
+        "true_negatives": 5851,
+        "precision": 0.97,
+        "recall": 0.8042,
+        "miss_rate": 0.1958,
+        "f1": 0.8794,
+        "specificity": 0.9752,
+        "false_positive_rate": 0.0248,
+        "review_share_of_pairs": 0.4145,
+        "youden_j": 0.7793
+      },
+      {
+        "cutoff": 0.8,
+        "true_positives": 4678,
+        "false_positives": 100,
+        "false_negatives": 1322,
+        "true_negatives": 5900,
+        "precision": 0.9791,
+        "recall": 0.7797,
+        "miss_rate": 0.2203,
+        "f1": 0.8681,
+        "specificity": 0.9833,
+        "false_positive_rate": 0.0167,
+        "review_share_of_pairs": 0.3982,
+        "youden_j": 0.763
+      },
+      {
+        "cutoff": 0.85,
+        "true_positives": 4470,
+        "false_positives": 71,
+        "false_negatives": 1530,
+        "true_negatives": 5929,
+        "precision": 0.9844,
+        "recall": 0.745,
+        "miss_rate": 0.255,
+        "f1": 0.8481,
+        "specificity": 0.9882,
+        "false_positive_rate": 0.0118,
+        "review_share_of_pairs": 0.3784,
+        "youden_j": 0.7332
+      },
+      {
+        "cutoff": 0.9,
+        "true_positives": 4222,
+        "false_positives": 43,
+        "false_negatives": 1778,
+        "true_negatives": 5957,
+        "precision": 0.9899,
+        "recall": 0.7037,
+        "miss_rate": 0.2963,
+        "f1": 0.8226,
+        "specificity": 0.9928,
+        "false_positive_rate": 0.0072,
+        "review_share_of_pairs": 0.3554,
+        "youden_j": 0.6965
+      },
+      {
+        "cutoff": 0.95,
+        "true_positives": 3771,
+        "false_positives": 23,
+        "false_negatives": 2229,
+        "true_negatives": 5977,
+        "precision": 0.9939,
+        "recall": 0.6285,
+        "miss_rate": 0.3715,
+        "f1": 0.7701,
+        "specificity": 0.9962,
+        "false_positive_rate": 0.0038,
+        "review_share_of_pairs": 0.3162,
+        "youden_j": 0.6247
+      }
+    ]
+  },
+  "negatives_by_scenario": {
+    "common_name_same_school": {
+      "pairs": 1492,
+      "flag_rate_at_0.50": 0.0784,
+      "flag_rate_at_0.60": 0.0489,
+      "flag_rate_at_0.70": 0.0241
+    },
+    "identifier_collision": {
+      "pairs": 1202,
+      "flag_rate_at_0.50": 0.2221,
+      "flag_rate_at_0.60": 0.1755,
+      "flag_rate_at_0.70": 0.1198
+    },
+    "siblings_shared_household": {
+      "pairs": 1532,
+      "flag_rate_at_0.50": 0.0098,
+      "flag_rate_at_0.60": 0.0059,
+      "flag_rate_at_0.70": 0.0033
+    },
+    "twins_or_close_age": {
+      "pairs": 1150,
+      "flag_rate_at_0.50": 0.0557,
+      "flag_rate_at_0.60": 0.0313,
+      "flag_rate_at_0.70": 0.0157
+    },
+    "unrelated_candidate": {
+      "pairs": 624,
+      "flag_rate_at_0.50": 0.0,
+      "flag_rate_at_0.60": 0.0,
+      "flag_rate_at_0.70": 0.0
+    },
+    "positive:repeat_application": {
+      "pairs": 6000,
+      "recall_at_0.50": 0.8927,
+      "recall_at_0.60": 0.8647,
+      "recall_at_0.70": 0.827
+    }
+  },
+  "registration_level": {
+    "policy": "top-1 (one flag per registration, best candidate only)",
+    "hard_negatives": {
+      "registry_100": {
+        "registry_size": 100,
+        "simulations": 2000,
+        "by_cutoff": {
+          "0.30": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.676,
+            "masked_by_top1_rate": 0.2745,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.0495,
+            "missed_for_review_rate": 0.324
+          },
+          "0.35": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.676,
+            "masked_by_top1_rate": 0.267,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.057,
+            "missed_for_review_rate": 0.324
+          },
+          "0.40": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.676,
+            "masked_by_top1_rate": 0.257,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.067,
+            "missed_for_review_rate": 0.324
+          },
+          "0.45": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.676,
+            "masked_by_top1_rate": 0.249,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.075,
+            "missed_for_review_rate": 0.324
+          },
+          "0.50": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.676,
+            "masked_by_top1_rate": 0.2375,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.0865,
+            "missed_for_review_rate": 0.324
+          },
+          "0.55": {
+            "nuisance_flag_rate": 0.999,
+            "nuisance_flags_per_1000_registrations": 999.0,
+            "clean_detection_rate": 0.676,
+            "masked_by_top1_rate": 0.221,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.103,
+            "missed_for_review_rate": 0.324
+          },
+          "0.60": {
+            "nuisance_flag_rate": 0.998,
+            "nuisance_flags_per_1000_registrations": 998.0,
+            "clean_detection_rate": 0.676,
+            "masked_by_top1_rate": 0.209,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.115,
+            "missed_for_review_rate": 0.324
+          },
+          "0.65": {
+            "nuisance_flag_rate": 0.983,
+            "nuisance_flags_per_1000_registrations": 983.0,
+            "clean_detection_rate": 0.6755,
+            "masked_by_top1_rate": 0.1955,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.129,
+            "missed_for_review_rate": 0.3245
+          },
+          "0.70": {
+            "nuisance_flag_rate": 0.9615,
+            "nuisance_flags_per_1000_registrations": 961.5,
+            "clean_detection_rate": 0.675,
+            "masked_by_top1_rate": 0.1695,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1555,
+            "missed_for_review_rate": 0.325
+          },
+          "0.75": {
+            "nuisance_flag_rate": 0.9195,
+            "nuisance_flags_per_1000_registrations": 919.5,
+            "clean_detection_rate": 0.6745,
+            "masked_by_top1_rate": 0.144,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1815,
+            "missed_for_review_rate": 0.3255
+          },
+          "0.80": {
+            "nuisance_flag_rate": 0.807,
+            "nuisance_flags_per_1000_registrations": 807.0,
+            "clean_detection_rate": 0.671,
+            "masked_by_top1_rate": 0.12,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.209,
+            "missed_for_review_rate": 0.329
+          },
+          "0.85": {
+            "nuisance_flag_rate": 0.6955,
+            "nuisance_flags_per_1000_registrations": 695.5,
+            "clean_detection_rate": 0.6585,
+            "masked_by_top1_rate": 0.0945,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.247,
+            "missed_for_review_rate": 0.3415
+          },
+          "0.90": {
+            "nuisance_flag_rate": 0.502,
+            "nuisance_flags_per_1000_registrations": 502.0,
+            "clean_detection_rate": 0.642,
+            "masked_by_top1_rate": 0.0675,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.2905,
+            "missed_for_review_rate": 0.358
+          },
+          "0.95": {
+            "nuisance_flag_rate": 0.325,
+            "nuisance_flags_per_1000_registrations": 325.0,
+            "clean_detection_rate": 0.5955,
+            "masked_by_top1_rate": 0.0375,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.367,
+            "missed_for_review_rate": 0.4045
+          }
+        }
+      },
+      "registry_500": {
+        "registry_size": 500,
+        "simulations": 2000,
+        "by_cutoff": {
+          "0.30": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.514,
+            "masked_by_top1_rate": 0.429,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.0545,
+            "missed_for_review_rate": 0.486
+          },
+          "0.35": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.514,
+            "masked_by_top1_rate": 0.418,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.0655,
+            "missed_for_review_rate": 0.486
+          },
+          "0.40": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.514,
+            "masked_by_top1_rate": 0.4015,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.082,
+            "missed_for_review_rate": 0.486
+          },
+          "0.45": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.514,
+            "masked_by_top1_rate": 0.3925,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.091,
+            "missed_for_review_rate": 0.486
+          },
+          "0.50": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.514,
+            "masked_by_top1_rate": 0.379,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.1045,
+            "missed_for_review_rate": 0.486
+          },
+          "0.55": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.514,
+            "masked_by_top1_rate": 0.363,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.1205,
+            "missed_for_review_rate": 0.486
+          },
+          "0.60": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.514,
+            "masked_by_top1_rate": 0.348,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.1355,
+            "missed_for_review_rate": 0.486
+          },
+          "0.65": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.514,
+            "masked_by_top1_rate": 0.3285,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.155,
+            "missed_for_review_rate": 0.486
+          },
+          "0.70": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.514,
+            "masked_by_top1_rate": 0.3055,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.178,
+            "missed_for_review_rate": 0.486
+          },
+          "0.75": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.514,
+            "masked_by_top1_rate": 0.2825,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.201,
+            "missed_for_review_rate": 0.486
+          },
+          "0.80": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.514,
+            "masked_by_top1_rate": 0.252,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.2315,
+            "missed_for_review_rate": 0.486
+          },
+          "0.85": {
+            "nuisance_flag_rate": 0.998,
+            "nuisance_flags_per_1000_registrations": 998.0,
+            "clean_detection_rate": 0.5135,
+            "masked_by_top1_rate": 0.216,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.268,
+            "missed_for_review_rate": 0.4865
+          },
+          "0.90": {
+            "nuisance_flag_rate": 0.972,
+            "nuisance_flags_per_1000_registrations": 972.0,
+            "clean_detection_rate": 0.5135,
+            "masked_by_top1_rate": 0.1825,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.3015,
+            "missed_for_review_rate": 0.4865
+          },
+          "0.95": {
+            "nuisance_flag_rate": 0.8555,
+            "nuisance_flags_per_1000_registrations": 855.5,
+            "clean_detection_rate": 0.5075,
+            "masked_by_top1_rate": 0.112,
+            "exact_tie_rate": 0.0025,
+            "below_cutoff_rate": 0.378,
+            "missed_for_review_rate": 0.4925
+          }
+        }
+      },
+      "registry_1000": {
+        "registry_size": 1000,
+        "simulations": 2000,
+        "by_cutoff": {
+          "0.30": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.49,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.0675,
+            "missed_for_review_rate": 0.558
+          },
+          "0.35": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.48,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.0775,
+            "missed_for_review_rate": 0.558
+          },
+          "0.40": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.469,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.0885,
+            "missed_for_review_rate": 0.558
+          },
+          "0.45": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.462,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.0955,
+            "missed_for_review_rate": 0.558
+          },
+          "0.50": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.4495,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.108,
+            "missed_for_review_rate": 0.558
+          },
+          "0.55": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.4365,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.121,
+            "missed_for_review_rate": 0.558
+          },
+          "0.60": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.423,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.1345,
+            "missed_for_review_rate": 0.558
+          },
+          "0.65": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.402,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.1555,
+            "missed_for_review_rate": 0.558
+          },
+          "0.70": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.382,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.1755,
+            "missed_for_review_rate": 0.558
+          },
+          "0.75": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.357,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.2005,
+            "missed_for_review_rate": 0.558
+          },
+          "0.80": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.332,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.2255,
+            "missed_for_review_rate": 0.558
+          },
+          "0.85": {
+            "nuisance_flag_rate": 0.9995,
+            "nuisance_flags_per_1000_registrations": 999.5,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.3025,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.255,
+            "missed_for_review_rate": 0.558
+          },
+          "0.90": {
+            "nuisance_flag_rate": 0.9985,
+            "nuisance_flags_per_1000_registrations": 998.5,
+            "clean_detection_rate": 0.442,
+            "masked_by_top1_rate": 0.2555,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.302,
+            "missed_for_review_rate": 0.558
+          },
+          "0.95": {
+            "nuisance_flag_rate": 0.975,
+            "nuisance_flags_per_1000_registrations": 975.0,
+            "clean_detection_rate": 0.4415,
+            "masked_by_top1_rate": 0.181,
+            "exact_tie_rate": 0.0005,
+            "below_cutoff_rate": 0.377,
+            "missed_for_review_rate": 0.5585
+          }
+        }
+      },
+      "registry_5000": {
+        "registry_size": 5000,
+        "simulations": 2000,
+        "by_cutoff": {
+          "0.30": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.567,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.0635,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.35": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.558,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.0725,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.40": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.5485,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.082,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.45": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.5365,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.094,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.50": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.526,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.1045,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.55": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.5115,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.119,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.60": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.4975,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.133,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.65": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.4835,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.147,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.70": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.4595,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.171,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.75": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.4395,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.191,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.80": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.411,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.2195,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.85": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.3685,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.262,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.90": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.331,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.2995,
+            "missed_for_review_rate": 0.6345
+          },
+          "0.95": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.3655,
+            "masked_by_top1_rate": 0.2625,
+            "exact_tie_rate": 0.004,
+            "below_cutoff_rate": 0.368,
+            "missed_for_review_rate": 0.6345
+          }
+        }
+      }
+    },
+    "easy_negatives": {
+      "registry_100": {
+        "registry_size": 100,
+        "simulations": 2000,
+        "by_cutoff": {
+          "0.30": {
+            "nuisance_flag_rate": 0.5,
+            "nuisance_flags_per_1000_registrations": 500.0,
+            "clean_detection_rate": 0.912,
+            "masked_by_top1_rate": 0.025,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.063,
+            "missed_for_review_rate": 0.088
+          },
+          "0.35": {
+            "nuisance_flag_rate": 0.357,
+            "nuisance_flags_per_1000_registrations": 357.0,
+            "clean_detection_rate": 0.908,
+            "masked_by_top1_rate": 0.022,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.07,
+            "missed_for_review_rate": 0.092
+          },
+          "0.40": {
+            "nuisance_flag_rate": 0.357,
+            "nuisance_flags_per_1000_registrations": 357.0,
+            "clean_detection_rate": 0.8985,
+            "masked_by_top1_rate": 0.0175,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.084,
+            "missed_for_review_rate": 0.1015
+          },
+          "0.45": {
+            "nuisance_flag_rate": 0.293,
+            "nuisance_flags_per_1000_registrations": 293.0,
+            "clean_detection_rate": 0.894,
+            "masked_by_top1_rate": 0.0145,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.0915,
+            "missed_for_review_rate": 0.106
+          },
+          "0.50": {
+            "nuisance_flag_rate": 0.293,
+            "nuisance_flags_per_1000_registrations": 293.0,
+            "clean_detection_rate": 0.883,
+            "masked_by_top1_rate": 0.0115,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1055,
+            "missed_for_review_rate": 0.117
+          },
+          "0.55": {
+            "nuisance_flag_rate": 0.2175,
+            "nuisance_flags_per_1000_registrations": 217.5,
+            "clean_detection_rate": 0.8725,
+            "masked_by_top1_rate": 0.0105,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.117,
+            "missed_for_review_rate": 0.1275
+          },
+          "0.60": {
+            "nuisance_flag_rate": 0.1775,
+            "nuisance_flags_per_1000_registrations": 177.5,
+            "clean_detection_rate": 0.8635,
+            "masked_by_top1_rate": 0.007,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1295,
+            "missed_for_review_rate": 0.1365
+          },
+          "0.65": {
+            "nuisance_flag_rate": 0.096,
+            "nuisance_flags_per_1000_registrations": 96.0,
+            "clean_detection_rate": 0.8395,
+            "masked_by_top1_rate": 0.004,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1565,
+            "missed_for_review_rate": 0.1605
+          },
+          "0.70": {
+            "nuisance_flag_rate": 0.096,
+            "nuisance_flags_per_1000_registrations": 96.0,
+            "clean_detection_rate": 0.8235,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1765,
+            "missed_for_review_rate": 0.1765
+          },
+          "0.75": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.8025,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1975,
+            "missed_for_review_rate": 0.1975
+          },
+          "0.80": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.781,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.219,
+            "missed_for_review_rate": 0.219
+          },
+          "0.85": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.742,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.258,
+            "missed_for_review_rate": 0.258
+          },
+          "0.90": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.7015,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.2985,
+            "missed_for_review_rate": 0.2985
+          },
+          "0.95": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.627,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.373,
+            "missed_for_review_rate": 0.373
+          }
+        }
+      },
+      "registry_500": {
+        "registry_size": 500,
+        "simulations": 2000,
+        "by_cutoff": {
+          "0.30": {
+            "nuisance_flag_rate": 0.97,
+            "nuisance_flags_per_1000_registrations": 970.0,
+            "clean_detection_rate": 0.854,
+            "masked_by_top1_rate": 0.08,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.066,
+            "missed_for_review_rate": 0.146
+          },
+          "0.35": {
+            "nuisance_flag_rate": 0.895,
+            "nuisance_flags_per_1000_registrations": 895.0,
+            "clean_detection_rate": 0.8535,
+            "masked_by_top1_rate": 0.0725,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.074,
+            "missed_for_review_rate": 0.1465
+          },
+          "0.40": {
+            "nuisance_flag_rate": 0.895,
+            "nuisance_flags_per_1000_registrations": 895.0,
+            "clean_detection_rate": 0.8515,
+            "masked_by_top1_rate": 0.062,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.0865,
+            "missed_for_review_rate": 0.1485
+          },
+          "0.45": {
+            "nuisance_flag_rate": 0.8195,
+            "nuisance_flags_per_1000_registrations": 819.5,
+            "clean_detection_rate": 0.851,
+            "masked_by_top1_rate": 0.0525,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.0965,
+            "missed_for_review_rate": 0.149
+          },
+          "0.50": {
+            "nuisance_flag_rate": 0.8195,
+            "nuisance_flags_per_1000_registrations": 819.5,
+            "clean_detection_rate": 0.848,
+            "masked_by_top1_rate": 0.0415,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1105,
+            "missed_for_review_rate": 0.152
+          },
+          "0.55": {
+            "nuisance_flag_rate": 0.7,
+            "nuisance_flags_per_1000_registrations": 700.0,
+            "clean_detection_rate": 0.8435,
+            "masked_by_top1_rate": 0.032,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1245,
+            "missed_for_review_rate": 0.1565
+          },
+          "0.60": {
+            "nuisance_flag_rate": 0.6115,
+            "nuisance_flags_per_1000_registrations": 611.5,
+            "clean_detection_rate": 0.8375,
+            "masked_by_top1_rate": 0.0225,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.14,
+            "missed_for_review_rate": 0.1625
+          },
+          "0.65": {
+            "nuisance_flag_rate": 0.3765,
+            "nuisance_flags_per_1000_registrations": 376.5,
+            "clean_detection_rate": 0.8255,
+            "masked_by_top1_rate": 0.0145,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.16,
+            "missed_for_review_rate": 0.1745
+          },
+          "0.70": {
+            "nuisance_flag_rate": 0.3765,
+            "nuisance_flags_per_1000_registrations": 376.5,
+            "clean_detection_rate": 0.8085,
+            "masked_by_top1_rate": 0.004,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1875,
+            "missed_for_review_rate": 0.1915
+          },
+          "0.75": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.792,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.208,
+            "missed_for_review_rate": 0.208
+          },
+          "0.80": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.772,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.228,
+            "missed_for_review_rate": 0.228
+          },
+          "0.85": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.7365,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.2635,
+            "missed_for_review_rate": 0.2635
+          },
+          "0.90": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.695,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.305,
+            "missed_for_review_rate": 0.305
+          },
+          "0.95": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.6285,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.3715,
+            "missed_for_review_rate": 0.3715
+          }
+        }
+      },
+      "registry_1000": {
+        "registry_size": 1000,
+        "simulations": 2000,
+        "by_cutoff": {
+          "0.30": {
+            "nuisance_flag_rate": 0.9995,
+            "nuisance_flags_per_1000_registrations": 999.5,
+            "clean_detection_rate": 0.839,
+            "masked_by_top1_rate": 0.0925,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.0685,
+            "missed_for_review_rate": 0.161
+          },
+          "0.35": {
+            "nuisance_flag_rate": 0.987,
+            "nuisance_flags_per_1000_registrations": 987.0,
+            "clean_detection_rate": 0.839,
+            "masked_by_top1_rate": 0.086,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.075,
+            "missed_for_review_rate": 0.161
+          },
+          "0.40": {
+            "nuisance_flag_rate": 0.987,
+            "nuisance_flags_per_1000_registrations": 987.0,
+            "clean_detection_rate": 0.839,
+            "masked_by_top1_rate": 0.0695,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.0915,
+            "missed_for_review_rate": 0.161
+          },
+          "0.45": {
+            "nuisance_flag_rate": 0.97,
+            "nuisance_flags_per_1000_registrations": 970.0,
+            "clean_detection_rate": 0.839,
+            "masked_by_top1_rate": 0.0625,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.0985,
+            "missed_for_review_rate": 0.161
+          },
+          "0.50": {
+            "nuisance_flag_rate": 0.97,
+            "nuisance_flags_per_1000_registrations": 970.0,
+            "clean_detection_rate": 0.8385,
+            "masked_by_top1_rate": 0.0515,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.11,
+            "missed_for_review_rate": 0.1615
+          },
+          "0.55": {
+            "nuisance_flag_rate": 0.922,
+            "nuisance_flags_per_1000_registrations": 922.0,
+            "clean_detection_rate": 0.838,
+            "masked_by_top1_rate": 0.043,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.119,
+            "missed_for_review_rate": 0.162
+          },
+          "0.60": {
+            "nuisance_flag_rate": 0.8675,
+            "nuisance_flags_per_1000_registrations": 867.5,
+            "clean_detection_rate": 0.836,
+            "masked_by_top1_rate": 0.0345,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1295,
+            "missed_for_review_rate": 0.164
+          },
+          "0.65": {
+            "nuisance_flag_rate": 0.6415,
+            "nuisance_flags_per_1000_registrations": 641.5,
+            "clean_detection_rate": 0.833,
+            "masked_by_top1_rate": 0.021,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.146,
+            "missed_for_review_rate": 0.167
+          },
+          "0.70": {
+            "nuisance_flag_rate": 0.6415,
+            "nuisance_flags_per_1000_registrations": 641.5,
+            "clean_detection_rate": 0.828,
+            "masked_by_top1_rate": 0.009,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.163,
+            "missed_for_review_rate": 0.172
+          },
+          "0.75": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.812,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.188,
+            "missed_for_review_rate": 0.188
+          },
+          "0.80": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.7845,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.2155,
+            "missed_for_review_rate": 0.2155
+          },
+          "0.85": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.7535,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.2465,
+            "missed_for_review_rate": 0.2465
+          },
+          "0.90": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.7135,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.2865,
+            "missed_for_review_rate": 0.2865
+          },
+          "0.95": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.633,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.367,
+            "missed_for_review_rate": 0.367
+          }
+        }
+      },
+      "registry_5000": {
+        "registry_size": 5000,
+        "simulations": 2000,
+        "by_cutoff": {
+          "0.30": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.815,
+            "masked_by_top1_rate": 0.11,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.075,
+            "missed_for_review_rate": 0.185
+          },
+          "0.35": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.815,
+            "masked_by_top1_rate": 0.102,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.083,
+            "missed_for_review_rate": 0.185
+          },
+          "0.40": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.815,
+            "masked_by_top1_rate": 0.0875,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.0975,
+            "missed_for_review_rate": 0.185
+          },
+          "0.45": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.815,
+            "masked_by_top1_rate": 0.082,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.103,
+            "missed_for_review_rate": 0.185
+          },
+          "0.50": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.815,
+            "masked_by_top1_rate": 0.07,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.115,
+            "missed_for_review_rate": 0.185
+          },
+          "0.55": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.815,
+            "masked_by_top1_rate": 0.0605,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1245,
+            "missed_for_review_rate": 0.185
+          },
+          "0.60": {
+            "nuisance_flag_rate": 1.0,
+            "nuisance_flags_per_1000_registrations": 1000.0,
+            "clean_detection_rate": 0.815,
+            "masked_by_top1_rate": 0.0465,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1385,
+            "missed_for_review_rate": 0.185
+          },
+          "0.65": {
+            "nuisance_flag_rate": 0.994,
+            "nuisance_flags_per_1000_registrations": 994.0,
+            "clean_detection_rate": 0.815,
+            "masked_by_top1_rate": 0.032,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.153,
+            "missed_for_review_rate": 0.185
+          },
+          "0.70": {
+            "nuisance_flag_rate": 0.994,
+            "nuisance_flags_per_1000_registrations": 994.0,
+            "clean_detection_rate": 0.815,
+            "masked_by_top1_rate": 0.0165,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.1685,
+            "missed_for_review_rate": 0.185
+          },
+          "0.75": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.81,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.19,
+            "missed_for_review_rate": 0.19
+          },
+          "0.80": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.7835,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.2165,
+            "missed_for_review_rate": 0.2165
+          },
+          "0.85": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.751,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.249,
+            "missed_for_review_rate": 0.249
+          },
+          "0.90": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.7095,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.2905,
+            "missed_for_review_rate": 0.2905
+          },
+          "0.95": {
+            "nuisance_flag_rate": 0.0,
+            "nuisance_flags_per_1000_registrations": 0.0,
+            "clean_detection_rate": 0.633,
+            "masked_by_top1_rate": 0.0,
+            "exact_tie_rate": 0.0,
+            "below_cutoff_rate": 0.367,
+            "missed_for_review_rate": 0.367
+          }
+        }
+      }
+    }
+  },
+  "corroboration": {
+    "identifier": {
+      "definition": "upi_match == 1 or birth_certificate_match == 1",
+      "positive_coverage": 0.4017,
+      "negative_coverage": 0.1257,
+      "by_cutoff": {
+        "0.50": {
+          "false_positives_before": 463,
+          "false_positives_after": 211,
+          "true_positives_before": 5356,
+          "true_positives_after": 2286,
+          "recall_after": 0.381,
+          "precision_after": 0.9155,
+          "duplicates_lost_to_suppression": 3070,
+          "nuisance_flags_suppressed": 252
+        },
+        "0.60": {
+          "false_positives_before": 329,
+          "false_positives_after": 167,
+          "true_positives_before": 5188,
+          "true_positives_after": 2233,
+          "recall_after": 0.3722,
+          "precision_after": 0.9304,
+          "duplicates_lost_to_suppression": 2955,
+          "nuisance_flags_suppressed": 162
+        },
+        "0.70": {
+          "false_positives_before": 203,
+          "false_positives_after": 117,
+          "true_positives_before": 4962,
+          "true_positives_after": 2149,
+          "recall_after": 0.3582,
+          "precision_after": 0.9484,
+          "duplicates_lost_to_suppression": 2813,
+          "nuisance_flags_suppressed": 86
+        }
+      }
+    },
+    "identifier_or_name_and_dob": {
+      "definition": "identifier or (dob_match == 1 and jaro_winkler >= 0.90)",
+      "positive_coverage": 0.607,
+      "negative_coverage": 0.1775,
+      "by_cutoff": {
+        "0.50": {
+          "false_positives_before": 463,
+          "false_positives_after": 307,
+          "true_positives_before": 5356,
+          "true_positives_after": 3458,
+          "recall_after": 0.5763,
+          "precision_after": 0.9185,
+          "duplicates_lost_to_suppression": 1898,
+          "nuisance_flags_suppressed": 156
+        },
+        "0.60": {
+          "false_positives_before": 329,
+          "false_positives_after": 238,
+          "true_positives_before": 5188,
+          "true_positives_after": 3371,
+          "recall_after": 0.5618,
+          "precision_after": 0.9341,
+          "duplicates_lost_to_suppression": 1817,
+          "nuisance_flags_suppressed": 91
+        },
+        "0.70": {
+          "false_positives_before": 203,
+          "false_positives_after": 154,
+          "true_positives_before": 4962,
+          "true_positives_after": 3229,
+          "recall_after": 0.5382,
+          "precision_after": 0.9545,
+          "duplicates_lost_to_suppression": 1733,
+          "nuisance_flags_suppressed": 49
+        }
+      }
+    }
+  },
+  "blocking_projection": {
+    "available": true,
+    "records_used": 22541,
+    "distinct_surnames": 967,
+    "distinct_schools": 12,
+    "populated_cells": 2508,
+    "concentration_sum_share_squared": 0.00099,
+    "random_record_token_overlap_rate": 0.02985,
+    "duplicate_retention": {
+      "surname_and_school": 0.1647,
+      "any_name_token": 0.8052
+    },
+    "expected_block_size": {
+      "surname_and_school": {
+        "registry_100": 0.1,
+        "registry_500": 0.5,
+        "registry_1000": 0.99,
+        "registry_5000": 4.95
+      },
+      "any_name_token": {
+        "registry_100": 2.99,
+        "registry_500": 14.93,
+        "registry_1000": 29.85,
+        "registry_5000": 149.25
+      }
+    },
+    "per_pair_rate": {
+      "lower_bound_random_pairs": {
+        "cutoff_0.50": 0.0035,
+        "cutoff_0.60": 0.002,
+        "cutoff_0.70": 0.001,
+        "cutoff_0.80": 0.0
+      },
+      "upper_bound_hard_negatives": {
+        "cutoff_0.50": 0.077167,
+        "cutoff_0.60": 0.054833,
+        "cutoff_0.70": 0.033833,
+        "cutoff_0.80": 0.016667
+      }
+    },
+    "projected_nuisance_rate": {
+      "registry_100": {
+        "0.50": {
+          "surname_school_block_size": 0.1,
+          "surname_school_nuisance_lower_bound": 0.0003,
+          "surname_school_nuisance_upper_bound": 0.0079,
+          "token_block_size": 2.99,
+          "token_nuisance_lower_bound": 0.0104,
+          "token_nuisance_upper_bound": 0.2131
+        },
+        "0.60": {
+          "surname_school_block_size": 0.1,
+          "surname_school_nuisance_lower_bound": 0.0002,
+          "surname_school_nuisance_upper_bound": 0.0056,
+          "token_block_size": 2.99,
+          "token_nuisance_lower_bound": 0.006,
+          "token_nuisance_upper_bound": 0.1549
+        },
+        "0.70": {
+          "surname_school_block_size": 0.1,
+          "surname_school_nuisance_lower_bound": 0.0001,
+          "surname_school_nuisance_upper_bound": 0.0034,
+          "token_block_size": 2.99,
+          "token_nuisance_lower_bound": 0.003,
+          "token_nuisance_upper_bound": 0.0976
+        },
+        "0.80": {
+          "surname_school_block_size": 0.1,
+          "surname_school_nuisance_lower_bound": 0.0,
+          "surname_school_nuisance_upper_bound": 0.0017,
+          "token_block_size": 2.99,
+          "token_nuisance_lower_bound": 0.0,
+          "token_nuisance_upper_bound": 0.0489
+        }
+      },
+      "registry_500": {
+        "0.50": {
+          "surname_school_block_size": 0.5,
+          "surname_school_nuisance_lower_bound": 0.0017,
+          "surname_school_nuisance_upper_bound": 0.039,
+          "token_block_size": 14.93,
+          "token_nuisance_lower_bound": 0.051,
+          "token_nuisance_upper_bound": 0.6984
+        },
+        "0.60": {
+          "surname_school_block_size": 0.5,
+          "surname_school_nuisance_lower_bound": 0.001,
+          "surname_school_nuisance_upper_bound": 0.0275,
+          "token_block_size": 14.93,
+          "token_nuisance_lower_bound": 0.0294,
+          "token_nuisance_upper_bound": 0.569
+        },
+        "0.70": {
+          "surname_school_block_size": 0.5,
+          "surname_school_nuisance_lower_bound": 0.0005,
+          "surname_school_nuisance_upper_bound": 0.0169,
+          "token_block_size": 14.93,
+          "token_nuisance_lower_bound": 0.0148,
+          "token_nuisance_upper_bound": 0.4017
+        },
+        "0.80": {
+          "surname_school_block_size": 0.5,
+          "surname_school_nuisance_lower_bound": 0.0,
+          "surname_school_nuisance_upper_bound": 0.0083,
+          "token_block_size": 14.93,
+          "token_nuisance_lower_bound": 0.0,
+          "token_nuisance_upper_bound": 0.2219
+        }
+      },
+      "registry_1000": {
+        "0.50": {
+          "surname_school_block_size": 0.99,
+          "surname_school_nuisance_lower_bound": 0.0035,
+          "surname_school_nuisance_upper_bound": 0.0765,
+          "token_block_size": 29.85,
+          "token_nuisance_lower_bound": 0.0994,
+          "token_nuisance_upper_bound": 0.909
+        },
+        "0.60": {
+          "surname_school_block_size": 0.99,
+          "surname_school_nuisance_lower_bound": 0.002,
+          "surname_school_nuisance_upper_bound": 0.0543,
+          "token_block_size": 29.85,
+          "token_nuisance_lower_bound": 0.058,
+          "token_nuisance_upper_bound": 0.8143
+        },
+        "0.70": {
+          "surname_school_block_size": 0.99,
+          "surname_school_nuisance_lower_bound": 0.001,
+          "surname_school_nuisance_upper_bound": 0.0335,
+          "token_block_size": 29.85,
+          "token_nuisance_lower_bound": 0.0294,
+          "token_nuisance_upper_bound": 0.6421
+        },
+        "0.80": {
+          "surname_school_block_size": 0.99,
+          "surname_school_nuisance_lower_bound": 0.0,
+          "surname_school_nuisance_upper_bound": 0.0165,
+          "token_block_size": 29.85,
+          "token_nuisance_lower_bound": 0.0,
+          "token_nuisance_upper_bound": 0.3945
+        }
+      },
+      "registry_5000": {
+        "0.50": {
+          "surname_school_block_size": 4.95,
+          "surname_school_nuisance_lower_bound": 0.0172,
+          "surname_school_nuisance_upper_bound": 0.3281,
+          "token_block_size": 149.25,
+          "token_nuisance_lower_bound": 0.4074,
+          "token_nuisance_upper_bound": 1.0
+        },
+        "0.60": {
+          "surname_school_block_size": 4.95,
+          "surname_school_nuisance_lower_bound": 0.0099,
+          "surname_school_nuisance_upper_bound": 0.2437,
+          "token_block_size": 149.25,
+          "token_nuisance_lower_bound": 0.2583,
+          "token_nuisance_upper_bound": 0.9998
+        },
+        "0.70": {
+          "surname_school_block_size": 4.95,
+          "surname_school_nuisance_lower_bound": 0.0049,
+          "surname_school_nuisance_upper_bound": 0.1567,
+          "token_block_size": 149.25,
+          "token_nuisance_lower_bound": 0.1387,
+          "token_nuisance_upper_bound": 0.9941
+        },
+        "0.80": {
+          "surname_school_block_size": 4.95,
+          "surname_school_nuisance_lower_bound": 0.0,
+          "surname_school_nuisance_upper_bound": 0.0799,
+          "token_block_size": 149.25,
+          "token_nuisance_lower_bound": 0.0,
+          "token_nuisance_upper_bound": 0.9186
+        }
+      }
+    },
+    "assumption": "Block sizes come from the generated name/school distribution, not from a real registry. Blocking on surname also selects harder negatives, so the upper bound is the more realistic of the two."
+  },
+  "limitations": [
+    "All labels are synthetic; positives are only repeat_application cases, so recall covers that single duplicate pattern.",
+    "Negatives are generated hard negatives (siblings, twins, identifier collisions, common names), not a sample of real applicants.",
+    "Registration-level rates come from simulation with independent candidate draws, which understates clustering in a real registry.",
+    "No adjudicated (human-reviewed) pair set exists, so precision, recall and miss rate describe this simulator and are not an accuracy claim about real records.",
+    "One artifact, one seed. Re-run and diff after any retraining before adopting a replacement model."
+  ]
+}

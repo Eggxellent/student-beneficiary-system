@@ -761,3 +761,53 @@ State of `sbms_test` used for this run: 12 public tables, 2 active admin account
 4. The local `dev` worktree and two sibling worktrees carry uncommitted changes. They are
    untouched; someone should decide whether those edits are still wanted.
 
+## 16. Phase 2 - ML decision evidence, 2026-10-30
+
+Nothing was retrained. The artifact is still `sha256 6ec9f2a3cbe6ed0d…` and the cutoff is
+still `0.50`; no configuration was changed to match any recommendation.
+
+### 16.1 What was added
+
+| File | Purpose |
+| --- | --- |
+| `ml-service/evaluate_operating_point.py` | Read-only harness: scores the labelled holdout through the serving feature path, then reports pair-level metrics, per-scenario flag rates, a registration-level `top-1` simulation, corroboration variants and a blocking projection |
+| `ml-service/evaluation/operating_point_2026-10-30.json` | Raw output (provenance, all cutoffs, all registry sizes, limitations) |
+| `ml-service/tests/test_operating_point.py` | 14 tests: confusion-matrix arithmetic, cutoff inclusivity, `top-1` masking, reproducibility, blocking retention, and guards that the committed report describes the live artifact and still reproduces `realistic_pairs_xgboost_training_metrics.json` |
+| `docs/ml-decision-sheet-2026-10-30.md` | Evidence + recommended default for D1–D5, still unanswered |
+| `docs/ml-evaluation-policy.md` | §4 update, new §5 evidence table, change-log rows; owner answers deliberately left blank |
+
+### 16.2 What it measured (synthetic labels only)
+
+| Quantity | Result |
+| --- | --- |
+| Holdout pairs / groups | 12 000 / 6 000 (6 000 positives, 6 000 hard negatives) |
+| Ranking | ROC-AUC 0.9685, PR-AUC 0.9727 (baseline 0.5) |
+| F1 at live cutoff 0.50 | 0.9063 - reproduces the stored metrics exactly |
+| Feature path | identical to serving, `max_abs_difference = 0` |
+| Miss rate | 6.48% (0.30) / 10.73% (0.50) / 17.30% (0.70) / 29.63% (0.90) |
+| Best F1 cutoff | 0.35 at 0.9065 - only 0.0002 above the live 0.50 |
+| Truly unrelated negatives | **0.00%** flagged at 0.50 - no noise flags |
+| Worst negative family | `identifier_collision`, 22.21% at 0.50 |
+| Registration nuisance (whole registry, `top-1`, 0.50) | 97% of legitimate registrations at N=1 000 even with random-pair negatives |
+| `top-1` masking | 23.8% (N=100) to 52.6% (N=5 000) of detections attributed to the wrong candidate |
+| School as a filter | would discard ~72% of duplicates (only 27.65% share a school code) |
+| Blocking retention | surname+school 16.47%; any-name-token 80.52% |
+| `top-1-corroborated` | removes 34–54% of nuisance flags but loses 39–60% of duplicates - **not recommended** |
+
+### 16.3 Adjudicated ground truth
+
+None exists. `evaluation/reviewed_pairs_template.csv` is header-only, and read-only queries
+against both `sbms_test` and `student_beneficiary_system` returned 0 students, 0 duplicate
+flags and 0 `duplicate_review_events`. So no precision/recall/miss-rate claim about real
+beneficiaries is possible, and none is made. D5 remains the blocking decision.
+
+### 16.4 Commands
+
+```powershell
+cd ml-service
+.\.venv\Scripts\python.exe .\evaluate_operating_point.py              # ~25 s
+.\.venv\Scripts\python.exe -m unittest tests.test_operating_point -v   # 14 tests
+.\.venv\Scripts\python.exe -m unittest discover -s tests               # 33 tests
+```
+
+
