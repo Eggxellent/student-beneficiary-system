@@ -522,3 +522,119 @@ database and was not run here.
   adjudicated pair set, so D5 remains the gate on every such claim.
 - Nothing has been deployed or provisioned on Azure.
 
+
+## 13. Implementation update — 2026-10-30 (database and end-to-end verification)
+
+### 13.1 Commits on `fix/sbms-completion-work`
+
+| Commit | Contents |
+|---|---|
+| `cd4ff0e` | `fix(db)`: schema parity, readiness-verified bootstrap, `PUBLIC_APP_URL` boot check, DOB normalisation, test-database provisioning |
+| `c9ccc45` | merge of `origin/dev` (`78d1a87`, the admin-bootstrap email regex fix; conflict resolved in favour of this branch's stricter validation, which already carried the regex fix) |
+
+`git status` is clean and the branch is **9 ahead, 0 behind** `origin/dev`. Nothing has
+been pushed; no deployment has happened.
+
+### 13.2 The §7 bootstrap blocker is closed
+
+Root cause, confirmed empirically: `schema.sql` created **10 of the 11** tables that
+`GET /api/ready` requires, and `beneficiaries` had no DDL anywhere in the repository.
+A from-scratch bootstrap therefore reported success while returning `503` from
+`/api/ready`, and every model query touching `beneficiaries` failed with `42P01`.
+
+Fixes:
+
+1. `backend/src/db/schema.sql` — `beneficiaries` DDL added, shape measured from the
+   live deployment (serial integer primary key, no foreign keys, so it cannot couple
+   to the UUID-keyed tables).
+2. `backend/src/db/migrations/20261025_legacy_beneficiaries_baseline.sql` — idempotent
+   baseline for databases created before the DDL existed; registered in
+   `MIGRATION_ORDER`.
+3. `backend/scripts/bootstrap-production-schema.js` — runs `checkDatabaseReadiness`
+   **inside** the transaction and rolls back instead of committing an unusable schema.
+4. `backend/test/databaseBootstrap.node.test.js` — the fake client now answers the
+   readiness query, plus a new regression case proving bootstrap refuses to commit a
+   schema with a missing table.
+
+Evidence: a database built only from `schema.sql` + registered migrations now returns
+`GET /api/ready` → `200 {"status":"ready"}`, and all 11 required tables resolve in
+`public`.
+
+### 13.3 Second defect: date-of-birth skew in the model features
+
+`pg` returns `DATE` as a JS `Date` at local midnight; JSON serialisation to the
+predictor converted it to UTC and shifted the calendar day for any UTC+ offset, so two
+identical dates scored `dob_match: 0`. Fixed at the single predictor boundary in
+`backend/src/services/mlDuplicateReview.js` (`dateOnly` / `predictorRecord`). Live proof
+over HTTP: identical-DOB pair → `dob_match: 1`, `probability 0.9982`.
+
+### 13.4 Third defect: registration could fail with a per-request 500
+
+`PUBLIC_APP_URL` was only read when a registration was submitted. It is now resolved at
+boot (`backend/src/index.js`), so a missing or unusable origin stops startup instead of
+breaking one request. `backend/tests/testEnvironment.js` supplies a fixture origin for
+the Jest suite and is wired first in `jest.config.js` `setupFiles`.
+
+### 13.5 Local environment prerequisites (why "the code works" hid these bugs)
+
+`backend/.env` must now contain, in addition to `DATABASE_URL` and `JWT_SECRET`:
+
+```dotenv
+NODE_ENV=development
+PUBLIC_APP_URL=http://localhost:3000
+SBMS_EXPECTED_DATABASE_NAME=student_beneficiary_system
+```
+
+Without the last three, `src/index.js` exits with "Startup blocked" (missing expected
+database name) or registration refuses to build a QR origin. Loopback HTTP is only
+accepted when `NODE_ENV=development`; production requires a public HTTPS origin.
+
+New script: `npm run db:provision-test` (`backend/scripts/provision-test-database.js`)
+creates the loopback-only `sbms_test` database and `sbms_test_runner` role from a
+password supplied in the environment. It writes nothing into the repository; the
+generated `.env.test` is git-ignored.
+
+### 13.6 Test evidence from this session
+
+- `npx jest --runInBand tests` against a real local `sbms_test`: **19 suites, 103 tests
+  passed**.
+- `node --test` over the six native suites with the API running: **35 passed, 0 failed**
+  (previously 30 passed / 4 failed — one genuine regression caused by the new readiness
+  check, three smoke tests that need a live server).
+- Live end-to-end run on `sbms_test` through real HTTP and the real XGBoost child
+  process (`xgboost:6ec9f2a3…`, threshold 0.50, policy `top-1`):
+
+| Step | Result |
+|---|---|
+| 1. field-officer and admin logins | `200` / `200` |
+| 2. first registration | `201`, `candidates_considered: 0`, 0 flags |
+| 3. identical re-registration | `201`, **1 flag**, `probability 0.9982`, `dob_match 1`, exact UPI + birth certificate + National ID reason |
+| 4. admin queue `GET /api/duplicate-flags?status=pending` | `200`, case present, `high_priority_pending: 1` |
+| 5. `PATCH /api/duplicate-flags/:id` → `confirmed_duplicate` | `200` |
+| 6. persistence | 1 `duplicate_review_events` row, audit action `DUPLICATE_CONFIRMED_DUPLICATE`, flag status persisted |
+| 7. cleanup | probe students, flags, audit rows and the probe officer removed; `sbms_test` back to 0 students / 0 flags |
+
+- `frontend`: `npm run build` succeeds (only the pre-existing >500 kB chunk warning).
+
+### 13.7 Local development database remediated
+
+`student_beneficiary_system` was missing `bursary_awards`,
+`bursary_award_verification_events` and `disbursement_reconciliation_events`, so the
+application could not start against it either. The idempotent
+`20261023_bursary_award_reconciliation.sql` was applied in a single transaction
+(0 existing disbursement rows, so the added constraints could not be violated);
+`missing_tables` is now `[]`.
+
+### 13.8 Known gaps carried forward
+
+- `frontend/src/pages/StudentRegistration.jsx` styles a case as red when
+  `risk_level === 'critical'`, but the API only ever emits `'review'`, so that branch is
+  unreachable. Either the API publishes a severity or the branch is removed — a product
+  decision, not a bug fix.
+- The new `duplicate_screening` fields (`model_version`, `review_threshold`,
+  `aggregation_policy`, `candidates_considered`, `candidates_suppressed`) are still not
+  surfaced in the UI.
+- D1–D5 remain unanswered, so no accuracy, precision, recall or miss-rate claim is
+  supported.
+- Nothing is pushed to `origin`, and no Azure resource has been provisioned.
+
