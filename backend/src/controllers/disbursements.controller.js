@@ -158,11 +158,14 @@ async function updatePaymentStatus(req, res, next) {
       return res.status(409).json({ message: 'A payment with a receipt record cannot be failed or cancelled.' });
     }
     const updated = await client.query(
-      `UPDATE disbursements SET payment_status = $1, status = $1,
-         cleared_by = CASE WHEN $1 = 'cleared' THEN $2 ELSE NULL END,
-         cleared_at = CASE WHEN $1 = 'cleared' THEN NOW() ELSE NULL END,
-         clearance_evidence_ref = CASE WHEN $1 = 'cleared' THEN $3 ELSE NULL END
-       WHERE id = $4 RETURNING *`,
+      // $1 feeds two columns with different varchar lengths and a CASE comparison, so it
+      // must be cast explicitly: without the casts PostgreSQL raises
+      // 42P08 "inconsistent types deduced for parameter $1" and every status change fails.
+      `UPDATE disbursements SET payment_status = $1::text, status = $1::text,
+         cleared_by = CASE WHEN $1::text = 'cleared' THEN $2::uuid ELSE NULL END,
+         cleared_at = CASE WHEN $1::text = 'cleared' THEN NOW() ELSE NULL END,
+         clearance_evidence_ref = CASE WHEN $1::text = 'cleared' THEN $3::text ELSE NULL END
+       WHERE id = $4::uuid RETURNING *`,
       [payment_status, actorId, evidence_ref || null, payment.id]
     );
     const eventType = `payment_${payment_status}`;

@@ -933,6 +933,56 @@ Full narrative: `docs/qr-verification-2026-10-30.md`. No model or cutoff changed
 - No token expiry, revocation or re-issue path.
 - The rate limiter is in-process, so it is not shared across instances.
 
+## 19. Phase 5 - Business workflow, 2026-10-30
+
+Full narrative: `docs/business-workflow-verification-2026-10-30.md`. No model or cutoff changed.
+
+### 19.1 Production defect found and fixed
+
+`PATCH /api/disbursements/:id/payment-status` returned **500 for every call**. PostgreSQL raised
+`42P08 inconsistent types deduced for parameter $1` because the statement reused `$1` as both
+`payment_status VARCHAR(20)` and `status VARCHAR(50)`, plus a text comparison. **Payment
+clearance had never worked**, which also made every downstream reconciliation figure
+unreachable. Fixed with explicit casts and a comment explaining why they must stay.
+
+Finding it took a direct constraint probe: the sanitised error handler only said "Internal
+server error", and the obvious suspect (the `disbursements_clearance_fields_check` requiring
+`cleared_by`) turned out to pass with a real user id.
+
+### 19.2 What the new suite proves
+
+`backend/tests/workflow.test.js` (11 tests, new) drives the real app against the real test
+database: registration → review case → verification → **two independent duplicate gates** (award
+approval and disbursement) → approval → disbursement → clearance → acknowledgement → audit
+trail → role boundaries. Confirmed duplicates stay unpayable and cannot be re-decided;
+`needs_verification` blocks until cleared; over-disbursement is refused; short payment
+acknowledgement is recorded as `discrepancy`.
+
+### 19.3 Files changed
+
+| File | Change |
+| --- | --- |
+| `backend/src/controllers/disbursements.controller.js` | fixed the `42P08` parameter typing |
+| `backend/tests/workflow.test.js` | **new** 11-test end-to-end workflow suite |
+| `docs/business-workflow-verification-2026-10-30.md` | **new** evidence, defect analysis, gaps |
+| `backend/tests/testEnvironment.js` | per-file limiter reset (added in Phase 4, used here) |
+
+### 19.4 Evidence
+
+| Check | Result |
+| --- | --- |
+| Backend Jest (all suites) | **21 suites, 128 tests passed** (was 117) |
+| Frontend production build | success |
+| `sbms_test` after the run | 0 students, 0 duplicate flags, 0 disbursements |
+
+### 19.5 Behaviour worth knowing
+
+- A **confirmed duplicate is terminal**: it cannot be reversed through the API, by design.
+- `/api/disbursements/exceptions` returns `deadline_days: null` unless
+  `ACKNOWLEDGEMENT_OVERDUE_DAYS` is set; it does not invent a deadline.
+- Registration is never blocked by a duplicate; no automatic rejection or deletion exists.
+
+
 
 
 
