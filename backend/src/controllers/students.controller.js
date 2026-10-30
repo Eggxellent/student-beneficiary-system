@@ -1,7 +1,8 @@
 const studentModel = require('../models/student.model');
 const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
-const { exactReviewIdentifierMatches, scorePairs, configuredThreshold } = require('../services/mlDuplicateReview');
+const { exactReviewIdentifierMatches, reviewPriority, scorePairs, configuredThreshold } = require('../services/mlDuplicateReview');
+const { getDuplicateThreshold } = require('../config/settings');
 const { selectFlaggedCandidates, summarizeAggregation, normalizeAggregationPolicy } = require('../services/duplicateAggregation');
 const QRCode = require('qrcode');
 const { randomBytes } = require('crypto');
@@ -110,6 +111,12 @@ async function create(req, res, next) {
           ...rows[0],
           model_score: result.score,
           risk_level: 'review',
+          priority: reviewPriority({
+            score: result.score,
+            highPriorityThreshold: getDuplicateThreshold(),
+            exactIdentifierCount: result.exactIdentifiers.length,
+          }),
+          exact_identifier_matches: result.exactIdentifiers,
           review_reason: result.exactIdentifiers.length
             ? `Exact ${result.exactIdentifiers.join(' and ')} match; an administrator must verify the source documents.`
             : `Model score met the provisional human-review cutoff (${threshold.toFixed(2)}).`,
@@ -139,9 +146,12 @@ async function create(req, res, next) {
       duplicate_screening: {
         model_version: prediction.model_version,
         review_threshold: threshold,
+        high_priority_threshold: getDuplicateThreshold(),
+        thresholds_validated: false,
         score_is_calibrated_probability: false,
         aggregation_policy: aggregation.policy,
         candidates_considered: aggregation.candidates_considered,
+        candidates_qualifying: aggregation.candidates_qualifying,
         candidates_suppressed: aggregation.candidates_suppressed,
       },
     });

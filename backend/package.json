@@ -13,7 +13,8 @@
     "db:provision-test": "node scripts/provision-test-database.js",
     "db:bootstrap-empty": "node scripts/bootstrap-production-schema.js",
     "seed:synthetic": "node scripts/seed-kenyan-demo-data.js",
-    "reset:synthetic": "node scripts/reset-kenyan-demo-data.js"
+    "reset:synthetic": "node scripts/reset-kenyan-demo-data.js",
+    "seed:verification": "node scripts/seed-verification-accounts.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

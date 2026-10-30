@@ -101,7 +101,7 @@ export default function DuplicateReview() {
       </section>
       <p className="mt-3 text-xs text-slate-500">Cases: {caseTotals.flagged} flagged · {caseTotals.confirmed_duplicate} confirmed · {caseTotals.not_duplicate} not duplicates · {caseTotals.unresolved} unresolved.</p>
 
-      {policy && <p className="mt-3 text-xs text-slate-500">Cutoffs: standard {Number(policy.review_threshold).toFixed(2)}, high {Number(policy.high_priority_threshold).toFixed(2)}. {policy.thresholds_validated ? "Validated on held-out data." : "Provisional; validation is unavailable."} Exact identifier matches are separate evidence.</p>}
+      {policy && <p className="mt-3 text-xs text-slate-500">Cutoffs: standard {Number.isFinite(Number(policy.review_threshold)) ? Number(policy.review_threshold).toFixed(2) : "not set"}, high {Number.isFinite(Number(policy.high_priority_threshold)) ? Number(policy.high_priority_threshold).toFixed(2) : "not set"} · aggregation {policy.aggregation_policy || "not reported"}. {policy.thresholds_validated ? "Validated on held-out data." : "Provisional; validation is unavailable."} Exact identifier matches are separate evidence. Candidates withheld by the aggregation policy are recorded in the audit log.</p>}
       {notice && <p className="mt-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800" role="status">{notice}</p>}
       {error && <p className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{error}</p>}
 

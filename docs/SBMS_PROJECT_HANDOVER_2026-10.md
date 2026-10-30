@@ -823,4 +823,68 @@ which happened once during this phase. Both now refuse:
 A full re-run of the integrity audit now reproduces `training_integrity_report.json`
 byte-for-byte, so `git status` stays clean after an audit.
 
+## 17. Phase 3 - Frontend completion, 2026-10-30
+
+No model, cutoff or aggregation setting changed. Full narrative:
+`docs/frontend-verification-2026-10-30.md`.
+
+### 17.1 The `critical`/`review` contract
+
+- `risk_level` stays `'review'` for every case. The API never calls a record a duplicate, and
+  the UI no longer pretends otherwise.
+- Severity is now published: `priority` (`high`/`standard`) plus `exact_identifier_matches`,
+  both on the registration flag.
+- `reviewPriority()` in `backend/src/services/mlDuplicateReview.js` is the single rule used by
+  the registration response **and** the admin queue, so the two cannot disagree.
+- The frontend colours red only for exact identifier agreement, amber for other review cases,
+  green when nothing is flagged.
+
+### 17.2 Two defects found while fixing it
+
+1. The queue treated `score >= review_threshold` (0.50) as high priority, so every model case
+   was `high` and `DUPLICATE_HIGH_PRIORITY_THRESHOLD` (0.70) was never used.
+2. The queue policy published `high_priority_threshold: null`, which the admin screen
+   rendered as **"high 0.00"**. It now publishes the real value and keeps
+   `thresholds_validated: false`.
+
+### 17.3 Where screening information is surfaced
+
+`/students/register` is field-officer-only, so an admin panel there would have been another
+unreachable branch. Instead: the officer sees plain-language counts with no model internals;
+the administrator sees priority, score, model version, cutoffs and aggregation policy on the
+review screen, and the stored counters (considered / qualifying / suppressed) as readable
+text in the audit log.
+
+### 17.4 Files changed
+
+| File | Change |
+| --- | --- |
+| `backend/src/services/mlDuplicateReview.js` | new `reviewPriority()` |
+| `backend/src/controllers/students.controller.js` | flag `priority` + `exact_identifier_matches`; screening `candidates_qualifying`, `high_priority_threshold`, `thresholds_validated` |
+| `backend/src/controllers/duplicateFlags.controller.js` | shared priority rule; real `high_priority_threshold`; `aggregation_policy` in the queue policy |
+| `backend/tests/students.test.js` | asserts the new contract fields |
+| `backend/tests/mlDuplicateReview.test.js` | 4 tests for `reviewPriority()` |
+| `frontend/src/pages/StudentRegistration.jsx` | unreachable `critical` branch replaced; plain-language screening sentence |
+| `frontend/src/pages/DuplicateReview.jsx` | policy line shows both cutoffs, aggregation policy, null-safe formatting |
+| `frontend/src/pages/AuditLogs.jsx` | details rendered as `key: value` instead of raw JSON |
+| `scripts/browser-smoke.mjs` | **new** 23-check real-browser suite |
+| `backend/scripts/seed-verification-accounts.js` | **new** env-driven, loopback-only account seeding |
+| `package.json`, `backend/package.json` | `smoke:browser`, `seed:verification` |
+
+### 17.5 Evidence
+
+| Check | Result |
+| --- | --- |
+| Backend Jest (all suites) | **19 suites, 107 tests passed** (was 103) |
+| `npm run smoke:browser` (headless Chrome) | **23/23 checks passed**, exit 0 |
+| Frontend production build | success |
+
+### 17.6 Remaining gaps
+
+- No visual or accessibility regression testing; the browser checks assert rendered text,
+  classes and navigation.
+- Priority banding relies on an unvalidated cutoff and changes presentation order only.
+- QR camera, disbursement restrictions and the full workflow are Phases 4-5.
+
+
 

@@ -5,6 +5,18 @@ function formatDate(value) {
   return new Date(value).toLocaleString();
 }
 
+// Audit details used to render as raw JSON. Duplicate screening writes a handful of
+// counters per registration, so show them as "key: value" pairs instead; anything
+// unknown still falls back to JSON so no evidence is hidden.
+function formatDetails(details) {
+  if (!details || typeof details !== "object") return details ? String(details) : "-";
+  const entries = Object.entries(details);
+  if (entries.length === 0) return "-";
+  return entries
+    .map(([key, value]) => `${key.replaceAll("_", " ")}: ${typeof value === "object" && value !== null ? JSON.stringify(value) : value}`)
+    .join(" · ");
+}
+
 export default function AuditLogs() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +61,7 @@ export default function AuditLogs() {
                 <td className="px-5 py-4 font-medium text-slate-900">{log.action.replaceAll("_", " ")}</td>
                 <td className="px-5 py-4">{log.table_name || "-"}</td>
                 <td className="px-5 py-4 font-mono text-xs">{log.record_id || "-"}</td>
-                <td className="max-w-xs px-5 py-4 text-xs text-slate-600">{log.details ? JSON.stringify(log.details) : "-"}</td>
+                <td className="max-w-xs px-5 py-4 text-xs text-slate-600">{formatDetails(log.details)}</td>
               </tr>
             ))}
             {!loading && logs.length === 0 && (

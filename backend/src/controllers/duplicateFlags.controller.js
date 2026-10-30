@@ -4,10 +4,11 @@ const {
   buildDuplicateFeatures,
   MIN_NAME_SIMILARITY,
 } = require('../services/duplicateCheck');
-const { getReviewThreshold } = require('../config/settings');
-const { scorePairs, exactNationalIdMatch, exactReviewIdentifierMatches, configuredThreshold } = require('../services/mlDuplicateReview');
+const { getReviewThreshold, getDuplicateThreshold } = require('../config/settings');
+const { scorePairs, exactNationalIdMatch, exactReviewIdentifierMatches, reviewPriority, configuredThreshold } = require('../services/mlDuplicateReview');
 const { z } = require('zod');
 const { APPROVED_SCHOOLS } = require('../config/schools');
+const { normalizeAggregationPolicy } = require('../services/duplicateAggregation');
 
 const decisionSchema = z.object({
   decision: z.enum(['confirmed_duplicate', 'not_duplicate', 'needs_verification']),
@@ -68,7 +69,14 @@ function toReviewCase(row) {
   const exactNationalId = exactNationalIdMatch(first, second);
   const exactUpi = legacyFeatures.upi_match === 1;
   const exactCertificate = legacyFeatures.birth_certificate_match === 1;
-  const priority = exactNationalId || exactUpi || exactCertificate || score >= threshold ? 'high' : 'standard';
+  // Shared with the registration response so the queue and the confirmation screen cannot
+  // disagree about how serious the same case is. `threshold` above is the review cutoff
+  // that created the flag; priority uses the separate high-priority cutoff.
+  const priority = reviewPriority({
+    score,
+    highPriorityThreshold: getDuplicateThreshold(),
+    exactIdentifierCount: [exactUpi, exactCertificate, exactNationalId].filter(Boolean).length,
+  });
   const exactIdentifiers = [
     exactUpi && 'UPI',
     exactCertificate && 'birth certificate number',
@@ -339,8 +347,9 @@ async function list(req, res, next) {
       pagination: { page, page_size: pageSize, total: filtered.length, pages: Math.ceil(filtered.length / pageSize) },
       policy: {
         review_threshold: configuredThreshold(),
-        high_priority_threshold: null,
+        high_priority_threshold: getDuplicateThreshold(),
         thresholds_validated: false,
+        aggregation_policy: normalizeAggregationPolicy(),
         explanation: 'The model score is an uncalibrated review signal. Thresholds have not been validated on representative reviewed records; no model score makes a final duplicate decision.',
         score_is_calibrated_probability: false,
       },
