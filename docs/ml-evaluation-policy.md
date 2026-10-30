@@ -6,6 +6,11 @@ records only what is *implemented* and *measured*; it does not invent owner
 answers. Anything marked "proposed" below is a recommendation from the handover,
 not a decision.
 
+**Evidence for each decision is now measured**, on synthetic labels only, in
+[`docs/ml-decision-sheet-2026-10-30.md`](ml-decision-sheet-2026-10-30.md) (§5 below
+summarises it). The owner answers are still blank, and no configuration has been
+changed to match any recommendation.
+
 Why the distinction matters: every one of these choices changes how many real
 duplicate cases are missed or how much review work is created. An engineer cannot
 choose them from the code, and picking silently would make the evaluation
@@ -63,13 +68,37 @@ tune the threshold or switch aggregation policy before D1–D3 have answers.
 | School-blocking optimisation (cuts `N`, changes D4 semantics) | D4 |
 | Any claim that the system "detects duplicates accurately" | D5 — cannot be supported today |
 
-## 5. Change log
+Update — 30 October 2026: the *synthetic* versions of two blocked rows now exist and are
+recorded in `docs/ml-decision-sheet-2026-10-30.md`: pair-level precision/recall/F1/PR-AUC
+(ROC-AUC 0.9685, PR-AUC 0.9727, F1 0.9063 at 0.50) and a registration-level simulation.
+`top-1-corroborated` was measured and is **not recommended**: it removes 34–54% of nuisance
+flags at the cost of 39–60% of true duplicates. None of this is an accuracy claim, and
+D5 still blocks the real evaluation.
+
+## 5. Evidence available for each decision (synthetic labels only)
+
+Source: `ml-service/evaluate_operating_point.py`, output
+`ml-service/evaluation/operating_point_2026-10-30.json`, narrative
+`docs/ml-decision-sheet-2026-10-30.md`. Artifact `6ec9f2a3…`, cutoff 0.50 unchanged.
+
+| Decision | What is now measured | What is still missing |
+| --- | --- | --- |
+| D1 | `top-1` masks the true duplicate behind a nuisance candidate in 23.8% (N=100) to 52.6% (N=5 000) of detections | Whether the owner prefers bounded masking (top-3) or bounded queue (top-1) |
+| D2 | Cases per 200 registrations, whole registry at N=1 000: ~194–200; with name-token blocking at 0.70: 6–128 | The owner's actual weekly review capacity |
+| D3 | Synthetic miss rate 6.48% (0.30) / 10.73% (0.50) / 17.30% (0.70) / 29.63% (0.90) | The acceptable miss rate, and labels for duplicate patterns other than `repeat_application` |
+| D4 | School filtering would discard ~72% of duplicates (27.65% share a school code); surname+school blocking retains 16.47%, any-name-token blocking retains 80.52% | The owner's approval to change candidate selection |
+| D5 | 0 adjudicated pairs in the repository and 0 in both databases; a review protocol is proposed in the decision sheet | The reviewer's name(s) and the data-protection basis |
+
+## 6. Change log
 
 | Date | Change | Evidence |
 | --- | --- | --- |
 | 2026-10-30 | Created as a scaffold; D1–D5 recorded as unanswered | this file |
 | 2026-10-30 | Aggregation policy implemented with `top-1` default | `backend/src/services/duplicateAggregation.js`, `backend/tests/duplicateAggregation.test.js` |
 | 2026-10-30 | Per-pair baseline measured | `docs/ml-evaluation-baseline-2026-10.md` |
+| 2026-10-30 | Operating-point evidence measured: pair-level metrics, registration-level simulation, blocking projection. D1–D5 remain unanswered | `docs/ml-decision-sheet-2026-10-30.md`, `ml-service/evaluation/operating_point_2026-10-30.json` |
+| 2026-10-30 | `top-1-corroborated` measured and **not recommended**: removes 34–54% of nuisance flags but loses 39–60% of true duplicates | decision sheet §5 |
+| 2026-10-30 | 14 tests added that fail if the report stops describing the live artifact or the simulation arithmetic drifts | `ml-service/tests/test_operating_point.py` |
 
 When a decision is answered, append the answer, the date, the owner, and the
 concrete configuration change in the same commit as the change.

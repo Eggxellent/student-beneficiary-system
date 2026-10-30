@@ -671,3 +671,156 @@ and the 0.50 cutoff are untouched by this audit.
 Enforcement: `ml-service/tests/test_training_integrity.py`, 9 tests, part of the 19-test
 ml-service suite (`python -m unittest discover -s tests`, 1.8 s).
 
+## 15. Phase 1 - Git synchronization, 2026-10-30
+
+### 15.1 What was pushed
+
+| Item | Value |
+| --- | --- |
+| Feature head | `d3325e0a2c01e63506c777bc9c4d84a38719e3f4` (`fix/sbms-completion-work`) |
+| Base before merge | `78d1a8790d4664fbab56f12a7c4cfb4606f3aea0` (`origin/dev`) |
+| Pull request | **#12**, 11 commits, 48 files, +3 804 / -237 |
+| Merge commit | `f3d5a30365e033f572b9537e3d721d632dcc0086` (`origin/dev`) |
+| `origin/main` | `d4f546bd1c9267629465da8e3c3c7f4bf2e3b751` - **unchanged** |
+
+Merged with a merge commit, no squash and no force-push, so the 11 individual commits and
+the earlier `origin/dev` merge stay in the history. The feature branch was left in place
+because Phase 2-8 work continues on it.
+
+Not touched: local branch `dev` (worktree `student-beneficiary-system-dev`, 1 ahead /
+10 behind and carrying 6 uncommitted files), `fix/sbms-production-readiness`
+(worktree `student-beneficiary-system-admin-login-fix`), `experiment/raw-pair-model-training`
+(worktree `sbms-raw-pair-model-training`, 6 uncommitted files), `ml-experiments`, and
+`experiment/febrl-record-linkage`. Those dirty worktrees are pre-existing; nothing was
+stashed, reset or cleaned.
+
+### 15.2 Verification evidence at `d3325e0`
+
+Run before merging, because this PR has **no automated CI**: `.github/workflows/deployment-build.yml`
+exists only on branch `codex/render-deployment`. It is absent from `main`, `dev` and this
+branch, so GitHub reported `check-runs total=0`. Neither `dev` nor `main` has branch
+protection (the protection API returns 404 for both), so "keep `main` stable" depends on
+process, not on settings. Moving that workflow to `dev`/`main` is worth doing before Azure.
+
+| Check | Result |
+| --- | --- |
+| `npm test` (backend, all 19 suites) | **19 suites, 103 tests passed** |
+| `node --test` (5 non-HTTP native suites) | **32 passed** |
+| `npm run test:smoke` (against a live API) | **3 passed** |
+| ml-service `unittest discover` | **19 passed** |
+| `check_training_integrity.py` | `verdict: pass` |
+| `npm run build` (frontend) | built in 10.54 s |
+| `GET /api/health` / `GET /api/ready` | 200 / 200 `{"status":"ready"}` |
+
+### 15.3 The environment recipe (previously undocumented, and it matters)
+
+A first attempt at `npm test` reported **6 failed suites / 34 failed tests**. That was not
+a regression: the six failures were exactly the database-backed suites, and the cause was
+a wrong connection string (`SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a
+string`). The Jest guard only validates the *shape* of the URL, so it lets a password-less
+URL through and PostgreSQL rejects it later. Two traps:
+
+- `backend/.env.test` is **not** auto-loaded. Neither `tests/testEnvironment.js` nor the
+  guard reads it; only `PUBLIC_APP_URL` is defaulted in code.
+- A live API pointed at `sbms_test` also needs `SBMS_EXPECTED_DATABASE_NAME=sbms_test`,
+  otherwise `assertAuthenticationSchemaReady()` aborts startup with "Startup blocked".
+
+Working recipe (values are read from `.env.test`, never echoed):
+
+```powershell
+cd backend
+$vars = @{}
+Get-Content .env.test | ForEach-Object {
+  if ($_ -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') { $vars[$matches[1]] = $matches[2].Trim().Trim('"') }
+}
+foreach ($k in @('NODE_ENV', 'DATABASE_URL', 'SBMS_TEST_DATABASE_URL')) { Set-Item "Env:$k" $vars[$k] }
+npm test                      # 19 suites / 103 tests
+
+# live HTTP smoke test (separate shell, API bound to the test database)
+$env:SBMS_EXPECTED_DATABASE_NAME = 'sbms_test'
+$env:PUBLIC_APP_URL = 'https://sbms-test-fixture.ac.ke'
+$env:PORT = '5000'
+node src/index.js             # then, in the first shell:
+$env:API_URL = 'http://localhost:5000'
+npm run test:smoke            # 3 tests
+```
+
+State of `sbms_test` used for this run: 12 public tables, 2 active admin accounts
+(`admin@sbms.com`, `bootstrap-admin@example.invalid`), 0 students, 0 duplicate flags,
+0 disbursements - the suites clean up after themselves.
+
+### 15.4 Findings for the owner
+
+1. **No CI runs on this repository's PRs.** Action: relocate
+   `.github/workflows/deployment-build.yml` from `codex/render-deployment` onto `dev`.
+2. **No branch protection** on `dev` or `main`. Recommend requiring the build workflow
+   once it is on `dev`, so `main` stability is enforced rather than remembered.
+3. **Draft PR #8** (`codex/render-deployment` -> `dev`, "Prepare SBMS for Render
+   deployment") is still open and predates the switch to Azure. It should be closed or
+   re-scoped, but that is the owner's call and it was not touched.
+4. The local `dev` worktree and two sibling worktrees carry uncommitted changes. They are
+   untouched; someone should decide whether those edits are still wanted.
+
+## 16. Phase 2 - ML decision evidence, 2026-10-30
+
+Nothing was retrained. The artifact is still `sha256 6ec9f2a3cbe6ed0d…` and the cutoff is
+still `0.50`; no configuration was changed to match any recommendation.
+
+### 16.1 What was added
+
+| File | Purpose |
+| --- | --- |
+| `ml-service/evaluate_operating_point.py` | Read-only harness: scores the labelled holdout through the serving feature path, then reports pair-level metrics, per-scenario flag rates, a registration-level `top-1` simulation, corroboration variants and a blocking projection |
+| `ml-service/evaluation/operating_point_2026-10-30.json` | Raw output (provenance, all cutoffs, all registry sizes, limitations) |
+| `ml-service/tests/test_operating_point.py` | 14 tests: confusion-matrix arithmetic, cutoff inclusivity, `top-1` masking, reproducibility, blocking retention, and guards that the committed report describes the live artifact and still reproduces `realistic_pairs_xgboost_training_metrics.json` |
+| `docs/ml-decision-sheet-2026-10-30.md` | Evidence + recommended default for D1–D5, still unanswered |
+| `docs/ml-evaluation-policy.md` | §4 update, new §5 evidence table, change-log rows; owner answers deliberately left blank |
+
+### 16.2 What it measured (synthetic labels only)
+
+| Quantity | Result |
+| --- | --- |
+| Holdout pairs / groups | 12 000 / 6 000 (6 000 positives, 6 000 hard negatives) |
+| Ranking | ROC-AUC 0.9685, PR-AUC 0.9727 (baseline 0.5) |
+| F1 at live cutoff 0.50 | 0.9063 - reproduces the stored metrics exactly |
+| Feature path | identical to serving, `max_abs_difference = 0` |
+| Miss rate | 6.48% (0.30) / 10.73% (0.50) / 17.30% (0.70) / 29.63% (0.90) |
+| Best F1 cutoff | 0.35 at 0.9065 - only 0.0002 above the live 0.50 |
+| Truly unrelated negatives | **0.00%** flagged at 0.50 - no noise flags |
+| Worst negative family | `identifier_collision`, 22.21% at 0.50 |
+| Registration nuisance (whole registry, `top-1`, 0.50) | 97% of legitimate registrations at N=1 000 even with random-pair negatives |
+| `top-1` masking | 23.8% (N=100) to 52.6% (N=5 000) of detections attributed to the wrong candidate |
+| School as a filter | would discard ~72% of duplicates (only 27.65% share a school code) |
+| Blocking retention | surname+school 16.47%; any-name-token 80.52% |
+| `top-1-corroborated` | removes 34–54% of nuisance flags but loses 39–60% of duplicates - **not recommended** |
+
+### 16.3 Adjudicated ground truth
+
+None exists. `evaluation/reviewed_pairs_template.csv` is header-only, and read-only queries
+against both `sbms_test` and `student_beneficiary_system` returned 0 students, 0 duplicate
+flags and 0 `duplicate_review_events`. So no precision/recall/miss-rate claim about real
+beneficiaries is possible, and none is made. D5 remains the blocking decision.
+
+### 16.4 Commands
+
+```powershell
+cd ml-service
+.\.venv\Scripts\python.exe .\evaluate_operating_point.py              # ~25 s
+.\.venv\Scripts\python.exe -m unittest tests.test_operating_point -v   # 14 tests
+.\.venv\Scripts\python.exe -m unittest discover -s tests               # 33 tests
+```
+
+### 16.5 Evidence-file hardening
+
+Both harnesses could silently overwrite their own committed evidence with a reduced run,
+which happened once during this phase. Both now refuse:
+
+- `evaluate_operating_point.py` requires an explicit `--output` when `--cutoffs`,
+  `--registry-sizes`, `--simulations` or `--negatives` differ from the defaults.
+- `check_training_integrity.py --fast` requires an explicit `--output`, because fast mode
+  omits the grouped CV and the learning curve.
+
+A full re-run of the integrity audit now reproduces `training_integrity_report.json`
+byte-for-byte, so `git status` stays clean after an audit.
+
+
