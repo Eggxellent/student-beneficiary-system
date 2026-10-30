@@ -449,8 +449,11 @@ cd ml-service; .\.venv\Scripts\python.exe .\evaluate_reviewed_pairs.py C:\approv
 | `ml-service/model/research/rf_attachment_style_candidate.joblib` | research candidate | never promoted |
 | `ml-service/experiments/sbms_dataset/artifacts/sbms_dataset_xgb_research_only.joblib` | 10-feature research | **must not** be mixed with production |
 
-`.joblib` artifacts are git-ignored (`.gitignore`) — they are not in the repository, so a
-fresh clone cannot run screening until the artifact is supplied. Note this for Azure.
+`.joblib` artifacts: **corrected 2026-10-30** — the live model
+(`ml-service/model/xgb_duplicate_model.joblib`) **is tracked in git** even though `.gitignore`
+lists `ml-service/model/*.joblib`; it was force-added and is present in the index. A fresh clone
+therefore can build the Docker image, which copies it (`.gitignore` only hides *new* untracked
+artifacts such as training outputs).
 
 ---
 
@@ -981,6 +984,58 @@ acknowledgement is recorded as `discrepancy`.
 - `/api/disbursements/exceptions` returns `deadline_days: null` unless
   `ACKNOWLEDGEMENT_OVERDUE_DAYS` is set; it does not invent a deadline.
 - Registration is never blocked by a duplicate; no automatic rejection or deletion exists.
+
+## 20. Phase 6 - Azure research and cost estimate, 2026-10-30
+
+Full document: `docs/azure-deployment-plan-2026-10-30.md`. **Nothing was provisioned and no
+Azure resource exists.** No subscription was touched.
+
+### 20.1 Verified prices (ZA North, USD, read 30 Oct 2026 from the Retail Prices API)
+
+| Service | Meter | Price |
+| --- | --- | --- |
+| Container Apps | vCPU active | $0.000024/s ($0.0864/vCPU-hour) |
+| Container Apps | Memory active | $0.000003/GiB-s ($0.0108/GiB-hour) |
+| Container Apps | Requests | $0.40 per 1M |
+| Container Apps | Free grant | 180 000 vCPU-s + 360 000 GiB-s + 2M requests per month |
+| PostgreSQL Flexible | **B1MS** | **$0.0215/hour ≈ $15.70/month** |
+| PostgreSQL Flexible | B2S | $0.086/hour ≈ $62.78/month |
+| Static Web Apps | Free / Standard | **$0** / $9 per app per month |
+
+### 20.2 Costed options
+
+| Scenario | Configuration | Est. total/month |
+| --- | --- | --- |
+| A - demo, scale to zero | 0.5 vCPU / 1 GiB, ~40 active h, B1MS, SWA Free | **≈ $16-20** |
+| B - marking week, warm | same, `minReplicas: 1`, B1MS | **≈ $50** |
+| C - comfortable, warm | 1 vCPU / 2 GiB, B1MS | **≈ $89** |
+| D - comfortable + B2S | 1 vCPU / 2 GiB, B2S | **≈ $136** |
+
+The API falls inside the free grant when it scales to zero; the database is the unavoidable floor
+cost because Azure Database for PostgreSQL has **no free tier**.
+
+### 20.3 Blockers found while planning
+
+1. **`migrate.js` cannot touch a cloud database** (loopback `sbms_test` only). The only supported
+   path is `bootstrap-production-schema.js`, which applies `schema.sql` **and** every migration and
+   creates the first admin. `schema.sql` alone creates 8 tables and **no** reconciliation columns,
+   so using it alone would break payment clearing.
+2. **No `staticwebapp.config.json`** - SPA deep links (`/verify` when a QR is scanned) would 404.
+3. **No GitHub Actions workflow on `dev`** - deployment needs one; adding it also closes the Phase 1
+   "no CI" gap.
+4. **`TRUST_PROXY_HOPS=1`** must be set, or every public user shares one verification bucket.
+5. The frontend must be built with `VITE_API_ORIGIN`, and `PUBLIC_APP_URL` must be the Static Web
+   App URL so QR codes point at the deployed site (this is what finally makes the phone-camera test
+   possible).
+6. `.joblib` tracking claim in Appendix C was **wrong** and is now corrected: the live model is in
+   git, so the Dockerfile builds from a clean clone.
+
+### 20.4 Approvals required before any spend
+
+Region and subscription, funding route, monthly ceiling (A/B/C/D), the one-time database bootstrap,
+the bootstrap administrator's credentials, whether "all on Azure" is strict or a free external
+Postgres is acceptable, and permission to add the routes file plus a CI workflow.
+
 
 
 
