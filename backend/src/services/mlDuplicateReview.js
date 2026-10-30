@@ -1,5 +1,5 @@
 const { scoreStudentPairs } = require('./duplicateCheck');
-const { getMlReviewScoreThreshold } = require('../config/settings');
+const { getMlReviewScoreThreshold, getDuplicateThreshold } = require('../config/settings');
 
 const PREDICTION_BATCH_SIZE = 200;
 const MISSING_IDENTIFIERS = new Set(['', 'na', 'nan', 'none', 'null', 'unknown', 'notprovided', 'notavailable']);
@@ -36,6 +36,26 @@ function exactReviewIdentifierMatches(first, second) {
     const right = normalizedIdentifier(second[field]);
     return usableIdentifier(left) && usableIdentifier(right) && left === right ? [label] : [];
   });
+}
+
+/**
+ * Priority for one duplicate case, shared by the registration response and the admin
+ * queue so the confirmation screen and the queue can never disagree.
+ *
+ * Exact identifier agreement outranks the model score, because it is evidence a reviewer
+ * can check against source documents. Otherwise `DUPLICATE_HIGH_PRIORITY_THRESHOLD`
+ * decides. That cutoff is provisional (`thresholds_validated: false` in the queue policy),
+ * so neither priority level is a decision that a record is a duplicate.
+ */
+function reviewPriority({ score, highPriorityThreshold, exactIdentifierCount = 0 } = {}) {
+  if (Number(exactIdentifierCount) > 0) return 'high';
+  const cutoff = highPriorityThreshold === undefined
+    ? getDuplicateThreshold()
+    : highPriorityThreshold;
+  const numericScore = Number(score);
+  const numericCutoff = Number(cutoff);
+  if (!Number.isFinite(numericScore) || !Number.isFinite(numericCutoff)) return 'standard';
+  return numericScore >= numericCutoff ? 'high' : 'standard';
 }
 
 // The predictor parses strict calendar dates (feature_engineering._dob_similarity),
@@ -103,5 +123,6 @@ module.exports = {
   predictorRecord,
   exactNationalIdMatch,
   exactReviewIdentifierMatches,
+  reviewPriority,
   scorePairs,
 };

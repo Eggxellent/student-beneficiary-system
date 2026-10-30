@@ -3,7 +3,8 @@ jest.mock('../src/services/duplicateCheck', () => ({
 }));
 
 const { scoreStudentPairs } = require('../src/services/duplicateCheck');
-const { scorePairs, PREDICTION_BATCH_SIZE, exactNationalIdMatch, exactReviewIdentifierMatches } = require('../src/services/mlDuplicateReview');
+const { scorePairs, PREDICTION_BATCH_SIZE, exactNationalIdMatch, exactReviewIdentifierMatches, reviewPriority } = require('../src/services/mlDuplicateReview');
+const { getDuplicateThreshold } = require('../src/config/settings');
 
 function scoredBatch(pairs) {
   return {
@@ -53,5 +54,35 @@ describe('ML duplicate review adapter', () => {
       { upi: 'UNKNOWN', birth_certificate_number: '000000' },
       { upi: 'UNKNOWN', birth_certificate_number: '000000' }
     )).toEqual([]);
+  });
+});
+
+describe('reviewPriority', () => {
+  const highPriorityCutoff = 0.7;
+
+  test('exact identifier agreement outranks the model score', () => {
+    expect(reviewPriority({ score: 0.05, highPriorityThreshold: highPriorityCutoff, exactIdentifierCount: 1 })).toBe('high');
+    expect(reviewPriority({ score: 0.99, highPriorityThreshold: highPriorityCutoff, exactIdentifierCount: 0 })).toBe('high');
+  });
+
+  test('score-only cases use the high-priority cutoff, not the review cutoff', () => {
+    // 0.55 clears the 0.50 review cutoff but is not high priority: that distinction is
+    // what makes the 'high' badge in the admin queue and the registration screen mean
+    // something.
+    expect(reviewPriority({ score: 0.55, highPriorityThreshold: highPriorityCutoff })).toBe('standard');
+    expect(reviewPriority({ score: 0.7, highPriorityThreshold: highPriorityCutoff })).toBe('high');
+    expect(reviewPriority({ score: 0.9982, highPriorityThreshold: highPriorityCutoff })).toBe('high');
+  });
+
+  test('falls back to the configured cutoff', () => {
+    expect(reviewPriority({ score: getDuplicateThreshold() })).toBe('high');
+    expect(reviewPriority({ score: 0 })).toBe('standard');
+  });
+
+  test('never throws on missing or malformed input', () => {
+    expect(reviewPriority()).toBe('standard');
+    expect(reviewPriority({ score: null, highPriorityThreshold: highPriorityCutoff })).toBe('standard');
+    expect(reviewPriority({ score: 'not-a-number', highPriorityThreshold: highPriorityCutoff })).toBe('standard');
+    expect(reviewPriority({ score: '0.8', highPriorityThreshold: highPriorityCutoff })).toBe('high');
   });
 });

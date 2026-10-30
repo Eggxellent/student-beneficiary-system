@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "start": "concurrently --kill-others --names API,WEB \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\""
+    "start": "concurrently --kill-others --names API,WEB \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "smoke:browser": "node scripts/browser-smoke.mjs"
   },
   "dependencies": {
     "@neon/config": "^1.3.1",

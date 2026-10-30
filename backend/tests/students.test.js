@@ -3,6 +3,7 @@ const bcrypt = require("bcrypt");
 const app = require("../src/index");
 const pool = require("../src/config/db");
 const { buildDuplicateFeatures, calculateDuplicateScore } = require("../src/services/duplicateCheck");
+const { getMlReviewScoreThreshold, getDuplicateThreshold } = require("../src/config/settings");
 
 describe("Students API", () => {
   jest.setTimeout(30000);
@@ -127,6 +128,19 @@ describe("Students API", () => {
     expect(duplicateResponse.body.duplicate_flags).toHaveLength(1);
     expect(duplicateResponse.body.duplicate_flags[0].risk_level).toBe('review');
     expect(duplicateResponse.body.duplicate_flags[0].review_reason).toMatch(/exact UPI match/i);
+    // Contract shared with the admin queue: severity is `priority`, and the exact
+    // identifier list is published as evidence instead of being parsed out of prose.
+    expect(duplicateResponse.body.duplicate_flags[0].priority).toBe('high');
+    expect(duplicateResponse.body.duplicate_flags[0].exact_identifier_matches).toEqual(['UPI']);
+    const screening = duplicateResponse.body.duplicate_screening;
+    expect(screening.aggregation_policy).toBeTruthy();
+    expect(screening.candidates_considered).toBeGreaterThanOrEqual(1);
+    expect(screening.candidates_qualifying).toBeGreaterThanOrEqual(1);
+    expect(screening.candidates_suppressed).toBe(0);
+    expect(screening.review_threshold).toBe(getMlReviewScoreThreshold());
+    expect(screening.high_priority_threshold).toBe(getDuplicateThreshold());
+    expect(screening.thresholds_validated).toBe(false);
+    expect(screening.score_is_calibrated_probability).toBe(false);
     expect(duplicateResponse.body.message).toBe("Student registered successfully");
 
     const flags = await pool.query(
