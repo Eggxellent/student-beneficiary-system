@@ -810,4 +810,17 @@ cd ml-service
 .\.venv\Scripts\python.exe -m unittest discover -s tests               # 33 tests
 ```
 
+### 16.5 Evidence-file hardening
+
+Both harnesses could silently overwrite their own committed evidence with a reduced run,
+which happened once during this phase. Both now refuse:
+
+- `evaluate_operating_point.py` requires an explicit `--output` when `--cutoffs`,
+  `--registry-sizes`, `--simulations` or `--negatives` differ from the defaults.
+- `check_training_integrity.py --fast` requires an explicit `--output`, because fast mode
+  omits the grouped CV and the learning curve.
+
+A full re-run of the integrity audit now reproduces `training_integrity_report.json`
+byte-for-byte, so `git status` stays clean after an audit.
+
 

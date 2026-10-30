@@ -377,6 +377,12 @@ def main() -> int:
     for violation in report["violations"]:
         print(f"VIOLATION: {violation}")
 
+    if arguments.fast and arguments.output is None:
+        raise SystemExit(
+            "--fast skips the grouped CV and learning curve, which are part of the committed "
+            "evidence. Pass an explicit --output so evaluation/training_integrity_report.json "
+            "is not overwritten with a reduced report."
+        )
     output = arguments.output or DEFAULT_OUTPUT
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
