@@ -182,6 +182,9 @@ async function scanExisting(req, res, next) {
       const prediction = await scorePairs(batch.map(({ first, second }) => ({ first, second })));
       if (prediction.model_version !== modelVersion) throw new Error('Python duplicate model changed during the scan');
       candidatesScored += batch.length;
+      // The re-scan is deliberately per-pair, not per-registration: it enumerates the
+      // registry for an administrator and skips pairs that already have a flag, so the
+      // DUPLICATE_AGGREGATION_POLICY budget used at registration must not apply here.
       const matches = batch.flatMap(({ first, second }, index) => {
         const result = prediction.results[index];
         return result.score >= reviewThreshold || exactReviewIdentifierMatches(first, second).length > 0

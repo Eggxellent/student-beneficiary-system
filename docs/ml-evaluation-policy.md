@@ -28,7 +28,7 @@ tune the threshold or switch aggregation policy before D1–D3 have answers.
 
 | Decision | Configuration / code | Current state |
 | --- | --- | --- |
-| D1 | `DUPLICATE_AGGREGATION_POLICY` in `backend/.env`; `backend/src/services/duplicateAggregation.js` | Implemented and tested. Default `top-1` (≤ 1 flag per registration). `all` = legacy, `top-1-corroborated` = experimental |
+| D1 | `DUPLICATE_AGGREGATION_POLICY` in `backend/.env`; `backend/src/services/duplicateAggregation.js` | Implemented and tested. Default `top-1` (≤ 1 flag per registration). `all` = legacy, `top-1-corroborated` = experimental. The admin re-scan endpoint is intentionally excluded (it enumerates pairs and skips known ones) |
 | D2 | `ML_REVIEW_SCORE_THRESHOLD` (default `0.50`); `backend/src/config/settings.js` | Cutoff is configurable; value is **not validated** against reviewed data |
 | D3 | Same cutoff; reported as miss rate / recall in the Phase 2 report | Not measured — no adjudicated pairs |
 | D4 | Candidate query in `backend/src/controllers/students.controller.js` (`FROM students` with no school filter) and the O(N²) scan | Compares against **all** schools. Blocking is **not implemented** |
