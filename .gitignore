@@ -13,5 +13,8 @@ ml-service/data/raw_pairs.csv
 ml-service/data/raw_pairs.pre_realistic_backup.csv
 ml-service/data/features.csv
 backend/reports/*.pdf
+# Stray nested install artifact: `npm install --prefix frontend <self-name>` used to
+# create frontend/student-beneficiary-system/backend with circular `file:` links.
+frontend/student-beneficiary-system/
 __pycache__/
 *.py[cod]

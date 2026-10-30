@@ -140,3 +140,19 @@ CREATE TABLE IF NOT EXISTS reports (
   file_path TEXT,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- 7. Legacy beneficiaries
+-- `/api/beneficiaries` is still mounted and `beneficiary.model.js` reads and writes
+-- this table, and `services/databaseReadiness.js` requires it, so a database built
+-- from this file must create it. The definition reproduces the shape observed in the
+-- existing deployment (serial integer key, no foreign keys) and is additive only.
+-- The meaning of `scholarship_amount` is still unresolved; it is preserved as-is and
+-- is not mapped to any bursary award or payment amount.
+CREATE TABLE IF NOT EXISTS beneficiaries (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  school VARCHAR(255),
+  grade_level VARCHAR(50),
+  scholarship_amount NUMERIC DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);

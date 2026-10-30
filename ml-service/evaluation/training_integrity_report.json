@@ -1,0 +1,180 @@
+{
+  "verdict": "pass",
+  "violations": [],
+  "provenance": {
+    "artifact_file": "model\\xgb_duplicate_model.joblib",
+    "artifact_sha256": "6ec9f2a3cbe6ed0dcf80c79b15f47364d9f4f7bd3e27da25c690d0436bb0a6f9",
+    "artifact_matches_metrics_report": true,
+    "training_file": "training\\realistic_pairs_train.csv",
+    "training_sha256_matches_report": true,
+    "holdout_file": "evaluation\\realistic_pairs_holdout.csv",
+    "holdout_sha256_matches_report": true
+  },
+  "separation": {
+    "training_rows": 12000,
+    "training_groups": 6000,
+    "holdout_rows": 12000,
+    "holdout_groups": 6000,
+    "shared_groups": 0,
+    "shared_person_identities": 0,
+    "identical_rows_across_splits": 0,
+    "records_without_name_or_upi": {
+      "training": 165,
+      "holdout": 141
+    },
+    "shared_names_expected_from_finite_pools": 3408
+  },
+  "overfitting": {
+    "in_sample_metrics": {
+      "rows": 12000,
+      "accuracy": 0.9206666666666666,
+      "precision": 0.9320438206093804,
+      "recall": 0.9075,
+      "f1": 0.9196081742948826,
+      "roc_auc": 0.9761635138888889,
+      "average_precision": 0.979336310826511,
+      "confusion_matrix_labels_0_1": [
+        [
+          5603,
+          397
+        ],
+        [
+          555,
+          5445
+        ]
+      ],
+      "false_positives": 397,
+      "false_negatives": 555
+    },
+    "holdout_metrics": {
+      "rows": 12000,
+      "accuracy": 0.90775,
+      "precision": 0.9204330641003609,
+      "recall": 0.8926666666666667,
+      "f1": 0.9063372535747525,
+      "roc_auc": 0.9684866388888889,
+      "average_precision": 0.9726932705276506,
+      "confusion_matrix_labels_0_1": [
+        [
+          5537,
+          463
+        ],
+        [
+          644,
+          5356
+        ]
+      ],
+      "false_positives": 463,
+      "false_negatives": 644
+    },
+    "in_sample_f1_advantage": 0.013271,
+    "in_sample_f1_advantage_limit": 0.1,
+    "grouped_cv_folds": [
+      {
+        "fold": 1,
+        "f1": 0.9110830172777076,
+        "roc_auc": 0.9721187500000001,
+        "rows": 2400
+      },
+      {
+        "fold": 2,
+        "f1": 0.9187129551227773,
+        "roc_auc": 0.973975,
+        "rows": 2400
+      },
+      {
+        "fold": 3,
+        "f1": 0.8974250738708316,
+        "roc_auc": 0.9659881944444445,
+        "rows": 2400
+      },
+      {
+        "fold": 4,
+        "f1": 0.9074778200253485,
+        "roc_auc": 0.9687434027777777,
+        "rows": 2400
+      },
+      {
+        "fold": 5,
+        "f1": 0.8986969314838167,
+        "roc_auc": 0.9640621527777777,
+        "rows": 2400
+      }
+    ],
+    "grouped_cv_mean_f1": 0.9066791595560965,
+    "grouped_cv_mean_roc_auc": 0.9689775,
+    "holdout_minus_cv_f1": -0.000342,
+    "learning_curve": [
+      {
+        "training_fraction": 0.1,
+        "training_rows": 1200,
+        "training_groups": 600,
+        "holdout_f1": 0.8885745194308063,
+        "holdout_roc_auc": 0.9568536111111111,
+        "holdout_accuracy": 0.8884166666666666
+      },
+      {
+        "training_fraction": 0.25,
+        "training_rows": 3000,
+        "training_groups": 1500,
+        "holdout_f1": 0.8988896366083445,
+        "holdout_roc_auc": 0.9642950000000001,
+        "holdout_accuracy": 0.8998333333333334
+      },
+      {
+        "training_fraction": 0.5,
+        "training_rows": 6000,
+        "training_groups": 3000,
+        "holdout_f1": 0.9010175763182239,
+        "holdout_roc_auc": 0.9659426666666668,
+        "holdout_accuracy": 0.9019166666666667
+      },
+      {
+        "training_fraction": 1.0,
+        "training_rows": 12000,
+        "training_groups": 6000,
+        "holdout_f1": 0.9063372535747525,
+        "holdout_roc_auc": 0.9684866388888889,
+        "holdout_accuracy": 0.90775
+      }
+    ]
+  },
+  "label_shortcuts": {
+    "jaro_winkler": {
+      "training_auc": 0.70405675,
+      "holdout_auc": 0.7101425277777778
+    },
+    "dob_match": {
+      "training_auc": 0.6926999861111112,
+      "holdout_auc": 0.6893762361111111
+    },
+    "school_match": {
+      "training_auc": 0.3389166666666667,
+      "holdout_auc": 0.33841666666666664
+    },
+    "guardian_match": {
+      "training_auc": 0.5003061249999999,
+      "holdout_auc": 0.5041191944444444
+    },
+    "upi_match": {
+      "training_auc": 0.668779888888889,
+      "holdout_auc": 0.6716420138888889
+    },
+    "birth_certificate_match": {
+      "training_auc": 0.6730652222222222,
+      "holdout_auc": 0.6821929861111111
+    }
+  },
+  "serving_path": [
+    {
+      "file": "predict.py",
+      "banned_tokens_found": [],
+      "clean": true
+    }
+  ],
+  "reported_by_metrics_file": {
+    "holdout_used_for_training_or_tuning": false,
+    "holdout_used_for_model_selection": true,
+    "threshold": 0.5
+  }
+}

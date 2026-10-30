@@ -18,6 +18,7 @@ const MIGRATION_ORDER = Object.freeze([
   '20261022_ml_duplicate_provenance.sql',
   '20261023_bursary_award_reconciliation.sql',
   '20261024_add_user_activation_flag.sql',
+  '20261025_legacy_beneficiaries_baseline.sql',
 ]);
 
 const MANUAL_MIGRATIONS = Object.freeze([

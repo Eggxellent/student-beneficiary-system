@@ -11,6 +11,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: SBMS_EXPECTED_DATABASE_NAME
+        value: sbms_postgres
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
