@@ -3,6 +3,7 @@ const { configureJwtSecret } = require('./config/jwtSecret');
 const express = require('express');
 const cors = require('cors');
 const pool = require('./config/db');
+const { getPublicAppOrigin } = require('./config/publicAppUrl');
 const { checkDatabaseReadiness } = require('./services/databaseReadiness');
 const { assertAuthenticationSchemaReady } = require('./services/databaseStartup');
 const beneficiariesRouter = require('./routes/beneficiaries.routes');
@@ -82,6 +83,10 @@ app.use(errorHandler);
 if (require.main === module) {
   (async () => {
     configureJwtSecret(process.env.JWT_SECRET);
+    // Student registration cannot complete without a QR code, and the QR code embeds
+    // this origin. Resolving it here turns a missing or unsafe PUBLIC_APP_URL into a
+    // startup failure instead of a 500 on every registration request.
+    getPublicAppOrigin();
     await assertAuthenticationSchemaReady(
       (query, values) => pool.query(query, values),
       { expectedDatabaseName: process.env.SBMS_EXPECTED_DATABASE_NAME },
@@ -90,7 +95,7 @@ if (require.main === module) {
       console.log(`Server running on port ${PORT}`);
     });
   })().catch(() => {
-    console.error('Startup blocked: required SBMS authentication database is unavailable or incompatible.');
+    console.error('Startup blocked: required SBMS configuration or authentication database is unavailable or incompatible.');
     process.exit(1);
   });
 }

@@ -18,7 +18,7 @@ const validEnv = Object.freeze({
   SBMS_BOOTSTRAP_ADMIN_PASSWORD: 'PrivateTestPassword123',
 });
 
-function makeClient({ databaseName = 'sbms_test', relationCount = 0, verification = true } = {}) {
+function makeClient({ databaseName = 'sbms_test', relationCount = 0, verification = true, missingTables = [] } = {}) {
   const calls = [];
   const client = {
     released: false,
@@ -31,6 +31,10 @@ function makeClient({ databaseName = 'sbms_test', relationCount = 0, verificatio
         return { rows: [verification
           ? { database_name: 'sbms_test', users_exists: true, users_resolve_to_public: true, missing_user_columns: [] }
           : { database_name: 'sbms_test', users_exists: true, users_resolve_to_public: false, missing_user_columns: ['is_active'] }] };
+      }
+      // Bootstrap also verifies the GET /api/ready contract before committing.
+      if (String(sql).includes('missing_tables')) {
+        return { rows: [{ database_name: databaseName, missing_tables: missingTables }] };
       }
       if (String(sql).includes("SELECT id FROM public.users WHERE role = 'admin'")) return { rows: [] };
       if (String(sql).includes('SELECT id, role FROM public.users WHERE email')) return { rows: [] };
@@ -93,6 +97,20 @@ test('approved empty bootstrap applies only automatic migrations atomically and 
   assert.deepEqual(insert.values, ['Test Administrator', 'admin@example.test', 'bcrypt-hash-only']);
   assert.equal(JSON.stringify(deps.calls).includes(validEnv.SBMS_BOOTSTRAP_ADMIN_PASSWORD), false);
   assert.equal(deps.calls.at(-1).sql, 'COMMIT');
+  assert.equal(deps.client.released, true);
+});
+
+test('bootstrap refuses to commit a schema that fails the readiness contract', async () => {
+  // Regression guard: bootstrap previously reported success while /api/ready returned
+  // 503 because schema.sql did not create the legacy beneficiaries table.
+  const deps = dependencies({ missingTables: ['beneficiaries'] });
+
+  await assert.rejects(
+    bootstrapIfDatabaseIsEmpty({ ...deps, env: validEnv }),
+    /readiness contract/,
+  );
+  assert.equal(deps.calls.some(({ sql }) => sql.includes('INSERT INTO public.users')), false);
+  assert.equal(deps.calls.at(-1).sql, 'ROLLBACK');
   assert.equal(deps.client.released, true);
 });
 

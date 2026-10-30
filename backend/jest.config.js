@@ -1,4 +1,7 @@
 module.exports = {
   rootDir: __dirname,
-  setupFiles: ['<rootDir>/tests/testDatabaseGuard.js'],
+  setupFiles: [
+    '<rootDir>/tests/testEnvironment.js',
+    '<rootDir>/tests/testDatabaseGuard.js',
+  ],
 };

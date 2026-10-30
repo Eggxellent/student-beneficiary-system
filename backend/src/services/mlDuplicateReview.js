@@ -38,13 +38,38 @@ function exactReviewIdentifierMatches(first, second) {
   });
 }
 
+// The predictor parses strict calendar dates (feature_engineering._dob_similarity),
+// so anything else silently scores as "no date-of-birth match". `pg` returns DATE
+// columns as a JS Date at local midnight, which serialises to a UTC timestamp -- and
+// therefore the previous calendar day for every zone east of UTC. Records are
+// normalised to YYYY-MM-DD here, at the single boundary that talks to the predictor,
+// so stored rows and freshly submitted payloads are compared on the same basis.
+function dateOnly(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${value.getFullYear()}-${month}-${day}`;
+  }
+  const text = String(value).trim();
+  return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : text;
+}
+
+function predictorRecord(record) {
+  if (!record || typeof record !== 'object') return record;
+  return { ...record, date_of_birth: dateOnly(record.date_of_birth) };
+}
+
 async function scorePairs(pairs) {
   const results = [];
   let modelVersion;
   const batchCount = Math.max(1, Math.ceil(pairs.length / PREDICTION_BATCH_SIZE));
   for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
     const offset = batchIndex * PREDICTION_BATCH_SIZE;
-    const batch = pairs.slice(offset, offset + PREDICTION_BATCH_SIZE);
+    const batch = pairs
+      .slice(offset, offset + PREDICTION_BATCH_SIZE)
+      .map((pair) => ({ first: predictorRecord(pair.first), second: predictorRecord(pair.second) }));
     let prediction;
     try {
       prediction = await scoreStudentPairs(batch);
@@ -74,6 +99,8 @@ async function scorePairs(pairs) {
 module.exports = {
   PREDICTION_BATCH_SIZE,
   configuredThreshold,
+  dateOnly,
+  predictorRecord,
   exactNationalIdMatch,
   exactReviewIdentifierMatches,
   scorePairs,

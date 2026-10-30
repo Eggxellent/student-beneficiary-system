@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { MIGRATION_ORDER } = require('./migrate');
+const { checkDatabaseReadiness } = require('../src/services/databaseReadiness');
 
 const schemaPath = path.join(__dirname, '..', 'src', 'db', 'schema.sql');
 const migrationsDir = path.join(__dirname, '..', 'src', 'db', 'migrations');
@@ -161,6 +162,17 @@ async function bootstrapIfDatabaseIsEmpty({
         || !Array.isArray(verified.missing_user_columns)
         || verified.missing_user_columns.length !== 0) {
       throw new Error('Schema verification failed; the transaction will be rolled back.');
+    }
+
+    // Bootstrap must not report success on a schema the application cannot serve.
+    // `checkDatabaseReadiness` is the same contract used by GET /api/ready, so a
+    // database built here is verified against every table the API requires.
+    const { ready } = await checkDatabaseReadiness(
+      (query, values) => client.query(query, values),
+      { expectedDatabaseName: inputs.expectedDatabaseName },
+    );
+    if (!ready) {
+      throw new Error('Schema verification failed; the database does not satisfy the readiness contract and the transaction will be rolled back.');
     }
 
     const adminStatus = await provisionInitialAdmin(client, inputs, bcryptImpl);
