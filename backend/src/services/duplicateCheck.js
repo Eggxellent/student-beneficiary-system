@@ -1,3 +1,19 @@
+/**
+ * Duplicate-scoring adapters.
+ *
+ * Production path (registration and re-scan): `scoreStudentPairs()`, which drives
+ * ml-service/predict.py and returns per-pair XGBoost scores. Which of those pairs
+ * become registration-level flags is decided in `services/duplicateAggregation.js`.
+ *
+ * LEGACY (marked @deprecated below): the weighted rule engine —
+ * `buildDuplicateFeatures`, `calculateDuplicateContributions`,
+ * `calculateDuplicateScore`, `classifyDuplicate`, `checkDuplicate`,
+ * `checkDuplicates`. It has **no production callers**; only tests still exercise
+ * it. It is kept temporarily so historical behaviour can be compared; see
+ * docs/SBMS_PROJECT_HANDOVER_2026-10.md section 1.2 row 10. Do not wire it into a
+ * request path, and do not treat its scores as model probabilities.
+ */
+
 const { spawn } = require('child_process');
 const readline = require('readline');
 const path = require('path');
@@ -14,6 +30,10 @@ const pythonCandidates = [
 ].filter(Boolean);
 const pythonExecutable = pythonCandidates.find((candidate) => fs.existsSync(candidate)) || pythonCandidates[0] || 'python';
 const predictor = path.join(__dirname, '..', '..', '..', 'ml-service', 'predict.py');
+// ---------------------------------------------------------------------------
+// LEGACY weighted rule engine. Test-only; never called from a request path.
+// See the module header. Model-based screening lives in scoreStudentPairs().
+// ---------------------------------------------------------------------------
 const DUPLICATE_SCORE_MAXIMUMS = Object.freeze({
   name: 0.08,
   date_of_birth: 0.04,
@@ -135,6 +155,7 @@ function dateSimilarity(first, second) {
   return Number((1 / (1 + daysApart / 365)).toFixed(4));
 }
 
+/** @deprecated Legacy rule engine; test-only. Production screening uses scoreStudentPairs(). */
 function buildDuplicateFeatures(first, second) {
   const nameSimilarity = jaroWinkler(first.full_name, second.full_name);
 
@@ -149,6 +170,7 @@ function buildDuplicateFeatures(first, second) {
   };
 }
 
+/** @deprecated Legacy rule engine; test-only. */
 function calculateDuplicateContributions(features) {
   return {
     name: Number((features.jaro_winkler * DUPLICATE_SCORE_MAXIMUMS.name).toFixed(4)),
@@ -160,15 +182,18 @@ function calculateDuplicateContributions(features) {
   };
 }
 
+/** @deprecated Legacy rule engine; test-only. Not a model probability. */
 function calculateDuplicateScore(features) {
   const contributions = calculateDuplicateContributions(features);
   return Number(Object.values(contributions).reduce((total, contribution) => total + contribution, 0).toFixed(4));
 }
 
+/** @deprecated Legacy rule engine; test-only. */
 function hasCorroboratingMajority(features) {
   return Object.values(features).filter((similarity) => similarity >= MIN_NAME_SIMILARITY).length >= MIN_CORROBORATING_FIELDS;
 }
 
+/** @deprecated Legacy rule engine; test-only. */
 function classifyDuplicate(features, score, duplicateThreshold, reviewThreshold) {
   if (features.upi_match === 1 || features.birth_certificate_match === 1 || features.national_id_match === 1) return 'critical';
   if (score >= duplicateThreshold) return 'duplicate';
@@ -176,6 +201,7 @@ function classifyDuplicate(features, score, duplicateThreshold, reviewThreshold)
   return 'clear';
 }
 
+/** @deprecated Legacy rule engine; test-only. */
 function duplicateReviewReason(features, score, reviewThreshold) {
   const matchedIdentifiers = [
     features.upi_match === 1 ? 'UPI' : null,
@@ -190,10 +216,12 @@ function duplicateReviewReason(features, score, reviewThreshold) {
   return null;
 }
 
+/** @deprecated Legacy rule engine; test-only. */
 function checkDuplicate(features) {
   return checkDuplicates([features]).then((results) => results[0]);
 }
 
+/** @deprecated Legacy rule engine; test-only. Production batches go through scoreStudentPairs(). */
 function checkDuplicates(features) {
   return new Promise((resolve, reject) => {
     ensurePredictor();
@@ -273,9 +301,11 @@ function handlePredictorFailure(error) {
 }
 
 module.exports = {
+  // Production path.
+  scoreStudentPairs,
+  // LEGACY rule engine, exported for tests and historical comparison only.
   checkDuplicate,
   checkDuplicates,
-  scoreStudentPairs,
   jaroWinkler,
   buildDuplicateFeatures,
   calculateDuplicateContributions,

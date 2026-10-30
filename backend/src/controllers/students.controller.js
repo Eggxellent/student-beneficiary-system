@@ -2,6 +2,7 @@ const studentModel = require('../models/student.model');
 const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
 const { exactReviewIdentifierMatches, scorePairs, configuredThreshold } = require('../services/mlDuplicateReview');
+const { selectFlaggedCandidates, summarizeAggregation, normalizeAggregationPolicy } = require('../services/duplicateAggregation');
 const QRCode = require('qrcode');
 const { randomBytes } = require('crypto');
 const { buildStudentVerificationUrl } = require('../config/publicAppUrl');
@@ -50,6 +51,9 @@ async function create(req, res, next) {
 
     const submitted = { full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number, national_id_number };
     const threshold = configuredThreshold();
+    // Resolved before any database work so a misconfigured policy fails fast
+    // instead of leaving a transaction open.
+    const aggregationPolicy = normalizeAggregationPolicy();
     const token = randomBytes(32).toString('hex');
     const verificationUrl = buildStudentVerificationUrl(token);
     const qrCode = await QRCode.toDataURL(verificationUrl);
@@ -57,6 +61,7 @@ async function create(req, res, next) {
     const client = await pool.connect();
     let student;
     let prediction;
+    let aggregation;
     try {
       await client.query('BEGIN');
       await client.query("SELECT pg_advisory_xact_lock(hashtext('sbms.student.registration'))");
@@ -74,12 +79,23 @@ async function create(req, res, next) {
           code: 'DUPLICATE_SCREENING_UNAVAILABLE',
         });
       }
-      const duplicateResults = candidates.flatMap((candidate, index) => {
+      const scoredCandidates = candidates.map((candidate, index) => {
         const result = prediction.results[index];
-        const exactIdentifiers = exactReviewIdentifierMatches(submitted, candidate);
-        return result.score >= threshold || exactIdentifiers.length > 0
-          ? [{ candidate, score: result.score, features: result.features, exactIdentifiers }]
-          : [];
+        return {
+          candidate,
+          score: result.score,
+          features: result.features,
+          exactIdentifiers: exactReviewIdentifierMatches(submitted, candidate),
+        };
+      });
+      // The predictor scores pairs; this bounds how many of them become cases.
+      const duplicateResults = selectFlaggedCandidates(scoredCandidates, {
+        policy: aggregationPolicy,
+        threshold,
+      });
+      aggregation = summarizeAggregation(scoredCandidates, duplicateResults, {
+        policy: aggregationPolicy,
+        threshold,
       });
       student = await studentModel.create({ full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number, national_id_number, primary_phone, qr_token: token }, client);
       for (const result of duplicateResults) {
@@ -102,6 +118,10 @@ async function create(req, res, next) {
       await logAudit(req.user.id || req.user.sub, 'CREATE', 'students', student.id, {
         duplicate_model_version: prediction.model_version,
         duplicate_review_threshold: threshold,
+        duplicate_aggregation_policy: aggregation.policy,
+        duplicate_candidates_considered: aggregation.candidates_considered,
+        duplicate_candidates_qualifying: aggregation.candidates_qualifying,
+        duplicate_candidates_suppressed: aggregation.candidates_suppressed,
         duplicate_flags_created: flags.length,
       }, client);
       await client.query('COMMIT');
@@ -116,7 +136,14 @@ async function create(req, res, next) {
       student,
       qr_code: qrCode,
       duplicate_flags: flags,
-      duplicate_screening: { model_version: prediction.model_version, review_threshold: threshold, score_is_calibrated_probability: false },
+      duplicate_screening: {
+        model_version: prediction.model_version,
+        review_threshold: threshold,
+        score_is_calibrated_probability: false,
+        aggregation_policy: aggregation.policy,
+        candidates_considered: aggregation.candidates_considered,
+        candidates_suppressed: aggregation.candidates_suppressed,
+      },
     });
   } catch (error) {
     next(error);
