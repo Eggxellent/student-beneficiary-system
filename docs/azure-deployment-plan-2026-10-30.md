@@ -85,6 +85,14 @@ Python + xgboost model load but not a cold container start *plus* that load on t
 after scale-to-zero. Hence: scale to zero by default, `minReplicas: 1` during the demo/marking
 window.
 
+**Image size is the real cold-start cost.** An earlier measured build of this image was **2,222,712,090
+bytes (~2.07 GiB)**, of which the `nvidia-nccl-cu12` wheel alone was 351.5 MB — pulled on the CPU
+container, which cannot use it. That size is what a cold start has to fetch, so before deploying:
+rebuild and re-measure the image, and consider installing the CPU-only torch/scikit stack (or
+pinning requirements that exclude the CUDA wheels) to cut both pull time and storage. This is a
+performance item, not a correctness one — the model loads and predicts either way.
+
+
 ## 4. Recommended architecture
 
 ```
@@ -142,7 +150,7 @@ Students. Neither changes the technical plan; both need the owner's account, not
 
 | # | Change | Why it is required | Risk if skipped |
 | --- | --- | --- | --- |
-| 1 | Add `frontend/staticwebapp.config.json` with `navigationFallback` → `/index.html` | Static Web Apps serves files, not SPA routes | `/verify`, `/login`, `/students/register` return 404 on refresh or when a QR is scanned |
+| 1 | Add `frontend/public/staticwebapp.config.json` with `navigationFallback` → `/index.html` | Static Web Apps serves files, not SPA routes; `public/` is the only place Vite copies verbatim into `dist/` | `/verify`, `/login`, `/students/register` return 404 on refresh or when a QR is scanned |
 | 2 | Add a GitHub Actions workflow (build + deploy) | There is **no workflow on `dev`** — the only one lives on `codex/render-deployment` | No CI, no repeatable deploy; this also fixes the Phase 1 finding |
 | 3 | Set `TRUST_PROXY_HOPS=1` on the container app | The verification rate limiter keys on `req.ip` | All public users share one bucket of 10 scans / 15 min |
 | 4 | Bootstrap the database with `bootstrap-production-schema.js` | `migrate.js` **refuses anything but loopback `sbms_test`**, and `schema.sql` alone creates only 8 tables with **none** of the reconciliation columns | A database built from `schema.sql` alone breaks payment clearing and award verification |
@@ -186,7 +194,9 @@ az postgres flexible-server firewall-rule create --resource-group sbms-rg --serv
   --rule-name AllowAzure --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0
 
 # 3. One-time schema bootstrap (run from backend/, env values as in section 6)
-npm run db:bootstrap-empty      # prints: initialized; migrations=…; admin=created
+npm run db:bootstrap-empty
+#   prints: SBMS schema bootstrap completed: initialized; migrations=<n>; admin=admin_created.
+#   It rolls back and commits nothing if the readiness contract fails.
 
 # 4. API + ML container (builds the repo Dockerfile in the cloud)
 az containerapp up --name sbms-api --resource-group sbms-rg --location southafricanorth `

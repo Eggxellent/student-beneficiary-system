@@ -1036,6 +1036,31 @@ Region and subscription, funding route, monthly ceiling (A/B/C/D), the one-time 
 the bootstrap administrator's credentials, whether "all on Azure" is strict or a free external
 Postgres is acceptable, and permission to add the routes file plus a CI workflow.
 
+### 20.5 Runbook claims re-verified against the code (after merge)
+
+Every command and endpoint in the runbook was checked against this checkout, not assumed:
+
+| Claim | Verified in |
+| --- | --- |
+| `npm run db:bootstrap-empty` exists and maps to `bootstrap-production-schema.js` | `backend/package.json` line 14 |
+| Bootstrap output is `SBMS schema bootstrap completed: initialized; migrations=<n>; admin=admin_created.` | `bootstrap-production-schema.js` lines 181 and 194 |
+| Bootstrap rolls back rather than committing an unusable schema | same file, `catch` + readiness check before `COMMIT` |
+| `GET /api/health` returns `{status:"ok"}` | `backend/src/index.js` line 60 |
+| `GET /api/ready` returns `{status:"ready"}` / 503 `not_ready` | `backend/src/index.js` line 64 |
+| API listens on `PORT` default **5000** | `backend/src/index.js` line 27 |
+| `TRUST_PROXY_HOPS` is honoured, defaults off, and its comment already names Container Apps | `backend/src/index.js` lines 47-55 |
+| `CORS_ORIGINS` must be bare origins, empty allowlist in production | `backend/src/config/cors.js` |
+| `PUBLIC_APP_URL` must be public HTTPS in production, loopback only in development | `backend/src/config/publicAppUrl.js` line 158 |
+| `VITE_API_ORIGIN` defaults to relative `/api` and is read at build time | `frontend/src/services/api.js` lines 3-6 |
+| The routes file must live in `frontend/public/` (only folder Vite copies verbatim) | `frontend/public/` contains only `images/` |
+
+Two corrections came out of that pass: the routes file path (`frontend/public/`, not `frontend/`)
+and the exact bootstrap output string. One new finding: an earlier measured build of the image was
+**~2.07 GiB** (351.5 MB of it the unused `nvidia-nccl-cu12` CUDA wheel), which is what a
+scale-to-zero cold start has to pull — re-measure and consider dropping the CUDA wheels before
+deploying. Not a correctness issue; the model loads and predicts either way.
+
+
 
 
 
