@@ -1,0 +1,87 @@
+{
+  "model_version": "xgboost:6ec9f2a3cbe6ed0dcf80c79b15f47364d9f4f7bd3e27da25c690d0436bb0a6f9",
+  "negatives": "random unrelated pairs sharing a school",
+  "pairs": 2000,
+  "seed": 20261030,
+  "all_pairs": {
+    "cutoff_0.3": {
+      "flagged": 14,
+      "rate": 0.007
+    },
+    "cutoff_0.4": {
+      "flagged": 9,
+      "rate": 0.0045
+    },
+    "cutoff_0.5": {
+      "flagged": 7,
+      "rate": 0.0035
+    },
+    "cutoff_0.6": {
+      "flagged": 4,
+      "rate": 0.002
+    },
+    "cutoff_0.7": {
+      "flagged": 2,
+      "rate": 0.001
+    },
+    "cutoff_0.8": {
+      "flagged": 0,
+      "rate": 0.0
+    },
+    "distribution": {
+      "min": 0.0046,
+      "p50": 0.0193,
+      "p90": 0.0495,
+      "p99": 0.198,
+      "max": 0.7437
+    }
+  },
+  "distinct_name_only": {
+    "cutoff_0.3": {
+      "flagged": 12,
+      "rate": 0.006
+    },
+    "cutoff_0.4": {
+      "flagged": 7,
+      "rate": 0.0035
+    },
+    "cutoff_0.5": {
+      "flagged": 3,
+      "rate": 0.0015
+    },
+    "cutoff_0.6": {
+      "flagged": 2,
+      "rate": 0.001
+    },
+    "cutoff_0.7": {
+      "flagged": 2,
+      "rate": 0.001
+    },
+    "cutoff_0.8": {
+      "flagged": 1,
+      "rate": 0.0005
+    },
+    "distribution": {
+      "min": 0.0046,
+      "p50": 0.0188,
+      "p90": 0.0474,
+      "p99": 0.2045,
+      "max": 0.82
+    }
+  },
+  "drivers_at_0.5": {
+    "flagged": 7,
+    "identical_full_name": 0,
+    "name_similarity_ge_0.90": 0,
+    "name_similarity_lt_0.70": 6,
+    "any_dob_match": 4,
+    "mean_features": {
+      "jaro_winkler": 0.5857,
+      "dob_match": 0.3286,
+      "school_match": 1.0,
+      "guardian_match": 0.496,
+      "upi_match": 0.3929,
+      "birth_certificate_match": 0.6939
+    }
+  }
+}

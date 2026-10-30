@@ -10,6 +10,7 @@ Use only a verified local or explicitly approved test environment with synthetic
 - [ ] Start the API, frontend, and ML predictor using documented local configuration.
 - [ ] Check `/api/health` for process liveness and `/api/ready` for database/table readiness. A ready response alone does not verify all columns or workflow integrity.
 - [ ] Use only synthetic student data and confirm any required test suite completed.
+- [ ] Confirm `DUPLICATE_AGGREGATION_POLICY` for the demo: `top-1` (default, at most one flag per registration), `all` (legacy, one flag per matching candidate), or `top-1-corroborated` (experimental, suppresses weak single-field matches).
 
 ## Demonstration flow
 

@@ -8,6 +8,12 @@ only *documented* previously are marked as such.
 
 Read §3 and §4 before touching any ML code. Read §7 before provisioning any database.
 
+> **Update, 2026-10-30 (later session):** §11 items 2, 3, and 5 are done, and the
+> three unpushed commits now exist on `fix/sbms-completion-work`. See **§12** for
+> what changed, the measured evidence, and what is still outstanding. The audit
+> rows in §1–§6 below are left as originally written so the defect history stays
+> traceable; where §12 contradicts them, §12 is current.
+
 ---
 
 ## 1. Position: what is now verified
@@ -445,4 +451,74 @@ cd ml-service; .\.venv\Scripts\python.exe .\evaluate_reviewed_pairs.py C:\approv
 
 `.joblib` artifacts are git-ignored (`.gitignore`) — they are not in the repository, so a
 fresh clone cannot run screening until the artifact is supplied. Note this for Azure.
+
+---
+
+## 12. Implementation update — 2026-10-30 (later session)
+
+### 12.1 Commits on `fix/sbms-completion-work` (unpushed)
+
+| Commit | Contents |
+|---|---|
+| `2c2c479` | `chore(deps)`: removed the circular workspace self-references, ignored the nested install artifact |
+| `0bc0de0` | `docs`: recorded the completion audit and this handover |
+| `ee8503e` | `feat(ml)`: per-pair false-positive-rate harness |
+| `46d2777` | `feat(duplicate)`: top-1 registration flag policy, legacy engine quarantined, performance test re-pointed |
+
+`git status` is clean. The branch is still `ahead 4, behind 1` of `origin/dev`; **nothing
+has been pushed**, so none of this has reached `dev`, `-admin-login-fix`, or
+`sbms-raw-pair-model-training`.
+
+### 12.2 Status of the §11 actions
+
+| §11 action | Status | Evidence |
+|---|---|---|
+| 1. Answer D1–D5 | **Still blocked** | `docs/ml-evaluation-policy.md` exists as a scaffold and records every decision as *not answered* |
+| 2. Run the FPR harness | **Verified** | 2 000 pairs, seed 20261030, artifact `6ec9f2a3…`: 7 / 2 000 = **0.35%** at cutoff 0.50 (0.15% for distinct names only). JSON: `ml-service/evaluation/fpr_baseline_2026-10-30.json`; narrative: `docs/ml-evaluation-baseline-2026-10.md` |
+| 3. Fix the aggregation rule | **Implemented and unit-verified**; DB path not exercised | `backend/src/services/duplicateAggregation.js`; `selectFlaggedCandidates()` default `top-1`; 13 tests in `backend/tests/duplicateAggregation.test.js`, including one flag out of three qualifying candidates |
+| 4. Fix §7 database bootstrap | **Still blocked** | unchanged: `schema.sql` creates 7 of 11 required tables, `beneficiaries` has no DDL |
+| 5. Quarantine legacy rule engine | **Implemented** | `duplicateCheck.js` now has a module header plus `@deprecated` on the rule engine and a grouped export list; `performance.test.js` scores **50 live candidate pairs in 22.67 ms** through `scoreStudentPairs()` |
+| 6. Propagate per branch | **Still outstanding** | the toolchain fix and the new work exist only on this branch |
+
+### 12.3 Recorded test evidence
+
+```powershell
+cd backend
+$env:NODE_ENV = 'test'
+$env:DATABASE_URL = 'postgres://sbms_test_runner@localhost:5432/sbms_test'
+$env:SBMS_TEST_DATABASE_URL = $env:DATABASE_URL
+npx jest --runInBand tests/duplicateAggregation.test.js tests/mlDuplicateReview.test.js `
+  tests/duplicateCheck.test.js tests/performance.test.js
+# 4 suites passed, 33 tests passed, 21.3 s
+```
+
+- `duplicateAggregation.test.js` — 13/13 (new)
+- `mlDuplicateReview.test.js` + `duplicateCheck.test.js` — 19/19 (unchanged)
+- `performance.test.js` — 1/1 against the live artifact: `Screened 50 candidate pairs in 22.67 ms`
+
+The full suite (DB-backed suites included) still requires a local `sbms_test`
+database and was not run here.
+
+### 12.4 Behaviour change to communicate before the demo
+
+1. A registration now creates **at most one** duplicate flag by default. Setting
+   `DUPLICATE_AGGREGATION_POLICY=all` restores the old one-flag-per-pair behaviour
+   for a side-by-side demonstration, and `top-1-corroborated` is available but
+   experimentally unvalidated.
+2. `POST /api/students` responses gained three additive fields inside
+   `duplicate_screening` (`aggregation_policy`, `candidates_considered`,
+   `candidates_suppressed`) plus one extra audit-log entry. The frontend was not
+   re-checked against them.
+3. When only one case can be raised, an exact UPI / birth-certificate / National-ID
+   match now outranks a higher model score. This is deliberate: an exact
+   identifier is stronger evidence than a synthetic-data score.
+
+### 12.5 What this update does not prove
+
+- No integration test of the new controller path against a database (no local
+  `sbms_test` instance in this session); only the pure selection logic is covered.
+- No frontend verification of the new response fields.
+- No accuracy, precision, recall, or miss-rate claim: there is still no
+  adjudicated pair set, so D5 remains the gate on every such claim.
+- Nothing has been deployed or provisioned on Azure.
 
