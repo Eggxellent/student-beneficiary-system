@@ -886,5 +886,53 @@ text in the audit log.
 - Priority banding relies on an unvalidated cutoff and changes presentation order only.
 - QR camera, disbursement restrictions and the full workflow are Phases 4-5.
 
+## 18. Phase 4 - QR verification, 2026-10-30
+
+Full narrative: `docs/qr-verification-2026-10-30.md`. No model or cutoff changed.
+
+### 18.1 Findings
+
+1. **Stale verification result (fixed).** The public page verified once on mount, so a second
+   code opened in the same tab (hash-only navigation) kept showing the previous answer — a
+   valid code followed by an invalid one still read "Record found". It now re-verifies on
+   `hashchange`.
+2. **StrictMode double-invoke (fixed).** Development runs effects twice; re-reading the hash
+   inside the effect made the second pass report "invalid". The token is captured during
+   render instead. A compile-only check would have shipped both defects.
+3. **Rate limiting behind a proxy (hook added).** The limiter keyed on the socket address, so
+   behind Azure every public user would share one bucket of 10 per 15 minutes. `TRUST_PROXY_HOPS`
+   now sets Express `trust proxy`; default 0 keeps current behaviour, forwarded headers are
+   never trusted unless set.
+4. **Camera test blocked by design.** `publicAppUrl.js` accepts only public HTTPS (or loopback
+   in development), so a LAN address cannot be used. The scan must happen against the Azure
+   deployment or an HTTPS tunnel. Measured: localhost/127.0.0.1 accepted in development, LAN
+   addresses rejected, `https://…` accepted in production, `http://…` rejected in production.
+
+### 18.2 Files changed
+
+| File | Change |
+| --- | --- |
+| `backend/tests/verification.test.js` | **new** 10 route-level tests including the QR payload proof and rate limiting |
+| `backend/src/middleware/verificationRateLimit.js` | key on `req.ip` |
+| `backend/src/index.js` | `TRUST_PROXY_HOPS` hook (default off) |
+| `frontend/src/pages/Verification.jsx` | re-verify on hash change; token captured at render |
+| `scripts/qr-smoke.mjs` | **new** 9-check browser suite |
+| `docs/qr-verification-2026-10-30.md` | **new** evidence, blocker, camera checklist |
+
+### 18.3 Evidence
+
+| Check | Result |
+| --- | --- |
+| Backend Jest (all suites) | 20 suites, 117 tests passed |
+| `node scripts/qr-smoke.mjs` (headless Chrome) | **9/9 passed**, exit 0 |
+| Frontend production build | success |
+
+### 18.4 Remaining gaps
+
+- The phone-camera step is manual and needs a public HTTPS origin (Phase 6).
+- No token expiry, revocation or re-issue path.
+- The rate limiter is in-process, so it is not shared across instances.
+
+
 
 

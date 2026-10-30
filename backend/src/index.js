@@ -43,6 +43,17 @@ app.use((req, res, next) => {
   next();
 });
 app.use(cors({ origin: (origin, callback) => callback(null, allowedOrigins.has(origin)) }));
+
+// Behind a reverse proxy (Azure App Service, Container Apps, Render) every request arrives
+// from the proxy's address, so a per-IP limit keyed on the socket would put all public users
+// in one bucket. Operators set TRUST_PROXY_HOPS to the number of trusted proxies in front of
+// the API; the default of 0 keeps the direct-socket behaviour that local runs and tests rely
+// on. Forwarded headers are never trusted unless this is set explicitly.
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS);
+if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
+  app.set('trust proxy', trustProxyHops);
+}
+
 app.post('/api/verify', verificationRateLimit);
 app.use(express.json({ limit: '100kb' }));
 
