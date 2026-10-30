@@ -638,3 +638,36 @@ application could not start against it either. The idempotent
   supported.
 - Nothing is pushed to `origin`, and no Azure resource has been provisioned.
 
+## 14. Overfitting audit - 2026-10-30
+
+The §4.2 baseline, the §12.2 holdout F1, and the 0.50 review cutoff all assume the model
+was trained on one dataset and judged on another. That assumption is now tested, not
+asserted. Full evidence: `docs/ml-training-integrity-2026-10-30.md`; harness
+`ml-service/check_training_integrity.py`; raw output
+`ml-service/evaluation/training_integrity_report.json`.
+
+| Check | Result |
+| --- | --- |
+| Artifact, training file and holdout hashes vs the metrics report | all three match |
+| Shared pair groups / person identities / identical rows across splits | 0 / 0 / 0 |
+| In-sample F1 vs holdout F1 | 0.9196 vs 0.9063 (+0.0133) |
+| 5-fold grouped CV (inside the training file) vs holdout F1 | 0.9067 vs 0.9063 |
+| Holdout F1 at 10% / 25% / 50% / 100% of training groups | 0.8886 / 0.8989 / 0.9010 / 0.9063 |
+| Strongest single feature (holdout AUC) | `jaro_winkler` 0.710 (no shortcut) |
+| Training calls in the serving path or the backend | none |
+
+**Conclusion: no evidence of overfitting, and no evaluation on training data.** The
+model's in-sample advantage is 1.3 points of F1, grouped CV reproduces the holdout score
+to four decimal places, and the learning curve is nearly flat at one tenth of the data.
+
+Two caveats stand: the holdout also informed the XGBoost-versus-Random-Forest choice
+(recorded as `holdout_used_for_model_selection: true`), so the number is
+selection-optimistic at the margin; and all data is synthetic. A final unbiased figure
+still requires adjudicated real pairs (D1/D5).
+
+The artifact was **not** retrained: hash unchanged at `6ec9f2a3...`, so the deployed model
+and the 0.50 cutoff are untouched by this audit.
+
+Enforcement: `ml-service/tests/test_training_integrity.py`, 9 tests, part of the 19-test
+ml-service suite (`python -m unittest discover -s tests`, 1.8 s).
+
