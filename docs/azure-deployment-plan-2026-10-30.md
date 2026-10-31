@@ -1003,3 +1003,82 @@ With the A2 floor at $4.42/mo, a $5 ceiling produces nonsense in both directions
 
 The budget itself is free and subscription-wide. This revision changes D9 from the $5 chosen in
 §12.0–§12.12; everything else in §12 is unaffected.
+
+### 12.15 Execution record — what actually ran (31 October 2026)
+
+Stage A (free half) and the one billing step both ran against subscription **Azure for Students**
+(spending limit on), region **UAE North**, from `deploy/azure/provision.ps1`.
+
+| Resource | Name | Settings actually applied |
+| --- | --- | --- |
+| Resource group | `rg-sbms` | uaenorth |
+| Container Apps environment | `cae-sbms` | `--logs-destination none` (D7) |
+| Container app | `ca-sbms-api` | 0.5 vCPU / 1 GiB, min 0 max 1, external ingress, port 5000 |
+| App Service plan | `asp-sbms-web` | F1, **Windows** (`--is-linux false`), $0 |
+| Web app | `sbms-web` | `https://sbms-web.azurewebsites.net`, https-only, zip deploy |
+| PostgreSQL Flexible | `pg-sbms` | B1MS, 32 GiB, PG 16, public access + TLS |
+| Database | `sbms` | schema from `bootstrap-production-schema.js` (12 migrations, transactional) |
+| Budget | `budget-sbms` | $15/month, alerts 50/75/100 % (D9) |
+
+Image: `ghcr.io/eggxellent/sbms-api:<git sha>`, built and pushed by
+`.github/workflows/publish-api-image.yml` from the repository Dockerfile, with two gates inside the
+workflow (model loads and separates a known pair; no nvidia packages; no `.env*` or `deploy/` in the
+image). Package is publicly pullable, so the container app needs no registry credential (D3).
+
+#### Deviations from §12.11, with the reason
+
+1. **Providers are registered first.** A fresh student subscription has `Microsoft.App` and
+   `Microsoft.DBforPostgreSQL` in `NotRegistered`; the first `containerapp`/`postgres` call fails
+   instead of registering. Step 1b now registers them explicitly.
+2. **The registry push happens in CI, not on the workstation.** `docker push` to GHCR is refused —
+   the available GitHub token carries `gist, repo, workflow` and GHCR wants `write:packages` — and
+   the operator uplink measures **622 kB/s**, i.e. ~40 minutes for a 1.37 GB image. The workflow
+   builds the identical image on a runner with the automatic `GITHUB_TOKEN`. It is `workflow_dispatch`
+   only, and the file is registered on `dev` because GitHub only exposes dispatchable workflows that
+   exist on the default branch. Nothing else was merged into `dev`.
+3. **`azure.extensions` now allow-lists `pgcrypto`.** The schema runs `CREATE EXTENSION pgcrypto`;
+   on Flexible Server any extension outside the `azure.extensions` parameter is rejected with
+   *"extension pgcrypto is not allow-listed"*. `provision.ps1` merges `PGCRYPTO` into whatever the
+   parameter already holds before the bootstrap runs.
+4. **The first container revision crash-looped, and the fix was configuration.** `backend/src/index.js`
+   calls `assertAuthenticationSchemaReady` with `SBMS_EXPECTED_DATABASE_NAME`; when that variable is
+   absent the guard throws and the process exits 1, forever. Nothing set it, so the revision failed
+   with `1/1 Container crashing: ca-sbms-api`. `SBMS_EXPECTED_DATABASE_NAME=sbms` and
+   `TRUST_PROXY_HOPS=1` (one ingress hop, so rate limits key on the real client) are now part of the
+   container app's env contract in `provision.ps1`.
+5. **A crash loop with no log stream is undiagnosable, so the cause is now printed.** Because the
+   environment has `--logs-destination none` (D7), `az containerapp logs show` fails with
+   `KeyError: 'eventStreamEndpoint'` and there is no place to read stderr. The startup catch in
+   `backend/src/index.js` now appends `Cause: <message>` to its fixed sentence; the messages these
+   guards raise are authored text and carry no credentials. Diagnosis in this session was done by
+   running the same image locally with the same env.
+6. **`Startup blocked` is therefore not a diagnosis on its own** — `/api/ready` returning
+   `{"status":"ready"}` and `/api/health` returning `{"status":"ok"}` are the two checks that prove a
+   deployment, which is what §12.13's warm-up uses.
+
+#### Acceptance evidence (live, 31 October 2026)
+
+| Check | Result |
+| --- | --- |
+| `GET /api/health` | 200 `{"status":"ok"}` |
+| `GET /api/ready` | 200 `{"status":"ready"}` — the schema and the expected database name both hold |
+| Admin login → `GET /api/auth/me` | 200, `role=admin`, bcrypt+JWT path works against the Azure database |
+| Admin on a field-officer route (`GET /api/students`) | **403** — role separation is enforced server-side |
+| Create field officer (`POST /api/users`) → officer login | 201 / 200, `role=field_officer` |
+| Register student (`POST /api/students`) | 201, QR PNG returned, server-generated 64-hex token stored |
+| Public `POST /api/verify` | real token → `{"found":true}`; invented token → `{"found":false}` |
+| ML scoring inside the container (`POST /api/duplicate-flags/evaluate`) | duplicate pair **0.9886** (`review=true`), unrelated pair **0.1252** (`review=false`), threshold 0.50 |
+| Model identity and feature order | `xgboost:6ec9f2a3…`; `jaro_winkler, dob_match, school_match, guardian_match, upi_match, birth_certificate_match` |
+| Rescan (`POST /api/duplicate-flags/scan`) | `records_scanned 3, pairs_compared 3, candidates_found 1, flags_created 1` |
+| CORS | `Origin: https://evil.example` → 403; `https://sbms-web.azurewebsites.net` → 200 |
+| Frontend | 200, `id="root"` present, bundle contains the container app FQDN from `VITE_API_ORIGIN` |
+| Persistence | student re-read after the app had scaled to zero → 200, same record |
+
+**One honest limitation found, not a deployment defect.** Two *different* children whose UPI and birth
+certificate numbers differ by a single character score **0.9959** — a duplicate. The same call against
+the same model file outside Azure returns 0.9959 too, so the container is faithful; the string-similarity
+features saturate when identifiers share a long prefix. The API already discloses the caveat it implies
+(`score_is_calibrated_probability: false`, `thresholds_validated: false`), and the review queue exists
+precisely so a human decides. Recording it here so nobody reads 0.99 as precision.
+
+

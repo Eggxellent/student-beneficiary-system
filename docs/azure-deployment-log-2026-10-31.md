@@ -3,7 +3,12 @@
 One page of state only. **Detail, evidence and the full cost model live in
 `docs/azure-deployment-plan-2026-10-30.md` §12 (current, minimum-cost) and §11 (audit behind it)** —
 do not re-derive them, do not re-run the audit.
-Nothing has been provisioned: 0 resource groups, 0 resources, 0 budgets (verified after the audit).
+**Deployed and verified live on 31 October 2026** — 1 resource group, 7 resources, 1 budget.
+
+- API: `https://ca-sbms-api.ambitiousstone-f2de8f67.uaenorth.azurecontainerapps.io`
+- Frontend: `https://sbms-web.azurewebsites.net`
+- Database: `pg-sbms.postgres.database.azure.com` / `sbms` (admin + JWT secrets in
+  `deploy/azure/.secrets.json`, git-ignored, never printed)
 
 ## 1. Status
 
@@ -12,12 +17,12 @@ Nothing has been provisioned: 0 resource groups, 0 resources, 0 budgets (verifie
 | 1. Repository cleanup | **Done** — `d0aa56c`, verified (Jest 21/128, smoke 3/3, ML 33/33 + 7/7) |
 | 2. Live subscription audit | **Done** — `04b7e47`, plan doc §11.1–§11.10 |
 | 3. Choose architecture | **Done** — **A2 approved (D8, 31 Oct 2026)**: persistent PostgreSQL stopped between demos, `minReplicas 0`, F1 front, no logs, no registry |
-| 4. Approval to spend | **Blocked on final approval** of the §12.11 checklist; the credit balance is still unread |
-| 5. Provision | Not started (by instruction) — 0 resource groups, 0 resources, 0 budgets |
-| 6. Deploy and verify live | Not started |
-| 7. Handover/milestone update | Not started |
+| 4. Approval to spend | **Approved by the owner 31 Oct 2026** — the §12.11 checklist and D8/A2 |
+| 5. Provision | **Done** — `rg-sbms`, `cae-sbms`, `ca-sbms-api`, `asp-sbms-web`, `sbms-web`, `pg-sbms`, database `sbms`, `budget-sbms` |
+| 6. Deploy and verify live | **Done** — image `ghcr.io/eggxellent/sbms-api` built by CI; health, ready, auth, roles, QR verify, ML scoring, CORS and persistence all checked (plan §12.15) |
+| 7. Handover/milestone update | **This document and plan §12.15** |
 | 8. Revised cost model | **Done** — plan §12.0–§12.13: **$4.42/mo idle** (A2), $4.58 per 8 h demo, ≈$6.42 in a normal month |
-| Image-size verification | **Blocked** — local build failed at the pip layer: `ReadTimeoutError` from files.pythonhosted.org (PyPI at ~35 kB/s), not a Dockerfile defect. Post-cleanup size still unmeasured |
+| Image-size verification | **Done** — **1.37 GB** after cleanup (was 2.22 GB); `deploy/` and `.env*` excluded, ML gate runs inside the build |
 
 ## 2. Verified facts (carry forward — do not re-check)
 
@@ -32,9 +37,11 @@ Nothing has been provisioned: 0 resource groups, 0 resources, 0 budgets (verifie
   free grant 180k vCPU-s / 360k GiB-s / 2M req, ACR Basic $5.07/mo, Log Analytics $3.29/GB,
   **App Service F1 = $0** in UAE North (Windows and Linux).
 - Repo `github.com/Eggxellent/student-beneficiary-system` is **public** ⇒ free Actions minutes and
-  free **ghcr.io** packages (no ACR needed); default branch `dev`; no workflow on `dev` yet.
+  free **ghcr.io** packages (no ACR needed); default branch `dev`; the dispatchable
+  `publish-api-image.yml` is registered on `dev` (dispatch only, nothing else merged there).
 - API + ML are **one container** (`duplicateCheck.js` spawns `predict.py --server`); ML threshold 0.50 stays.
-- Baseline image `sbms-api:latest` = **2.22 GB** (pre-cleanup). Post-cleanup size still unmeasured.
+- Image `ghcr.io/eggxellent/sbms-api` = **1.37 GB** post-cleanup (was 2.22 GB); built by CI, publicly
+  pullable, no registry credential on the container app.
 - Local Docker engine works: Desktop 4.97.0 installed per-user at `%LOCALAPPDATA%\Programs\DockerDesktop`.
 - CLI 2.91 has **everything the runbook needs in core** — `az containerapp`, `az webapp`,
   `az postgres flexible-server stop`, `az consumption budget create` — and **no extensions are
@@ -86,27 +93,37 @@ Nothing has been provisioned: 0 resource groups, 0 resources, 0 budgets (verifie
 | Container App + F1 | $0 up to ~100 h of replica time per month (ACA free grant) | beyond that ≈$0.054/h |
 | Budget alert | $15 at 50/75/100 % ($7.50 / $11.25 / $15) | free; $5 was below the floor |
 
-## 5. Next actions, in order
+## 5. Operating the deployment
 
-1. **Owner approves the final checklist** — exact resources, $4.42/mo idle estimate, and the weekly
-   stop obligation (§12.11 + §12.13 of the plan). Credit balance/expiry still unread.
-2. ~~Write the deploy tooling~~ — **written, not executed** (PowerShell, because the operator shell
-   on this machine is PowerShell): `deploy/azure/provision.ps1` (idempotent, steps 2–9),
-   `deploy/azure/teardown.ps1` (`-Stop` default, `-Dump`, `-Destroy` refused without `-Dump`),
-   `deploy/azure/status.ps1` (state + days-since-stop + reminder), `deploy/azure/create-admin.mjs`
-   (public registration returns 410), `frontend/public/web.config` (SPA rewrite).
-   The Dockerfile now pins `PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10`; the image build and its size
-   measurement are still open (the local build died on a PyPI read timeout, not on a Dockerfile
-   defect).
-3. Provision the **free half** first (RG → env `--logs-destination none` → Container App `min-replicas 0`
-   → F1 Windows web app → $15 budget) — $0 and can stay.
-4. Then the **one billing step**: create PG (B1MS / 32 GiB / PG 16), bootstrap schema + first admin,
-   verify `/api/health`, `/api/ready`, admin login, QR `/verify`, duplicate-check score.
-5. `teardown.ps1 -Stop` after the demo **and every 7 days after that**; log the stop date here.
-6. Record the result here and update handover §15/§16 + milestones.
+- **Demo day**: `./deploy/azure/start.ps1` (starts PostgreSQL, warms the API until `/api/ready` is 200),
+  then open the two URLs above.
+- **After the demo**: `./deploy/azure/teardown.ps1 -Stop`. Repeat **at least every 7 days** — Azure
+  auto-starts a stopped server after seven days, which silently turns $4.42/mo into $19.02/mo
+  (plan §12.13). `status.ps1` prints the countdown and the reminder.
+- **Demo data**: `npm --prefix backend run seed:synthetic`. It talks to PostgreSQL directly, so the
+  machine running it must be allowed by the server firewall first, and the shell needs the
+  `DATABASE_URL` from `deploy/azure/.secrets.json`.
+- **Acceptance leftovers** (deliberate, they are the evidence): three students — including a genuine
+  duplicate pair — created through the API, and one field officer
+  `officer.1031205024@sbms.test` whose credentials are in `deploy/azure/.secrets.json`
+  (`acceptanceOfficer`, `acceptanceOfficerPassword`, git-ignored). For a pristine database:
+  `DELETE FROM duplicate_flags; DELETE FROM students; DELETE FROM users WHERE email LIKE 'officer.%@sbms.test';`
+- **A revision that will not start**: check `az containerapp revision list -g rg-sbms -n ca-sbms-api`
+  for `runningState`. There is **no log stream** (D7), so the failure reason is not readable; the
+  startup guard's cause line is only visible if you run the image locally with the same env vars.
 
-## 6. Open questions (consolidated — ask once)
+### Stop log
 
-- **Credit balance and expiry** — portal-only (`microsoftazuresponsorships.com/Usage`); no CLI/API
-  exposes it for student offers. Changes the runway, not the architecture.
-- **D8 is closed** (A2). No other architecture question is open.
+| When (UTC) | Action | Auto-start deadline |
+| --- | --- | --- |
+| 2026-10-31 21:11 | `teardown.ps1 -Stop` after the acceptance run | 2026-11-07 21:11 |
+
+`status.ps1` afterwards: server `Stopped`, **$4.42/month**, 7 days left on the countdown.
+
+## 6. Next actions
+
+1. Phase 1 (deploy + end-to-end acceptance) is **complete** — do not re-run it; the evidence is in
+   plan §12.15.
+2. Phase 2: supervisor gap remediation **SBMS-01…18**.
+3. Credit balance and expiry remain portal-only (`microsoftazuresponsorships.com/Usage`) — they change
+   the runway, not the architecture.
