@@ -6,6 +6,13 @@ Microsoft's pricing pages on 30 October 2026, in USD, for **South Africa North (
 the closest region to Kenya. Prices change; re-check the Azure Pricing Calculator before
 committing money.
 
+> **Superseded on region and frontend hosting — read §11.** The live subscription was inspected on
+> 31 October 2026 and carries a policy that **forbids ZA North** (allowed: `uaenorth`, `italynorth`,
+> `austriaeast`, `switzerlandnorth`, `spaincentral`) and **forbids Static Web Apps entirely**
+> (that provider only offers Central US / East US 2 / West US 2 / West Europe / East Asia).
+> §§1–10 remain accurate as *price research*; §11 is the only architecture that can actually be
+> deployed on this account.
+
 ## 1. What the application needs
 
 | Component | Requirement | Where it comes from |
@@ -347,3 +354,245 @@ Inputs still needed besides those six (they block Phase 4, not Phase 3):
 - Static Web Apps Standard ($9/app/month) could not be re-verified through the Retail Prices API.
 - Kubernetes/KEDA autoscaling behaviour, cold-start seconds and Log Analytics cost are **not**
   measured here; they will be measured on the deployed system, not asserted.
+
+---
+
+## 11. Live subscription audit — 31 October 2026 (Phase 2)
+
+Written after inspecting the **real** Azure for Students subscription this project will be deployed
+into. Nothing here is estimated: each fact is a CLI/metadata read, quoted with the command that
+produced it. **No resource was created, no provider was registered by hand, and no money was
+spent** — the audit is read-only (`az … show/list`, `az provider show`, HTTPS `GET` to the Retail
+Prices API, plus one ARM `validate` that failed harmlessly on scope).
+
+### 11.1 Subscription facts
+
+| Fact | Value | How it was read |
+| --- | --- | --- |
+| Offer | **Azure for Students** | `az account show` |
+| Subscription id | `31c8bf09-10d7-4455-9f8a-f60bafc51ca4` | `az account show` |
+| Tenant | Strathmore University | `az account show` |
+| State | `Enabled` | `az account show` |
+| Spending limit | **On** (hard cap — cannot produce an out-of-pocket bill) | `az account show` |
+| My role | Owner (root scope) | `az role assignment list` |
+| Existing resource groups / resources | **0 / 0** — clean slate, nothing can be overwritten | `az group list`, `az resource list` |
+| Budgets | none defined | `az consumption budget list` |
+
+Because the offer enforces the spending limit itself, **$0.00 of real money is reachable**. The only
+consequence of exhausting the credit is that the subscription is disabled until the next grant — a
+service-interruption risk, not a financial one.
+
+### 11.2 Blocker 1 — a policy forbids most regions, including ZA North
+
+`az policy assignment list` returns exactly one assignment, `sys.regionrestriction` ("Allowed resource
+deployment regions"), inherited at subscription scope with `notScopes: null`. Its effective parameter
+value is:
+
+```
+uaenorth · italynorth · austriaeast · switzerlandnorth · spaincentral
+```
+
+and its rule (`az policy definition show -n b86dabb9-b578-4d7b-b842-3b45e95769a1`) is `deny` when
+`location notIn <list>` **and** `location != 'global'`.
+
+**Consequence:** everything priced for `southafricanorth` in §§2–5 cannot be created — ARM refuses
+with `RequestDisallowedByPolicy`. **South Africa North is out.** The closest allowed region to
+Nairobi is **UAE North (Dubai)**, then Italy North / Austria East / Switzerland North / Spain
+Central. UAE North supports every service this application needs (provider metadata):
+
+| Provider | Resource type | UAE North |
+| --- | --- | --- |
+| `Microsoft.App` | `managedEnvironments` | yes |
+| `Microsoft.DBforPostgreSQL` | `flexibleServers` | yes |
+| `Microsoft.Web` | `sites` / `serverFarms` | yes |
+| `Microsoft.ContainerRegistry` | `registries` | yes |
+
+This policy comes with the student offer and cannot be widened by the owner, so the region is **not
+negotiable** — only those five regions are on the table.
+
+### 11.3 Blocker 2 — Static Web Apps cannot be deployed on this account
+
+`az provider show -n Microsoft.Web --query "resourceTypes[?resourceType=='staticSites'].locations"`
+returns only:
+
+```
+Central US · East US 2 · West US 2 · West Europe · East Asia
+```
+
+None of those is in the allowed-region list, and SWA's ARM `location` is a real region (not
+`global`), so the `deny` rule bites. **The Static Web Apps frontend recommended in §3, §4 and §10 is
+impossible here.** This is the biggest correction to the October plan: it changes the topology, not
+just the price.
+
+The frontend must therefore live in an allowed region. Verified options:
+
+| Option | Where | Cost | SPA deep-link fallback | Verdict |
+| --- | --- | --- | --- | --- |
+| **App Service F1 (free tier)** | `serverFarms`/`sites` in UAE North — F1 confirmed available for Windows **and** Linux workers (`az appservice list-locations --sku F1`) | **$0.00** (60 CPU-min/day, 1 GiB, TLS on `*.azurewebsites.net`) | real rewrite via `web.config` (Windows) | **Recommended** — free, correct fallback, no application code change |
+| Storage static website | `StorageV2` in UAE North | ≈$0.02/GB-month | only via "error document = index.html", which renders the app but with an HTTP **404** status | fallback only; wrong for QR scans |
+| Same Container App as the API | `Microsoft.App` in UAE North | $0 extra at demo volume | needs `express.static` + SPA fallback in `backend/src/index.js` and a frontend build stage in the Dockerfile | attractive later (one origin, no CORS); a code change, so not the first deploy |
+
+### 11.4 Re-priced in UAE North (Retail Prices API, 31 Oct 2026)
+
+| Meter | ZA North (October doc) | **UAE North (deployable)** |
+| --- | --- | --- |
+| PostgreSQL Flexible **B1MS** | $0.0215/h → $15.70/mo | **$0.02/h → $14.60/mo** |
+| PostgreSQL **storage** per GiB-month | unresolved in §2 | **$0.138** → 32 GiB = **$4.42/mo** |
+| PostgreSQL backup LRS beyond provisioned | — | $0.12/GiB-mo (first 32 GiB free) |
+| Container Apps vCPU active | $0.000024/vCPU-s | **identical** |
+| Container Apps memory active | $0.000003/GiB-s | **identical** |
+| Container Apps vCPU / memory **idle** | "reduced rate", unpublished | **$0.000003** per vCPU-s **and** per GiB-s |
+| Container Apps requests | $0.40 / 1M | **identical** |
+| Container Apps free grant | 180 000 vCPU-s · 360 000 GiB-s · 2M req/month | **identical** (confirmed on the pricing FAQ) |
+| Container Apps *Environment Management Hour* | — | $0.143/h (**$103/mo**) — applies to the **Dedicated** plan, private endpoints and planned maintenance, **not** a Consumption-only environment |
+| ACR **Basic** | — | $0.1666/day → **$5.07/mo** |
+| Log Analytics ingestion | — | **$3.29/GB** (UAE North); retention $0.132/GB-mo |
+| App Service **F1** (Windows & Linux) | unverified in §2 | **$0.00**, available in UAE North |
+
+One number reverses a §5 assumption: with `minReplicas: 1`, the **idle meters alone** cost
+**$23.65/month** at 1 vCPU / 2 GiB (730 h × 3600 s × ($0.000003 + 2 × $0.000003)). "Keep one replica
+warm during marking" is a ~$24–34/month decision, not a rounding error; `minReplicas: 0` keeps the
+API inside the free grant.
+
+### 11.5 Revised architecture (deployable on this subscription)
+
+```
+  phone / browser (QR scan, /verify)
+        │
+        ├──► App Service  F1 (Windows, UAE North)          $0.00
+        │      https://sbms-web.azurewebsites.net
+        │      frontend/dist + web.config rewrite → /index.html
+        │      VITE_API_ORIGIN baked in at build time
+        │
+        └──► Container App (Consumption, minReplicas 0)     $0.00–1.10
+               https://sbms-api.<env>.<region>.azurecontainerapps.io
+               node backend/src/index.js :5000
+                 └─ spawns .venv/bin/python predict.py --server  (ML in the same image)
+               image: ghcr.io/eggxellent/student-beneficiary-system:<sha>  (public)
+                     │  DATABASE_URL (sslmode=require)
+                     ▼
+               PostgreSQL Flexible Server  sbms-pg   B1MS / 32 GiB / PG 16 / UAE North
+                                                         $19.02
+               + Log Analytics workspace (CAE target, 30-day retention)
+```
+
+| Resource | Name (proposed) | Configuration | Why this shape |
+| --- | --- | --- | --- |
+| Resource group | `rg-sbms-prod` | `uaenorth` | allowed region, closest to Nairobi |
+| Container Apps env | `cae-sbms` | Consumption only, **no** workload profile, **no** private endpoint | the workload-profile/private-endpoint meters are ~$0.143/h ≈ $103/mo |
+| Container App | `ca-sbms-api` | 0.5 vCPU / 1 GiB, `minReplicas 0`, `maxReplicas 3`, external ingress :5000, `TRUST_PROXY_HOPS=1` | inside the free grant at demo volume |
+| PostgreSQL | `pg-sbms` | Flexible B1MS, PG 16, 32 GiB, zone-redundancy off, no HA, 7-day backup | cheapest production-grade option; HA doubles the price |
+| App Service plan | `asp-sbms-web` | **F1 free**, Windows | SWA is policy-blocked; F1 is $0 and gives a real SPA rewrite |
+| Log Analytics | `log-sbms` | PerGB2018, 30-day retention | required target for CAE logs; keep ingestion tiny |
+| Registry | `ghcr.io` (GitHub) | public package | $0 vs ACR Basic $5.07/mo; repo is already public |
+| Secrets | Container App secrets (owner's `JWT_SECRET`, DB password) | never in git | Key Vault adds ~$0 and complexity; not needed at this scale |
+
+### 11.6 Cost and credit runway
+
+| Line item | Monthly |
+| --- | --- |
+| Container Apps — API + ML, 0.5 vCPU / 1 GiB, ≤40 active h, `minReplicas 0` | **$0.00** (72 000/180 000 vCPU-s, 144 000/360 000 GiB-s used) |
+| Container Apps — heavier demo month (60 h, 1 vCPU / 2 GiB) | $1.08 |
+| PostgreSQL Flexible — B1MS compute (730 h × $0.02) | **$14.60** |
+| PostgreSQL — 32 GiB storage | **$4.42** |
+| Azure App Service F1 (frontend) | **$0.00** |
+| Log Analytics (<1 GB/month; $3.29/GB beyond) | **$0.00–3.30** |
+| Registry (ghcr.io public) | **$0.00** |
+| **Total** | **≈ $19–22 / month** |
+
+Runway on the student credit (nominal grant **US$100 / 12 months**, hard-capped):
+
+| Mode | Monthly burn | Months of runway |
+| --- | --- | --- |
+| Always-on DB, `minReplicas 0` (**recommended**) | ≈$19–22 | **≈4.5–5.2** |
+| DB stopped between demos (~12 h/day off, saves $0.02/h) | ≈$12–15 | **≈6.7–8.3** |
+| Always-on DB + `minReplicas 1` during marking only (2 weeks) | ≈$21 + $12 | ≈3.2 (with marking month) |
+
+Cheapest possible variant, if the credit turns out to be partly spent: keep the same topology but
+**stop the server** (`az postgres flexible-server stop`) outside demonstration windows — storage keeps
+billing, compute does not, and the app simply reports `503` from `GET /api/ready` until it is started.
+
+### 11.7 The credit balance — the one thing the CLI cannot answer
+
+No Cost Management / Consumption call exposed the student balance; `az consumption usage list` and
+`az costmanagement` return nothing usable for this offer. The balance and expiry live in the
+sponsorship portal and must be read by the account owner:
+
+| Where | Path | What to read |
+| --- | --- | --- |
+| Azure sponsorships (authoritative) | <https://www.microsoftazuresponsorships.com/Usage> — sign in with the same Microsoft account | **Remaining balance** and **End date** |
+| Azure portal | <https://portal.azure.com> → **Cost Management + Billing** → *Cost analysis* (scope: the student subscription) → or **Subscriptions → Azure for Students → Overview** | credit remaining / spend to date |
+
+Runway is then simply `balance ÷ monthly burn`:
+`$100 → ≈4.5–5.2 months · $60 → ≈2.7–3.2 months · $30 → ≈1.4–1.6 months` at the recommended
+≈$19–22/month. Paste the real figure here when it is known:
+
+```
+Credit remaining: ________ USD          Expiry: __________
+```
+
+Guardrail to add at provisioning time (free): a **Consumption budget** on `rg-sbms-prod` of
+$25/month with alerts at 50 / 80 / 100 % so the credit cannot be spent silently.
+
+### 11.8 GitHub facts that shape the deploy pipeline
+
+| Fact | Value | Consequence |
+| --- | --- | --- |
+| `origin` | `https://github.com/Eggxellent/student-beneficiary-system.git` | CI/CD target exists |
+| Visibility | **public** (`private: false`) | GitHub Actions minutes are free for public repos; **GHCR packages are free** → ACR's $5.07/mo is avoidable |
+| Default branch | `dev` | the workflow must live on `dev` (§6 item 2) |
+| Current branch | `fix/sbms-completion-work`, **1 commit ahead** of origin (`d0aa56c`) | the cleanup commit must be pushed before CI can build it |
+| Existing workflow on `dev` | none | image build must be created, not repaired |
+
+### 11.9 What this revision still does not claim
+
+- **Nothing is provisioned**: 0 resource groups, 0 resources, 0 budgets — re-verified after the audit.
+- **Image size after the NCCL removal is still unmeasured.** The Docker daemon is not running on this
+  workstation (`docker version` → `cannot find the file … dockerDesktopLinuxEngine`), so §10.3's
+  ~1.74 GiB stays an estimate until the first CI build reports the real size.
+- **Cold-start seconds** on Container Apps after scale-to-zero are unmeasured; the 30 s
+  `MODEL_REQUEST_TIMEOUT_MS` budget makes this the first thing to observe in production.
+- **Log Analytics free allowance** for student offers is not verified; the $0 line assumes <1 GB/month.
+- **Anonymous pull from a public GHCR package** by Container Apps is expected to work but will be
+  confirmed on the first deployment (fallback: a GHCR PAT stored as a Container App secret).
+- App Service **F1's 60 CPU-min/day** cap is fine for static file serving but is not measured here.
+
+### 11.10 Revised approval list (supersedes §10.4)
+
+| # | Decision | Recommendation | Why it changed |
+| --- | --- | --- | --- |
+| 1 | **Region** | **UAE North** (`uaenorth`) | ZA North is denied by policy; only 5 regions are legal |
+| 2 | **Frontend host** | **App Service F1, free** (+ `web.config` rewrite) | Static Web Apps is denied by the same policy |
+| 3 | **Monthly ceiling** | **≈$19–22**, hard budget alert at $25 | re-priced for UAE North; the database is ~93 % of it |
+| 4 | **Registry** | **ghcr.io public** ($0) — ACR Basic ($5.07/mo) only if a private registry is required | repo is already public, so free |
+| 5 | **Database bootstrap + synthetic seed** | run `bootstrap-production-schema.js` once; seed synthetic demo data only if explicitly wanted | unchanged from §6, still required |
+| 6 | **Repository changes to enable CI** | push `fix/sbms-completion-work`, add a GitHub Actions workflow (image → ghcr.io, frontend → App Service), add `frontend/public/web.config` | §6 item 1 swaps `staticwebapp.config.json` for `web.config` now that SWA is out |
+
+The exact sequence that would run **only after approval** (nothing below has been executed):
+
+```
+1  az group create -n rg-sbms-prod -l uaenorth
+2  az postgres flexible-server create -g rg-sbms-prod -n pg-sbms -l uaenorth \
+       --tier Burstable --sku-name Standard_B1ms --storage-size 32 --version 16 \
+       --public-access 0.0.0.0   # "Azure services" firewall rule only  ≈$19.02/mo from here
+3  az monitor log-analytics workspace create … -l uaenorth
+4  az containerapp env create -g rg-sbms-prod -n cae-sbms -l uaenorth \
+       --logs-workspace-id …                                     # consumption, no profile
+5  az containerapp create -g rg-sbms-prod -n ca-sbms-api --image ghcr.io/…:<sha> \
+       --min-replicas 0 --max-replicas 3 --cpu 0.5 --memory 1Gi --ingress external \
+       --target-port 5000 --env-vars TRUST_PROXY_HOPS=1 …
+6  az appservice plan create -g rg-sbms-prod -n asp-sbms-web --sku F1 -l uaenorth
+7  az webapp create -g rg-sbms-prod -n sbms-web -p asp-sbms-web
+8  bootstrap the database (schema + migrations + first admin) and verify
+9  az consumption budget create … --amount 25     # guardrail
+10 verify: GET /api/health, GET /api/ready, login, QR /verify, duplicate-check inference
+```
+
+Order matters: **the database is created first** because it is the only line that bills by the hour,
+and it is the one item that can be stopped again (`az postgres flexible-server stop`) if the credit
+turns out to be smaller than assumed.
+
+
+
+
+
