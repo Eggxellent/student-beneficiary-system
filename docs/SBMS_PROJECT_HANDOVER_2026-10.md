@@ -302,9 +302,9 @@ Order is deliberate: correctness → data → deployment → documentation. Do n
 | **2. ML correction** | §6 protocol; fix aggregation; decide threshold on reviewed data | §6 exit checklist fully ticked |
 | **3. Business logic** | Registration, review, disbursement, reconciliation, audit trail; resolve `beneficiaries`/`scholarship_amount` ownership | Guard proven by integration test: an unresolved duplicate **cannot** be disbursed; award totals reconcile |
 | **4. QR verification** | Generate → phone camera → public verify; invalid/expired token; legacy token-only QRs; privacy of response | Manual test log with screenshots; response contains no student PII; rate limit verified |
-| **5. Database** | §7; backup + restore rehearsal | `db:init` builds a DB that satisfies readiness; a documented, tested restore exists |
+| **5. Database** | §7; backup + restore rehearsal | `db:init` builds a DB that satisfies readiness; a documented, tested restore exists — **satisfied 2026-10-31**: readiness `{"ready":true}` and an executed dump/restore rehearsal, evidence in §21 and `docs/database-recovery-rehearsal-2026-10-31.md` |
 | **6. Azure** | §9 | Auth, registration, ML screening, review, disbursement all exercised **in Azure** |
-| **7. Testing** | Backend/frontend/integration/E2E/security/performance/ML/UAT | `docs/FINAL_TEST_REPORT.md` regenerated with real outputs, not intentions |
+| **7. Testing** | Backend/frontend/integration/E2E/security/performance/ML/UAT | `docs/FINAL_TEST_REPORT.md` regenerated with real outputs, not intentions — **regenerated 2026-10-31** from this checkout; browser, phone-camera, UAT and Azure rows are explicitly "not run", see §21.2 |
 | **8. Documentation** | Chapters 4–5, screenshots from the deployed system, ML results from Phase 2, demo checklist | Reviewer can reproduce every number in the report |
 
 
@@ -1059,6 +1059,68 @@ and the exact bootstrap output string. One new finding: an earlier measured buil
 **~2.07 GiB** (351.5 MB of it the unused `nvidia-nccl-cu12` CUDA wheel), which is what a
 scale-to-zero cold start has to pull — re-measure and consider dropping the CUDA wheels before
 deploying. Not a correctness issue; the model loads and predicts either way.
+
+## 21. Test-report regeneration and database restore rehearsal, 2026-10-31
+
+Checkout `fix/sbms-completion-work` at `3a29fab`. Both deliverables below were executed in this
+session; nothing was provisioned and no production database was touched.
+
+### 21.1 Regenerated test report
+
+`docs/FINAL_TEST_REPORT.md` was replaced entirely. The previous version described
+`experiment/febrl-record-linkage` at `22435ec` on 2026-10-27 and reported obsolete `BLOCKED` rows
+(Jest and `qrcode` missing) and 15 native tests. The new file reports this checkout only:
+
+| Check | Result |
+|---|---|
+| Backend Jest | **21 suites / 128 tests passed**, 93.585 s, exit 0 |
+| Backend native `node --test` (7 in-process files) | **43/43 passed**, 793.7 ms, exit 0 |
+| Backend API smoke (out-of-process, live server) | **3/3 passed**, exit 0 |
+| Frontend production build | exit 0, 2,002 modules, 12.98 s (636.12 kB JS chunk warning) |
+| Python ML service | **33/33 passed**, 1.958 s, exit 0 |
+| Python research helpers | **7/7 passed**, 0.473 s, exit 0 |
+
+Honest gaps recorded there rather than glossed over: browser E2E (`SBMS_VERIFY_PASSWORD` absent),
+phone-camera QR (needs public HTTPS), headless `qr-smoke.mjs` (not re-run), `pytest` (not installed),
+Docker (engine down), Azure and UAT (not performed).
+
+One behavioural finding worth keeping: `backend/test/api.smoke.test.js` fails with `fetch failed` when
+run inside the in-process group, because it targets a live `API_URL`. It is not broken — it passes 3/3
+against a running API, which is how `npm run test:smoke` invokes it.
+
+### 21.2 Database backup and restore rehearsal
+
+Full procedure, evidence and limitations: `docs/database-recovery-rehearsal-2026-10-31.md`.
+
+| Item | Value |
+|---|---|
+| Source | local disposable `sbms_test` (loopback `::1:5432`, role `sbms_test_runner`, PG 17.11) |
+| Backup | `sbms_test_custom_20261031_113123.dump`, custom format, 39,336 bytes, SHA-256 `DA1243…8AA7` |
+| Restore target | `sbms_restore_rehearsal_20261031_113123` (separate database, owner `sbms_test_runner`) |
+| Restore result | `pg_restore --no-owner --exit-on-error` exit 0, no warnings |
+| Readiness | `{"ready":true}` on both databases via `checkDatabaseReadiness` |
+| Structure | 12 tables, 118 columns, 56 constraints, 21 indexes, 1 sequence, 2 extensions, 12 migrations — all match |
+| Contents | per-table MD5 row digests match (`DATA_DIGEST … MATCH=true`) |
+| Constraints | identical enforcement: both reject with `23514` and the same constraint names |
+| Application smoke on the restore | `/api/ready` `{"status":"ready"}` and 3/3 smoke tests |
+| Source afterwards | unchanged; dev database `student_beneficiary_system` never used |
+
+Two details that cost time and should not be rediscovered:
+
+- A naive `pg_get_constraintdef()` diff shows 12 false "differences" on `CHECK` constraints. The text
+  re-deparses with per-element `::text` casts after a restore; identity and normalised definitions
+  match, and enforcement was proven functionally inside rolled-back transactions instead.
+- `sbms_test_runner` is not a superuser and cannot `CREATE DATABASE`, so the restore database was
+  created through the local `postgres` superuser against the `postgres` *maintenance* database. The
+  development database `student_beneficiary_system` was never a source or target.
+
+### 21.3 Still open after this session
+
+- Azure provisioning and the in-Azure Phase 6 exercises (six approvals outstanding).
+- Browser E2E and phone-camera QR (both need credentials or a public HTTPS origin).
+- ML Phase 2: adjudicator unnamed, D1-D5 unanswered, 0.50 cutoff still unvalidated.
+- A repeat of the restore rehearsal against the hosted PostgreSQL Flexible Server once it exists.
+
 
 
 

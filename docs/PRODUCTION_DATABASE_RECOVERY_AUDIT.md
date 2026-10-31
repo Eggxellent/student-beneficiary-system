@@ -2,6 +2,15 @@
 
 **Review type:** Static, read-only repository review. No database connection, SQL, restore, migration, test, build, deployment, or Render change was performed for this report.
 
+> **Update, 2026-10-31:** the local restore rehearsal this report asked for (section "Recovery copy
+> can restore") has now been executed against the disposable `sbms_test` database, with a
+> custom-format dump, a separate restore database, schema/row-digest comparison and an application
+> smoke test. Evidence: `docs/database-recovery-rehearsal-2026-10-31.md` and handover §21. That
+> rehearsal does **not** authorize or validate a production restore, and it says nothing about the
+> `sbms_local_backup.dump` referenced below; the conclusions of this audit stand unchanged. Azure
+> PostgreSQL Flexible Server point-in-time restore, dump encryption and retention still need to be
+> decided before any production recovery can be claimed.
+
 ## 1. Executive summary
 
 The supplied production metadata result is consistent with the observed Admin-login error: `public.users` does not exist in the queried `sbms_postgres` database, so `Auth.findByEmail()` cannot resolve its unqualified `FROM users` reference. The API uses `DATABASE_URL`, but its startup command only launches Express; it does not initialize tables or run migrations. The static health endpoint is liveness-only.
