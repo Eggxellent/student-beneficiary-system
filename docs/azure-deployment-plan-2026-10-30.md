@@ -1073,6 +1073,7 @@ image). Package is publicly pullable, so the container app needs no registry cre
 | CORS | `Origin: https://evil.example` → 403; `https://sbms-web.azurewebsites.net` → 200 |
 | Frontend | 200, `id="root"` present, bundle contains the container app FQDN from `VITE_API_ORIGIN` |
 | Persistence | student re-read after the app had scaled to zero → 200, same record |
+| Demo-day round trip | `start.ps1`: server `Stopped`→`Ready`, `/api/health` 200, `/api/ready` 200, frontend 200. `stop.ps1`: back to `Stopped`, **$4.42/mo**, auto-start deadline 2026-11-07 21:22 |
 
 **One honest limitation found, not a deployment defect.** Two *different* children whose UPI and birth
 certificate numbers differ by a single character score **0.9959** — a duplicate. The same call against

@@ -117,6 +117,7 @@ do not re-derive them, do not re-run the audit.
 | When (UTC) | Action | Auto-start deadline |
 | --- | --- | --- |
 | 2026-10-31 21:11 | `teardown.ps1 -Stop` after the acceptance run | 2026-11-07 21:11 |
+| 2026-10-31 21:22 | `start.ps1` (ready/health/frontend all 200) → `stop.ps1` — the demo-day round trip | 2026-11-07 21:22 |
 
 `status.ps1` afterwards: server `Stopped`, **$4.42/month**, 7 days left on the countdown.
 
