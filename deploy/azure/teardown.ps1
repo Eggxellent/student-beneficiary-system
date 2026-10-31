@@ -51,7 +51,10 @@ function Write-Ok { param([string]$Text) Write-Host "   $Text" -ForegroundColor 
 function Write-Warn { param([string]$Text) Write-Host "   ! $Text" -ForegroundColor Yellow }
 
 function Test-AzExists {
-    az @args 2>$null | Out-Null
+    # `az ... show` on a missing resource writes to stderr, which under 'Stop' is terminating.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & az @args 2>&1 | Out-Null } finally { $ErrorActionPreference = $previous }
     return ($LASTEXITCODE -eq 0)
 }
 

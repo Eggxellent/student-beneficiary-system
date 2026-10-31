@@ -29,7 +29,10 @@ function Write-Step { param([string]$Text) Write-Host ''; Write-Host "== $Text" 
 function Write-Ok { param([string]$Text) Write-Host "   $Text" -ForegroundColor DarkGray }
 
 function Test-AzExists {
-    az @args 2>$null | Out-Null
+    # `az ... show` on a missing resource writes to stderr, which under 'Stop' is terminating.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & az @args 2>&1 | Out-Null } finally { $ErrorActionPreference = $previous }
     return ($LASTEXITCODE -eq 0)
 }
 
@@ -122,6 +125,6 @@ Write-Ok ('${0:N2} / month' -f $monthly)
 Write-Ok 'resource group, Container Apps environment, F1 web app and budget add $0.00'
 
 if ($monthly -gt 5) {
-    Write-Host '   ! above the $15 budget alert - stop the database if no demo is imminent' -ForegroundColor Yellow
+    Write-Host '   ! the database is running: about $19/mo if left on, which crosses the $15 budget. Stop it when the demo ends.' -ForegroundColor Yellow
 }
 

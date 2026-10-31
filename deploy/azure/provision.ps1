@@ -87,14 +87,23 @@ function Write-Warn {
 }
 
 function Invoke-Az {
-    az @args
+    # A native command's stderr becomes a terminating error under $ErrorActionPreference = 'Stop',
+    # which would pre-empt the clearer message below, so relax the preference for the call only.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & az @args } finally { $ErrorActionPreference = $previous }
     if ($LASTEXITCODE -ne 0) {
         throw "az $($args -join ' ') failed with exit code $LASTEXITCODE"
     }
 }
 
 function Test-AzExists {
-    az @args 2>$null | Out-Null
+    # `az ... show` on a resource that does not exist is the *normal* path on a first run, and it
+    # writes to stderr. Under 'Stop' that becomes a terminating error - which is exactly what
+    # aborted the first provisioning run. Relax the preference and discard everything for the call.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & az @args 2>&1 | Out-Null } finally { $ErrorActionPreference = $previous }
     return ($LASTEXITCODE -eq 0)
 }
 
@@ -137,6 +146,24 @@ Write-Ok "signed in as: $($accountInfo.user) - region: $Location"
 $secrets = Get-Secrets
 $dbHost = '{0}.postgres.database.azure.com' -f $DbServerName
 $dbUrl = 'postgresql://{0}:{1}@{2}:5432/{3}?sslmode=require' -f $DbAdminUser, $secrets.dbPassword, $dbHost, $DatabaseName
+
+# ---------------------------------------------------------------------------------------------
+# 1b. Resource providers - per subscription, once, $0
+# ---------------------------------------------------------------------------------------------
+# A brand-new student subscription has these unregistered, and the first containerapp / webapp
+# call fails with "not registered for the Microsoft.App resource provider". Registration is
+# idempotent and free, so check state first and only register what is missing.
+Write-Step '1b. Resource providers'
+foreach ($namespace in 'Microsoft.App', 'Microsoft.Web', 'Microsoft.DBforPostgreSQL', 'Microsoft.Consumption') {
+    $providerState = az provider show -n $namespace --query registrationState -o tsv 2>$null
+    if ($providerState -eq 'Registered') {
+        Write-Ok "$namespace already registered"
+    } else {
+        Write-Ok "registering $namespace ..."
+        Invoke-Az provider register -n $namespace --wait -o none
+        Write-Ok "$namespace registered"
+    }
+}
 
 # ---------------------------------------------------------------------------------------------
 # 2. Resource group - $0
@@ -196,13 +223,23 @@ if (-not $Image) {
 # ---------------------------------------------------------------------------------------------
 # 5. App Service F1 (Windows) - $0
 # ---------------------------------------------------------------------------------------------
-Write-Step "5. App Service plan $PlanName (F1) + web app $WebAppName"
+Write-Step "5. App Service plan $PlanName (F1 Windows) + web app $WebAppName"
+$planKind = $null
 if (Test-AzExists appservice plan show -g $ResourceGroup -n $PlanName -o none) {
-    Write-Ok 'plan already exists'
+    $planKind = az appservice plan show -g $ResourceGroup -n $PlanName --query kind -o tsv 2>$null
+}
+if ($planKind -eq 'linux') {
+    # A Linux plan needs a runtime or a container and cannot serve the static SPA through IIS, so
+    # web.config would be ignored. This happens if an older CLI created the plan without
+    # --is-linux false (this CLI defaults that flag to true).
+    throw "App Service plan $PlanName is Linux, but the SPA needs Windows/IIS (web.config). Delete the empty plan with: az appservice plan delete -g $ResourceGroup -n $PlanName --yes"
+} elseif ($planKind) {
+    Write-Ok "plan already exists ($planKind)"
 } else {
-    # No --is-linux on purpose: Windows/IIS serves the built SPA, a Linux plan would need a container.
-    Invoke-Az appservice plan create -g $ResourceGroup -n $PlanName --sku F1 -l $Location -o none
-    Write-Ok 'plan created (F1 = free, 60 CPU-min/day)'
+    # --is-linux false is mandatory here: the flag defaults to true, which silently yields a Linux
+    # plan and makes `webapp create` fail with "requires one of --runtime, --container-image-name".
+    Invoke-Az appservice plan create -g $ResourceGroup -n $PlanName --sku F1 -l $Location --is-linux false -o none
+    Write-Ok 'plan created (Windows F1 = free, 60 CPU-min/day)'
 }
 
 if (Test-AzExists webapp show -g $ResourceGroup -n $WebAppName -o none) {
@@ -246,7 +283,12 @@ if ($DeployFrontend) {
 # 6. Budget guardrail - $0
 # ---------------------------------------------------------------------------------------------
 Write-Step "6. Consumption budget `$$BudgetAmount"
-$notifications = @()
+# `az consumption budget create --notifications '<json>'` cannot be used from PowerShell: the az.cmd
+# wrapper strips the quotes and az then reports "unrecognized arguments". A PUT through az rest with
+# a JSON body file has no command-line quoting at all, so it works everywhere.
+$startDate = (Get-Date).ToString('yyyy-MM-01')
+$endDate = (Get-Date).AddYears(3).ToString('yyyy-MM-dd')
+$notifications = @{}
 foreach ($threshold in 50, 75, 100) {
     $entry = @{
         enabled       = $true
@@ -255,20 +297,38 @@ foreach ($threshold in 50, 75, 100) {
         thresholdType = 'Actual'
     }
     if ($BudgetEmail) { $entry['contactEmails'] = @($BudgetEmail) } else { $entry['contactRoles'] = @('Owner') }
-    $notifications += $entry
+    $notifications["Actual_GreaterThan_${threshold}_Percent"] = $entry
 }
-$notificationJson = ConvertTo-Json -InputObject $notifications -Compress -Depth 5
-$startDate = (Get-Date).ToString('yyyy-MM-01')
-$endDate = (Get-Date).AddYears(3).ToString('yyyy-MM-dd')
 
-az consumption budget create --budget-name budget-sbms --amount $BudgetAmount --category cost `
-    --time-grain Monthly --start-date $startDate --end-date $endDate `
-    --notifications $notificationJson -o none 2>$null
-if ($LASTEXITCODE -eq 0) {
-    Write-Ok 'budget created, alerts at 50/75/100 % of the monthly amount'
+$budgetBody = @{
+    properties = @{
+        category     = 'Cost'
+        amount       = [double]$BudgetAmount
+        timeGrain    = 'Monthly'
+        timePeriod   = @{ startDate = $startDate; endDate = $endDate }
+        notifications = $notifications
+    }
+}
+
+$budgetFile = Join-Path $env:TEMP 'sbms-budget.json'
+# WriteAllText emits UTF-8 without a BOM; Set-Content -Encoding UTF8 would prepend one.
+[System.IO.File]::WriteAllText($budgetFile, ($budgetBody | ConvertTo-Json -Depth 8 -Compress))
+
+$subscriptionId = az account show --query id -o tsv
+$previous = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    & az rest --method PUT --url ("https://management.azure.com/subscriptions/{0}/providers/Microsoft.Consumption/budgets/budget-sbms?api-version=2023-11-01" -f $subscriptionId) --body "@$budgetFile" -o none 2>&1 | Out-Null
+    $budgetExit = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $previous
+}
+if ($budgetExit -eq 0) {
+    Write-Ok "budget-sbms created: `$$BudgetAmount/month, alerting at 50/75/100 %"
 } else {
     Write-Warn 'budget could not be created from the CLI - set it in the portal (Cost Management > Budgets)'
 }
+Remove-Item $budgetFile -ErrorAction SilentlyContinue
 
 # ---------------------------------------------------------------------------------------------
 # 7. PostgreSQL - the only resource that bills
