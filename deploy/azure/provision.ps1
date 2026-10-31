@@ -70,6 +70,8 @@ $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $SecretsPath = Join-Path $PSScriptRoot '.secrets.json'
 $ApiFqdn = $null
 
+. (Join-Path $PSScriptRoot 'az-path.ps1')
+
 function Write-Step {
     param([string]$Text)
     Write-Host ''
@@ -124,6 +126,29 @@ function Get-Secrets {
     $fresh | ConvertTo-Json | Set-Content -Path $SecretsPath -Encoding UTF8
     Write-Ok 'generated dbPassword + jwtSecret into deploy/azure/.secrets.json (git-ignored)'
     return $fresh
+}
+
+function Invoke-AzQuiet {
+    # Run az for its side effect only: never let stderr become a terminating error, return the exit
+    # code instead. Used for idempotent calls whose failure is not fatal to the run.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & az @args 2>&1 | Out-Null
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
+function Get-ClientPublicIp {
+    # The workstation has to be admitted by the database firewall to run the bootstrap, and the
+    # "allow Azure services" rule deliberately does not cover it.
+    try {
+        return (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 20 -UseBasicParsing).Trim()
+    } catch {
+        return $null
+    }
 }
 
 function Get-OrCreateAdminPassword {
@@ -360,15 +385,26 @@ if (-not $dbExists) {
         Write-Warn 'creating B1MS / 32 GiB / PG 16 - this starts billing: $4.42/mo storage + $0.02/h'
         az postgres flexible-server create -g $ResourceGroup -n $DbServerName -l $Location `
             --tier Burstable --sku-name Standard_B1ms --storage-size 32 --version 16 `
-            --database-name $DatabaseName --admin-user $DbAdminUser `
-            --admin-password $secrets.dbPassword --public-access 0.0.0.0 `
-            --backup-retention 7 --yes -o none
+            --admin-user $DbAdminUser --admin-password $secrets.dbPassword `
+            --public-access 0.0.0.0 --backup-retention 7 --yes -o none
         if ($LASTEXITCODE -ne 0) {
-            throw "database creation failed. If '$DbServerName' is taken, re-run with -DbServerName <unique-name>."
+            throw "database server creation failed. If '$DbServerName' is taken, re-run with -DbServerName <unique-name>."
         }
-        Write-Ok "created $dbHost/$DatabaseName"
+        Write-Ok "created server $dbHost"
     } else {
         Write-Warn 'no database yet. Pass -IncludeDatabase on demo day (that is the only spending step).'
+    }
+}
+
+# The database is a separate resource in this CLI version: --database-name on create applies only to
+# elastic clusters, and `db create` names it with -n (not -d). This lives outside the "server did not
+# exist" branch, because a server created by an earlier run still needs its database.
+if ($IncludeDatabase) {
+    if (-not (Test-AzExists postgres flexible-server db show -g $ResourceGroup -s $DbServerName -n $DatabaseName -o none)) {
+        Invoke-Az postgres flexible-server db create -g $ResourceGroup -s $DbServerName -n $DatabaseName -o none
+        Write-Ok "database $DatabaseName created"
+    } else {
+        Write-Ok "database $DatabaseName already exists"
     }
 }
 
@@ -394,8 +430,15 @@ if ($dbExists -or $IncludeDatabase) {
     }
 
     # Keep the "Azure services only" rule present even if the server predates this script.
-    az postgres flexible-server firewall-rule create -g $ResourceGroup -n $DbServerName `
-        --name AllowAzureServices --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0 -o none 2>$null | Out-Null
+    # -s is the server; --name is the rule (the server used to be -n here, which az rejects).
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & az postgres flexible-server firewall-rule create -g $ResourceGroup -s $DbServerName `
+            --name AllowAzureServices --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0 -o none 2>&1 | Out-Null
+    } finally {
+        $ErrorActionPreference = $previous
+    }
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -407,33 +450,103 @@ if ($BootstrapDatabase) {
         throw 'backend/node_modules is missing - run `npm install --prefix backend` first.'
     }
 
-    $env:DATABASE_URL = $dbUrl
-    Push-Location (Join-Path $RepoRoot 'backend')
-    try {
-        Write-Ok 'db:bootstrap-empty'
-        npm run db:bootstrap-empty
-        if ($LASTEXITCODE -ne 0) { throw 'db:bootstrap-empty failed' }
-
-        Write-Ok 'migrate'
-        npm run migrate
-        if ($LASTEXITCODE -ne 0) { throw 'migrate failed' }
-    } finally {
-        Pop-Location
-    }
-
-    if ($AdminEmail) {
-        if (-not $AdminPassword) { $AdminPassword = Get-OrCreateAdminPassword }
-        $env:ADMIN_EMAIL = $AdminEmail
-        $env:ADMIN_PASSWORD = $AdminPassword
-        Write-Ok 'create-admin.mjs'
-        node (Join-Path $PSScriptRoot 'create-admin.mjs')
-        if ($LASTEXITCODE -ne 0) { throw 'create-admin.mjs failed' }
-        Remove-Item Env:\ADMIN_PASSWORD -ErrorAction SilentlyContinue
-        Write-Ok "admin ready: $AdminEmail (password in deploy/azure/.secrets.json)"
+    # The schema runs CREATE EXTENSION pgcrypto, and Azure refuses any extension that is not listed in
+    # the azure.extensions server parameter ("extension pgcrypto is not allow-listed for users in Azure
+    # Database for PostgreSQL"). Merge it in, keeping whatever is already allowed.
+    $allowedExtensions = az postgres flexible-server parameter show -g $ResourceGroup -s $DbServerName --name azure.extensions --query value -o tsv 2>$null
+    if ($allowedExtensions -notmatch 'PGCRYPTO') {
+        $mergedExtensions = if ([string]::IsNullOrWhiteSpace($allowedExtensions)) { 'PGCRYPTO' } else { "$allowedExtensions,PGCRYPTO" }
+        Invoke-Az postgres flexible-server parameter set -g $ResourceGroup -s $DbServerName --name azure.extensions --value $mergedExtensions -o none
+        Write-Ok "azure.extensions set to $mergedExtensions"
     } else {
-        Write-Warn 'no -AdminEmail: create the first admin with deploy/azure/create-admin.mjs'
+        Write-Ok 'pgcrypto already allow-listed'
     }
-    Write-Ok 'bootstrap complete'
+
+    # The bootstrap runs from this workstation, which the "allow Azure services" rule does not admit.
+    # Open the narrowest possible rule (this address only) and close it again when the step ends.
+    $clientIp = Get-ClientPublicIp
+    if ($clientIp) {
+        Write-Ok "temporary firewall rule for $clientIp (dropped at the end of this step)"
+        Invoke-AzQuiet postgres flexible-server firewall-rule create -g $ResourceGroup -s $DbServerName `
+            --name BootstrapClient --start-ip-address $clientIp --end-ip-address $clientIp -o none | Out-Null
+    } else {
+        Write-Warn 'could not determine this machine public IP - the bootstrap may be blocked by the database firewall'
+    }
+
+    try {
+        $env:DATABASE_URL = $dbUrl
+        if ($AdminEmail -and -not $AdminPassword) { $AdminPassword = Get-OrCreateAdminPassword }
+
+        # bootstrap-production-schema.js refuses to run without these: it is an *empty schema*
+        # initializer, so it demands an explicit approval that names the database it may destroy-proof
+        # itself against, and it creates the first administrator inside the same transaction.
+        $env:SBMS_EXPECTED_DATABASE_NAME = $DatabaseName
+        $env:SBMS_EMPTY_SCHEMA_BOOTSTRAP_APPROVED = $DatabaseName
+        $env:SBMS_INITIALIZE_EMPTY_DATABASE = 'true'
+        if ($AdminEmail) {
+            $env:SBMS_BOOTSTRAP_ADMIN_EMAIL = $AdminEmail
+            $env:SBMS_BOOTSTRAP_ADMIN_PASSWORD = $AdminPassword
+            $env:SBMS_BOOTSTRAP_ADMIN_NAME = 'SBMS Administrator'
+        } else {
+            # The initializer validates admin inputs unconditionally, even when it will not use them.
+            $env:SBMS_BOOTSTRAP_ADMIN_EMAIL = 'bootstrap-placeholder@example.invalid'
+            $env:SBMS_BOOTSTRAP_ADMIN_PASSWORD = 'placeholder-' + ([guid]::NewGuid().ToString('N'))
+            $env:SBMS_BOOTSTRAP_ADMIN_NAME = 'SBMS Administrator'
+        }
+
+        # Is the public schema already initialised? `npm run migrate` cannot answer this: it refuses
+        # to connect to anything but the local sbms_test database, which is why the production schema
+        # comes from the bootstrap initializer and not from the migration runner.
+        $dbHostForPsql = $dbHost
+        $env:PGPASSWORD = $secrets.dbPassword
+        $env:PGSSLMODE = 'require'
+        $hasUsersTable = ''
+        try {
+            $hasUsersTable = (& psql -h $dbHostForPsql -U $DbAdminUser -d $DatabaseName -tAc "SELECT to_regclass('public.users') IS NOT NULL" 2>&1) -join ' '
+        } catch {
+            $hasUsersTable = 'error'
+        } finally {
+            Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+            Remove-Item Env:\PGSSLMODE -ErrorAction SilentlyContinue
+        }
+
+        Push-Location (Join-Path $RepoRoot 'backend')
+        try {
+            if ($hasUsersTable.Trim() -eq 't') {
+                Write-Ok 'public.users already exists - skipping the empty-schema initializer (it is not re-runnable)'
+            } else {
+                if ($hasUsersTable.Trim() -notmatch '^[tf]$') {
+                    Write-Warn "could not read the schema state with psql ($($hasUsersTable.Trim())) - attempting the initializer anyway"
+                }
+                Write-Ok 'db:bootstrap-empty (schema + migrations + first admin, one transaction)'
+                npm run db:bootstrap-empty
+                if ($LASTEXITCODE -ne 0) { throw 'db:bootstrap-empty failed - see the guarded output above' }
+            }
+        } finally {
+            Pop-Location
+        }
+
+        if ($AdminEmail) {
+            # Idempotent upsert on email: also covers "schema existed but no administrator yet".
+            $env:ADMIN_EMAIL = $AdminEmail
+            $env:ADMIN_PASSWORD = $AdminPassword
+            Write-Ok 'create-admin.mjs'
+            node (Join-Path $PSScriptRoot 'create-admin.mjs')
+            if ($LASTEXITCODE -ne 0) { throw 'create-admin.mjs failed' }
+            Remove-Item Env:\ADMIN_PASSWORD -ErrorAction SilentlyContinue
+            Write-Ok "admin ready: $AdminEmail (password in deploy/azure/.secrets.json)"
+        } else {
+            Write-Warn 'no -AdminEmail: create the first admin with deploy/azure/create-admin.mjs'
+        }
+        Remove-Item Env:\SBMS_BOOTSTRAP_ADMIN_PASSWORD -ErrorAction SilentlyContinue
+        Write-Ok 'bootstrap complete'
+    } finally {
+        if ($clientIp) {
+            Invoke-AzQuiet postgres flexible-server firewall-rule delete -g $ResourceGroup -s $DbServerName `
+                --name BootstrapClient --yes -o none | Out-Null
+            Write-Ok 'temporary firewall rule removed'
+        }
+    }
 }
 
 # ---------------------------------------------------------------------------------------------

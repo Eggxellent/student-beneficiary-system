@@ -905,9 +905,12 @@ $4.42.
 | 9 | verify `/api/health`, `/api/ready`, admin login, QR `/verify`, duplicate-check score | $0 |
 | 10 | `az postgres flexible-server stop` after every demo, and at least **every 7 days** | back to **$4.42/mo** |
 
-Steps 1–9 are automated by `deploy/azure/provision.ps1`; steps 10 and the weekly repeat are
-`deploy/azure/teardown.ps1 -Stop`; `deploy/azure/status.ps1` reports the state and the day count.
-All three are **written but never executed** — the plan stops here for approval.
+Steps 1-9 are automated by `deploy/azure/provision.ps1`. Day-to-day operation is
+`deploy/azure/start.ps1` (start the database, wait for `Ready`, verify `/api/health`, `/api/ready` and
+the frontend, print both URLs) and `deploy/azure/stop.ps1` (a thin wrapper over `teardown.ps1 -Stop`
+that adds nothing but the closing confirmation). `deploy/azure/status.ps1` reports the state and the
+day count. Steps 1-6 were executed on 31 Oct 2026 - see the deployment log; step 7 remains the single
+billing action.
 
 Correction to the earlier sketch: the web app is **Windows F1**, not `--is-linux`. A Linux App
 Service plan has no web server to serve static files, so the SPA would need its own container; IIS
@@ -939,10 +942,15 @@ $14.60/mo *on top of* the $4.42 storage — that is A3, the model this revision 
 **Demo day, start to finish.**
 
 ```
-.\deploy\azure\provision.ps1 -Image ghcr.io/<owner>/sbms-api:<sha> -StartDatabase   # PG -> Ready, ~3 min
-   ... demonstrate (warm the app first: curl https://<api-fqdn>/api/health) ...
-.\deploy\azure\teardown.ps1 -Stop                                                 # $4.42/mo from here
+.\deploy\azure\start.ps1                       # PG -> Ready (~3 min), then health + frontend checks
+   ... demonstrate ...
+.\deploy\azure\stop.ps1                        # $4.42/mo from here (stop.ps1 -Dump backs up first)
 ```
+
+`start.ps1` replaces guessing: it polls the server state until it is `Ready`, retries the two health
+endpoints through the scale-from-zero cold start, and fails loudly if the frontend is not the built
+SPA. `stop.ps1` forwards to `teardown.ps1 -Stop`, which is where the stop logic and the `.state.json`
+timestamp live.
 
 **The weekly rule.** Run `teardown.ps1 -Stop` at least every 7 days whether or not anything was
 demonstrated. Three free reminders, in order of strength:

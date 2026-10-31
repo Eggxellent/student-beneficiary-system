@@ -25,6 +25,8 @@ $ErrorActionPreference = 'Stop'
 
 $StatePath = Join-Path $PSScriptRoot '.state.json'
 
+. (Join-Path $PSScriptRoot 'az-path.ps1')
+
 function Write-Step { param([string]$Text) Write-Host ''; Write-Host "== $Text" -ForegroundColor Cyan }
 function Write-Ok { param([string]$Text) Write-Host "   $Text" -ForegroundColor DarkGray }
 

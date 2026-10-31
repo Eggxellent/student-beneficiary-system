@@ -46,6 +46,8 @@ $SecretsPath = Join-Path $PSScriptRoot '.secrets.json'
 $StatePath = Join-Path $PSScriptRoot '.state.json'
 if (-not $DumpDirectory) { $DumpDirectory = Join-Path $PSScriptRoot 'backups' }
 
+. (Join-Path $PSScriptRoot 'az-path.ps1')
+
 function Write-Step { param([string]$Text) Write-Host ''; Write-Host "== $Text" -ForegroundColor Cyan }
 function Write-Ok { param([string]$Text) Write-Host "   $Text" -ForegroundColor DarkGray }
 function Write-Warn { param([string]$Text) Write-Host "   ! $Text" -ForegroundColor Yellow }
