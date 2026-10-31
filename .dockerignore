@@ -1,10 +1,13 @@
 .git
+.gitignore
 **/node_modules
 **/.venv
 **/__pycache__
 **/.pytest_cache
 **/.env
 **/.env.*
+docs
+deploy
 frontend
 ml-service/data
 ml-service/evaluation
