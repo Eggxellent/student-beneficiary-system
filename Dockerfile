@@ -17,6 +17,13 @@ COPY ml-service/requirements.txt ./ml-service/requirements.txt
 # try/except ImportError) and predict.py never reaches it. Install every requirement
 # normally, then xgboost itself with --no-deps, so the CUDA wheel is never downloaded.
 # The version is read back out of requirements.txt so it cannot drift.
+# The wheel set here is ~300 MB and the link measured ~35 kB/s, so pip's default socket timeout
+# aborts with ReadTimeoutError before the build can fail for a real reason. Timeout + retries are
+# raised explicitly; the local build died on exactly this.
+ENV PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=10 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
 RUN python3 -m venv /app/ml-service/.venv \
     && grep -v -E '^[[:space:]]*xgboost[[:space:]]*==' /app/ml-service/requirements.txt > /tmp/requirements-no-xgboost.txt \
     && /app/ml-service/.venv/bin/python -m pip install --no-cache-dir -r /tmp/requirements-no-xgboost.txt \

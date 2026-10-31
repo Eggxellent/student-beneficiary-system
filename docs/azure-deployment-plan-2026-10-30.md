@@ -604,17 +604,19 @@ or budget exists.
 
 ### 12.0 Headline
 
-| Measure | Previous proposal (§10–§11) | Revised (§12) |
+| Measure | Previous proposal (§10–§11) | Approved (§12, D8 = A2) |
 | --- | --- | --- |
-| Idle — no usage at all | $19–22 / mo | **$0.00 / mo** (A1, §12.4) |
-| One demonstration day | ≈$0.63 *plus* everything left running | **$0.10–$0.21** |
-| A month of normal use (≈100 h of DB up) | $19–22 | **≈$2.61** |
-| Free PostgreSQL on Azure | assumed $4.42 floor was the minimum | **no free tier exists** (§12.2.2) |
-| Always-present paid resources | ACA env + Log Analytics + ACR + PG | **none** (ACA env and F1 are $0) |
+| Idle — no usage at all | $19–22 / mo | **$4.42 / mo** (32 GiB storage only) |
+| One demonstration day | ≈$0.63 *plus* everything left running | **$0.10–$0.21** of compute on top |
+| A month of normal use (≈100 h of DB up) | $19–22 | **≈$6.42** |
+| Free PostgreSQL on Azure | assumed the $4.42 floor was the minimum | **no free tier exists** (§12.2.2) |
+| Always-present paid resources | ACA env + Log Analytics + ACR + PG | **one managed disk** — env, F1, registry and logs are all $0 |
 
-**Recommendation: Architecture A1 (§12.4)** — one Container App, one F1 web app, and PostgreSQL
-created for the demonstration window and deleted after it. Every other decision below exists to
-make that cycle safe, repeatable and cheap.
+**Decision (D8, 31 October 2026): Architecture A2** — PostgreSQL Flexible B1MS **stays**, stopped
+between demonstrations, so beneficiary records and the ML duplicate history survive without a
+dump/restore cycle. Idle cost falls from $19.02 to **$4.42 / mo**; nothing is deleted. A1 ($0.00
+idle) and B (Neon, $0) remain documented for the record only. §12.13 is the weekly stop protocol
+that stops A2 from silently drifting into A3.
 
 ### 12.1 What changed, and why
 
@@ -624,8 +626,8 @@ make that cycle safe, repeatable and cheap.
 | Frontend | App Service F1 | **unchanged — F1** | free in UAE North, verified live |
 | Registry | ACR Basic $5.07/mo | **public ghcr.io, $0** | repository is public |
 | Logs | Log Analytics, $3.29/GB | **`--logs-destination none`, $0** | §12.2.4 |
-| Database | always-on B1MS, $19.02/mo | **A1: created per demo, deleted after** | §12.2.3 traps |
-| Budget alert | $25 | **$5**, at 50/80/100 % | $25 was an alert proposal, not a budget |
+| Database | always-on B1MS, $19.02/mo | **A2: permanent, stopped between demos — $4.42/mo** | §12.2.3 traps, §12.13 |
+| Budget alert | $25 | **$15**, at 50/75/100 % ($7.50 / $11.25 / $15) | $25 was an alert proposal; $5 was arithmetically useless (§12.14) |
 
 ### 12.2 Investigation results
 
@@ -733,7 +735,7 @@ of a 0.5 vCPU / 1 GiB replica per month at zero cost. A demonstration never come
 
 ### 12.4 Architecture A — everything on Azure, at the floor
 
-**Resources actually created (A1):**
+**Resources actually created (A2 — the approved variant):**
 
 | # | Resource | SKU / setting | Cost |
 | --- | --- | --- | --- |
@@ -741,8 +743,8 @@ of a 0.5 vCPU / 1 GiB replica per month at zero cost. A demonstration never come
 | 2 | Container Apps environment `cae-sbms` | Consumption, **`--logs-destination none`** | $0 fixed |
 | 3 | Container App `ca-sbms-api` | **`--min-replicas 0`**, max 1–2, 0.5 vCPU / 1 GiB, external ingress :5000 | $0 idle |
 | 4 | App Service plan `asp-sbms-web` + web app `sbms-web` | **F1 (free), Linux, UAE North** | $0 |
-| 5 | PostgreSQL flexible `pg-sbms` | **B1MS, 32 GiB, PG 16** — exists only around demos in A1 | $0 idle / $0.02 per hour |
-| 6 | Budget `budget-sbms` | $5, alerts at 50/80/100 % | $0 |
+| 5 | PostgreSQL flexible `pg-sbms` | **B1MS, 32 GiB, PG 16** — **permanent**, stopped between demos | **$4.42/mo** + $0.02 per running hour |
+| 6 | Budget `budget-sbms` | **$15**, alerts at 50/75/100 % | $0 |
 
 Explicitly **not** created: Log Analytics workspace, Container Registry, virtual network, NAT
 gateway, public IP, private endpoint, workload profile, storage account, Azure Files share, DNS zone,
@@ -752,8 +754,8 @@ Application Insights, Front Door, CDN.
 
 | Variant | What happens between demos | Idle cost | 8-hour demo | ~100 h usage month | Notes |
 | --- | --- | --- | --- | --- | --- |
-| **A1 — ephemeral** (recommended) | server **deleted**; schema and seed data rebuilt by script | **$0.00** | **$0.21** | **$2.61** | needs `provision.sh`/`teardown.sh`; data does not survive unless dumped |
-| A2 — persistent, stopped | server stopped | **$4.42** (storage) | $4.42 + $0.16 = **$4.58** | **$6.42** | must be re-stopped **weekly** (7-day auto-start), else it becomes A3 |
+| A1 — ephemeral | server **deleted**; schema rebuilt by script | **$0.00** | **$0.21** | **$2.61** | not chosen (D8): every demo would need a dump-and-restore cycle |
+| **A2 — persistent, stopped** (approved) | server stopped, data intact | **$4.42** (storage) | $4.42 + $0.16 = **$4.58** | **$6.42** | must be re-stopped **weekly** (7-day auto-start) — §12.13 |
 | A3 — persistent, running | nothing | **$19.02** | **$19.02** | $19.02 | the old §10.4 model — rejected |
 
 Arithmetic for A1, 8-hour demo: compute 8 × $0.02 = $0.16, storage 8 × $0.00605 = $0.048 →
@@ -814,6 +816,9 @@ What it costs you, stated plainly:
 | Operational effort | highest (create/destroy cycle) | medium (weekly re-stop) | lowest | low, but external account |
 | Fits "Azure deployment" story | **yes** | yes | yes | partially |
 
+Bold marks the cheapest figure in each row, **not the chosen variant**: the approved row is **A2**
+(D8), which buys data continuity for $4.42/mo and needs one weekly stop.
+
 ### 12.7 Options considered and rejected
 
 | Option | Why rejected |
@@ -844,9 +849,11 @@ What it costs you, stated plainly:
 | Budget / alerts | nothing | $0.00 |
 | Anything **deleted** | nothing | $0.00 |
 
-The only silent-resume risk in the whole design is the **7-day PostgreSQL auto-start** (§12.2.3),
-which is precisely why A1 deletes rather than stops, and why `provision.sh`/`teardown.sh` must be
-re-runnable.
+The only silent-resume risk in the whole design is the **7-day PostgreSQL auto-start** (§12.2.3).
+A2 accepts that risk deliberately and manages it: a stopped server returns to `Ready` on its own
+after seven days and resumes billing $0.02/h, so **re-stopping is a standing weekly action**, not a
+one-off. §12.13 gives the 40-second procedure, the reminder wording and an optional $0 guard.
+`provision.ps1` / `teardown.ps1` are idempotent, so the weekly cycle is one command each.
 
 ### 12.9 Free-tier limits that actually bind
 
@@ -867,8 +874,9 @@ re-runnable.
 | Risk | Mitigation |
 | --- | --- |
 | Cold start 10–40 s (≈1.9 GB image + model load) on the first request after scale-to-zero | Warm the app 2 minutes before a demo (`curl /api/health`), or raise `--min-replicas 1` for the demo hour only (≈$0.05/h, still inside the free grant) and drop it back |
-| Forgetting to delete the database | `teardown.sh` is one command; the $5 budget alert fires at 50 % ($2.50) long before the credit is at risk |
-| Database gone but data needed | `teardown.sh --dump` writes a `pg_dump` locally before deletion; reseed otherwise |
+| **Forgetting to re-stop the database** (it auto-starts at day 7) | `deploy/azure/teardown.ps1 -Stop` (one command, ~40 s), a recurring calendar reminder on day 5, and `status.ps1` which prints *days since the last stop*; the $15 budget alert at 50 % ($7.50) fires after roughly six days of unplanned running |
+| Losing data at final teardown | routine teardown only **stops**; the irreversible `-Destroy` refuses to run unless `-Dump` is also passed, and `-Dump` writes `pg_dump` output locally first |
+| First admin cannot be created — public registration returns **410** | `deploy/azure/create-admin.mjs` inserts the bcrypt admin directly using the backend's own `pg` + `bcrypt` dependencies |
 | No Log Analytics ⇒ no cloud logs | `/api/health`, `/api/ready`, `az containerapp revision list`, and `az containerapp logs show` only if the env is recreated with logs; the app's own structured logs are visible in local/Docker runs |
 | PostgreSQL reachable from the internet (public access) | TLS mandatory (`sslmode=require`), 32-character generated password stored as a Container App secret, firewall restricted to the Container Apps egress addresses; private endpoint rejected only because it costs $7.30/mo |
 | B1MS credit exhaustion under load | not used for load tests; monitor CPU credits if a demo is heavy |
@@ -877,29 +885,33 @@ re-runnable.
 
 ### 12.11 Recommendation and the exact sequence on approval
 
-**Adopt A1.** It is the only variant that hits $0 idle *and* keeps PostgreSQL inside Azure in a
-permitted region, and the extra effort is a script that has to exist anyway.
+**Adopt A2 (D8).** PostgreSQL stays in UAE North and survives between demonstrations; the
+demo-window discipline moves from *delete the server* to *stop the server weekly*.
 
-Order of operations (nothing below runs before approval):
+Order of operations — nothing below has been executed. Steps 1–7 are free and can exist permanently;
+step 8 is the only resource with a recurring charge; step 10 is the weekly habit that holds it at
+$4.42.
 
-```
-1  gh auth / docker build -t ghcr.io/<owner>/sbms-api:<sha> . && docker push   # $0
-2  az group create -n rg-sbms -l uaenorth
-3  az containerapp env create -n cae-sbms -g rg-sbms -l uaenorth --logs-destination none   # $0
-4  az containerapp create ... --min-replicas 0 --max-replicas 1 --cpu 0.5 --memory 1Gi \
-       --ingress external --target-port 5000 --image ghcr.io/<owner>/sbms-api:<sha>        # $0
-5  az appservice plan create -n asp-sbms-web -g rg-sbms --sku F1 --is-linux -l uaenorth    # $0
-6  az webapp create -n sbms-web -g rg-sbms -p asp-sbms-web   + deploy frontend build      # $0
-7  az consumption budget create --amount 5 ...                                            # $0
-8  DEMO TIME: az postgres flexible-server create -g rg-sbms -n pg-sbms -l uaenorth \
-       --tier Burstable --sku-name Standard_B1ms --storage-size 32 --version 16 \
-       --public-access 0.0.0.0            # <- the only line that bills, $0.02/h
-9  bootstrap schema + admin, verify /api/health, /api/ready, login, QR /verify, ML score
-10 az postgres flexible-server delete -g rg-sbms -n pg-sbms --yes    # back to $0
-```
+| # | Action | Billing |
+| --- | --- | --- |
+| 1 | build + push `ghcr.io/<owner>/sbms-api:<sha>` from the repo root | $0 |
+| 2 | `az group create -n rg-sbms -l uaenorth` | $0 |
+| 3 | `az containerapp env create -n cae-sbms --logs-destination none` | $0 fixed |
+| 4 | `az containerapp create` with `--min-replicas 0 --max-replicas 1 --cpu 0.5 --memory 1Gi --ingress external --target-port 5000` | $0 while idle |
+| 5 | `az appservice plan create --sku F1` (**Windows** — IIS serves the SPA) + `az webapp create` + zip of `frontend/dist` built with `VITE_API_ORIGIN` | $0 |
+| 6 | `az consumption budget create --amount 15`, alerts 50/75/100 % | $0 |
+| 7 | `az postgres flexible-server create --tier Burstable --sku-name Standard_B1ms --storage-size 32 --version 16 --public-access 0.0.0.0` | **starts billing: $4.42/mo storage + $0.02/h** |
+| 8 | one-time bootstrap: `db:bootstrap-empty` → `migrate` → first admin (`create-admin.mjs`) | $0 |
+| 9 | verify `/api/health`, `/api/ready`, admin login, QR `/verify`, duplicate-check score | $0 |
+| 10 | `az postgres flexible-server stop` after every demo, and at least **every 7 days** | back to **$4.42/mo** |
 
-Steps 1–7 cost **nothing** and can exist permanently. Step 8 is the only spending event, it is
-reversible within the same hour, and step 10 returns the subscription to **$0.00/month**.
+Steps 1–9 are automated by `deploy/azure/provision.ps1`; steps 10 and the weekly repeat are
+`deploy/azure/teardown.ps1 -Stop`; `deploy/azure/status.ps1` reports the state and the day count.
+All three are **written but never executed** — the plan stops here for approval.
+
+Correction to the earlier sketch: the web app is **Windows F1**, not `--is-linux`. A Linux App
+Service plan has no web server to serve static files, so the SPA would need its own container; IIS
+plus `docker`-free zip deploy plus `web.config` rewrite is the $0 path.
 
 ### 12.12 Approval checklist
 
@@ -911,8 +923,75 @@ reversible within the same hour, and step 10 returns the subscription to **$0.00
 | D4 | Database SKU | **PostgreSQL Flexible B1MS, 32 GiB, PG 16** |
 | D6 | Demo-window provisioning | **yes**, scripts re-runnable |
 | D7 | Logs | **`--logs-destination none`** — $0 |
-| D8 | **Database lifetime** | **A1 (ephemeral)** over A2 (stopped, $4.42 idle) and B (Neon, $0 but data leaves Azure) |
-| D9 | Budget alert | **$5**, not $25 |
+| D8 | **Database lifetime** | **A2 — persistent, stopped.** Closed by the owner 31 Oct 2026: data continuity over $4.42/mo; A1 (dump/restore risk) and B (PII outside Azure) declined |
+| D9 | Budget alert | **$15**, alerts at 50/75/100 % — **revised from $5**, see §12.14 |
 
-If D8 is answered "B", §12.11 stays identical except steps 8 and 10 are replaced by a Neon project
-and a connection string — the Azure side costs nothing either way.
+D8 is closed. Every remaining item is unchanged from §12.4 and is what §12.11 provisions; §12.13 is
+the stop protocol that the approval also accepts.
+
+### 12.13 A2 stop protocol — the weekly habit that holds the cost at $4.42
+
+**Why it exists.** A stopped flexible server is only guaranteed stopped for **seven days**. The
+service's own error text is explicit: `Server will be automatically started after 7 days if you do
+not perform a manual start operation`. A server that has restarted on its own bills $0.02/h ≈
+$14.60/mo *on top of* the $4.42 storage — that is A3, the model this revision removed.
+
+**Demo day, start to finish.**
+
+```
+.\deploy\azure\provision.ps1 -Image ghcr.io/<owner>/sbms-api:<sha> -StartDatabase   # PG -> Ready, ~3 min
+   ... demonstrate (warm the app first: curl https://<api-fqdn>/api/health) ...
+.\deploy\azure\teardown.ps1 -Stop                                                 # $4.42/mo from here
+```
+
+**The weekly rule.** Run `teardown.ps1 -Stop` at least every 7 days whether or not anything was
+demonstrated. Three free reminders, in order of strength:
+
+1. a **recurring calendar entry every 5 days** — *"SBMS: stop pg-sbms"* (day 5 leaves two days of
+   slack for a missed reminder);
+2. `.\deploy\azure\status.ps1` — prints `state`, **days since the last stop**, and a warning at
+   day 5 that escalates at day 6;
+3. the **$15 budget alert** at 50 % ($7.50) - it cannot fire while the server is stopped, so a
+   notification means compute has been running unattended for about six days.
+
+**Verification in five seconds.**
+
+```
+az postgres flexible-server show -g rg-sbms -n pg-sbms --query "{state:state,sku:sku.tier,gb:storage.storageSizeGb}" -o table
+```
+
+`state` must read `Stopped`. `Starting`/`Ready` means the weekly action was missed.
+
+**Optional $0 guard (not adopted).** A GitHub Actions `schedule:` workflow in this public repo can
+run `az postgres flexible-server stop` daily at no cost, but it needs an Entra app registration with
+a federated credential — a $0 yet extra identity object, and a second place where credentials live.
+The instruction was "clear reminder and procedure", so the manual weekly stop is the plan of record;
+the cron is documented here only so it is not re-investigated later.
+
+**Cost of a slip.** One missed stop (server runs ≈168 h) ≈ **$3.36** of extra compute; permanently
+forgotten = A3 = **$19.02/mo**. Worst realistic case with the reminders above is one missed week.
+
+**What A2 deliberately does *not* do.** It never deletes the server, never loses a record, and never
+needs re-seeding. `teardown.ps1 -Destroy` exists for the end of the project and refuses to run
+without `-Dump`, so the last action before deletion is always a local `pg_dump`.
+
+### 12.14 D9 revised — the budget is $15, not $5
+
+A consumption budget is a **notification threshold, not a cap**: nothing stops when it is reached.
+With the A2 floor at $4.42/mo, a $5 ceiling produces nonsense in both directions:
+
+| Fact | Consequence with a $5 budget |
+| --- | --- |
+| $4.42 of unavoidable spend = **88 % of $5** | the 80 % and 100 % alerts fire **every single month**, so they stop meaning "something is wrong" |
+| The 50 % alert = **$2.50** | it sits **below the floor** and can therefore never fire — the early warning is dead |
+
+**$15** puts the bands above the unavoidable floor and inside the failure modes that matter:
+
+| Alert | Amount | What it actually means |
+| --- | --- | --- |
+| 50 % | $7.50 | the database has been up for roughly six unplanned days |
+| 75 % | $11.25 | about two weeks of unplanned uptime |
+| 100 % | $15.00 | approaching A3 ($19.02/mo) — investigate immediately |
+
+The budget itself is free and subscription-wide. This revision changes D9 from the $5 chosen in
+§12.0–§12.12; everything else in §12 is unaffected.

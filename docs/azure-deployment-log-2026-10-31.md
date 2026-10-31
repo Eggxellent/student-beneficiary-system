@@ -11,12 +11,12 @@ Nothing has been provisioned: 0 resource groups, 0 resources, 0 budgets (verifie
 | --- | --- |
 | 1. Repository cleanup | **Done** — `d0aa56c`, verified (Jest 21/128, smoke 3/3, ML 33/33 + 7/7) |
 | 2. Live subscription audit | **Done** — `04b7e47`, plan doc §11.1–§11.10 |
-| 3. Choose architecture | **Done — revised to the minimum-cost model** (plan §12): ephemeral Azure PG, 0 replicas, F1 front, no logs, no registry |
-| 4. Approval to spend | **Blocked** — awaits the credit balance and **D8** (database lifetime) |
-| 5. Provision | Not started (by instruction) |
+| 3. Choose architecture | **Done** — **A2 approved (D8, 31 Oct 2026)**: persistent PostgreSQL stopped between demos, `minReplicas 0`, F1 front, no logs, no registry |
+| 4. Approval to spend | **Blocked on final approval** of the §12.11 checklist; the credit balance is still unread |
+| 5. Provision | Not started (by instruction) — 0 resource groups, 0 resources, 0 budgets |
 | 6. Deploy and verify live | Not started |
 | 7. Handover/milestone update | Not started |
-| 8. Revised cost model | **Done** — plan §12.0–§12.12: **$0.00 idle**, $0.21 per 8 h demo |
+| 8. Revised cost model | **Done** — plan §12.0–§12.13: **$4.42/mo idle** (A2), $4.58 per 8 h demo, ≈$6.42 in a normal month |
 | Image-size verification | **Blocked** — local build failed at the pip layer: `ReadTimeoutError` from files.pythonhosted.org (PyPI at ~35 kB/s), not a Dockerfile defect. Post-cleanup size still unmeasured |
 
 ## 2. Verified facts (carry forward — do not re-check)
@@ -72,36 +72,41 @@ Nothing has been provisioned: 0 resource groups, 0 resources, 0 budgets (verifie
 | D5 | `minReplicas: 0`, `maxReplicas: 1` outside demos | Settled |
 | D6 | **Demo-window provisioning**: create → demonstrate → delete | Settled as the cost model |
 | D7 | Container Apps env created with **`--logs-destination none`** — no Log Analytics at all | New (§12.2.4) |
-| D8 | **Database lifetime: A1 ephemeral / A2 stopped / B Neon free** | **Awaiting owner** — the only open architecture choice |
-| D9 | Budget alert **$5** (not $25) at 50/80/100 % | New |
+| D8 | **Database lifetime = A2** — PostgreSQL Flexible stays, **stopped** between demos | **Approved by the owner 31 Oct 2026.** A1 (delete/restore per demo) and B (Neon, PII off Azure) declined |
+| D9 | Budget alert **$15** (not $25, and not $5) at 50/75/100 % | New — $5 cannot work against a $4.42 floor (plan §12.14) |
 
 ## 4. Cost guardrails (owner priority #1 is preserving credit)
 
 | Mode | Burn | Note |
 | --- | --- | --- |
-| **A1 — DB deleted outside demos** | **$0.00 idle**; 8 h demo **$0.21**; ~100 h/month **$2.61** | recommended; needs `provision.sh`/`teardown.sh` |
-| A2 — DB stopped outside demos | **$4.42/mo** floor (storage only) | must re-stop **weekly** or it auto-starts |
+| A1 — DB deleted outside demos | $0.00 idle; 8 h demo $0.21; ~100 h/month $2.61 | not chosen — needs a dump/restore cycle per demo |
+| **A2 — DB stopped outside demos (CHOSEN, D8)** | **$4.42/mo** floor (storage only); 8 h demo **$4.58**; ~100 h/month **$6.42** | must re-stop **weekly** or it auto-starts and becomes A3 (plan §12.13) |
 | A3 — DB always on | $19.02/mo | the old model — rejected |
-| B — Neon free DB | $0.00 forever | data leaves Azure; 1 GB / 100 CU-h caps |
+| B — Neon free DB | $0.00 forever | declined — PII would leave Azure; 1 GB / 100 CU-h caps |
 | Container App + F1 | $0 up to ~100 h of replica time per month (ACA free grant) | beyond that ≈$0.054/h |
-| Budget alert | $5 at 50/80/100 % | free |
+| Budget alert | $15 at 50/75/100 % ($7.50 / $11.25 / $15) | free; $5 was below the floor |
 
 ## 5. Next actions, in order
 
-1. Owner answers **D8** (A1 / A2 / B) and reads the credit balance/expiry.
-2. Write `deploy/azure/provision.sh` (steps 1–9 of §12.11, idempotent), `deploy/azure/teardown.sh`
-   (with `--dump`), `frontend/public/web.config`, `.github/workflows/azure-deploy.yml`
-   (**manual `workflow_dispatch` only**). Also harden the pip layers against slow PyPI
-   (`--timeout 120 --retries 10`) — the local build died on a read timeout, and GitHub Actions will
-   face the same 300 MB wheel download.
-3. Provision the free half first (RG → env `--logs-destination none` → Container App → F1 → $5 budget);
-   that half is $0 and can stay.
-4. On demo day only: create the DB, bootstrap, verify `/api/health`, `/api/ready`, login, QR
-   `/verify`, duplicate-check score; then delete the DB.
-5. Record the result here and update handover §15/§16 + milestones.
+1. **Owner approves the final checklist** — exact resources, $4.42/mo idle estimate, and the weekly
+   stop obligation (§12.11 + §12.13 of the plan). Credit balance/expiry still unread.
+2. ~~Write the deploy tooling~~ — **written, not executed** (PowerShell, because the operator shell
+   on this machine is PowerShell): `deploy/azure/provision.ps1` (idempotent, steps 2–9),
+   `deploy/azure/teardown.ps1` (`-Stop` default, `-Dump`, `-Destroy` refused without `-Dump`),
+   `deploy/azure/status.ps1` (state + days-since-stop + reminder), `deploy/azure/create-admin.mjs`
+   (public registration returns 410), `frontend/public/web.config` (SPA rewrite).
+   The Dockerfile now pins `PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10`; the image build and its size
+   measurement are still open (the local build died on a PyPI read timeout, not on a Dockerfile
+   defect).
+3. Provision the **free half** first (RG → env `--logs-destination none` → Container App `min-replicas 0`
+   → F1 Windows web app → $15 budget) — $0 and can stay.
+4. Then the **one billing step**: create PG (B1MS / 32 GiB / PG 16), bootstrap schema + first admin,
+   verify `/api/health`, `/api/ready`, admin login, QR `/verify`, duplicate-check score.
+5. `teardown.ps1 -Stop` after the demo **and every 7 days after that**; log the stop date here.
+6. Record the result here and update handover §15/§16 + milestones.
 
 ## 6. Open questions (consolidated — ask once)
 
-- Credit balance and expiry (portal-only; no CLI/API exposes it for student offers).
-- **D8**: A1 ephemeral Azure PG (recommended, $0 idle) / A2 stopped ($4.42/mo) / B Neon free ($0, data
-  outside Azure).
+- **Credit balance and expiry** — portal-only (`microsoftazuresponsorships.com/Usage`); no CLI/API
+  exposes it for student offers. Changes the runway, not the architecture.
+- **D8 is closed** (A2). No other architecture question is open.

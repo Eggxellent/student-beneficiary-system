@@ -18,3 +18,8 @@ backend/reports/*.pdf
 frontend/student-beneficiary-system/
 __pycache__/
 *.py[cod]
+
+# Azure deploy tooling: generated secrets, cached state, local database dumps.
+deploy/azure/.secrets.json
+deploy/azure/.state.json
+deploy/azure/backups/
