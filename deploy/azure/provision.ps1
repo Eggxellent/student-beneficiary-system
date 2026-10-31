@@ -126,6 +126,25 @@ function Get-Secrets {
     return $fresh
 }
 
+function Get-OrCreateAdminPassword {
+    # The bootstrap needs a password that is never echoed to the terminal or a log. It is generated
+    # once, stored beside the other generated secrets (git-ignored) and reused on later runs.
+    $store = Get-Secrets
+    if ($store.PSObject.Properties.Name -contains 'adminPassword') {
+        Write-Ok 'reusing the admin password stored in deploy/azure/.secrets.json'
+        return $store.adminPassword
+    }
+
+    $alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    $bytes = New-Object 'byte[]' 24
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $generated = -join ($bytes | ForEach-Object { $alphabet[$_ % $alphabet.Length] })
+    $store | Add-Member -NotePropertyName adminPassword -NotePropertyValue $generated -Force
+    $store | ConvertTo-Json | Set-Content -Path $SecretsPath -Encoding UTF8
+    Write-Ok 'generated an admin password into deploy/azure/.secrets.json (deliberately not printed)'
+    return $generated
+}
+
 # ---------------------------------------------------------------------------------------------
 # 1. Preflight
 # ---------------------------------------------------------------------------------------------
@@ -402,15 +421,17 @@ if ($BootstrapDatabase) {
         Pop-Location
     }
 
-    if ($AdminEmail -and $AdminPassword) {
+    if ($AdminEmail) {
+        if (-not $AdminPassword) { $AdminPassword = Get-OrCreateAdminPassword }
         $env:ADMIN_EMAIL = $AdminEmail
         $env:ADMIN_PASSWORD = $AdminPassword
         Write-Ok 'create-admin.mjs'
         node (Join-Path $PSScriptRoot 'create-admin.mjs')
         if ($LASTEXITCODE -ne 0) { throw 'create-admin.mjs failed' }
         Remove-Item Env:\ADMIN_PASSWORD -ErrorAction SilentlyContinue
+        Write-Ok "admin ready: $AdminEmail (password in deploy/azure/.secrets.json)"
     } else {
-        Write-Warn 'no -AdminEmail/-AdminPassword: create the first admin with deploy/azure/create-admin.mjs'
+        Write-Warn 'no -AdminEmail: create the first admin with deploy/azure/create-admin.mjs'
     }
     Write-Ok 'bootstrap complete'
 }
