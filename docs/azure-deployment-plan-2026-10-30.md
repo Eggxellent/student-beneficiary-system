@@ -486,6 +486,9 @@ API inside the free grant.
 | Log Analytics | `log-sbms` | PerGB2018, 30-day retention | required target for CAE logs; keep ingestion tiny |
 | Registry | `ghcr.io` (GitHub) | public package | $0 vs ACR Basic $5.07/mo; repo is already public |
 | Secrets | Container App secrets (owner's `JWT_SECRET`, DB password) | never in git | Key Vault adds ~$0 and complexity; not needed at this scale |
+> **Superseded:** the always-on shape and the $19.02 figure above are the Phase-2 audit result,
+> kept for the evidence trail. §12 reduces the idle cost to **$0.00** — read §12 for the current
+> plan; the numbers in §11.5–§11.9 are historical.
 
 ### 11.6 Cost and credit runway
 
@@ -592,7 +595,324 @@ Order matters: **the database is created first** because it is the only line tha
 and it is the one item that can be stopped again (`az postgres flexible-server stop`) if the credit
 turns out to be smaller than assumed.
 
+## 12. Revised plan — absolute minimum cost (31 October 2026)
 
+**This section supersedes the cost model in §10, the always-on shape in §11.5 and the cost table in
+§11.7–§11.9. §11.1–§11.4 and §11.6 (region policy, provider registration, price probes, Static Web
+Apps ban) remain valid.** Nothing in this section has been provisioned; no resource group, resource
+or budget exists.
 
+### 12.0 Headline
 
+| Measure | Previous proposal (§10–§11) | Revised (§12) |
+| --- | --- | --- |
+| Idle — no usage at all | $19–22 / mo | **$0.00 / mo** (A1, §12.4) |
+| One demonstration day | ≈$0.63 *plus* everything left running | **$0.10–$0.21** |
+| A month of normal use (≈100 h of DB up) | $19–22 | **≈$2.61** |
+| Free PostgreSQL on Azure | assumed $4.42 floor was the minimum | **no free tier exists** (§12.2.2) |
+| Always-present paid resources | ACA env + Log Analytics + ACR + PG | **none** (ACA env and F1 are $0) |
 
+**Recommendation: Architecture A1 (§12.4)** — one Container App, one F1 web app, and PostgreSQL
+created for the demonstration window and deleted after it. Every other decision below exists to
+make that cycle safe, repeatable and cheap.
+
+### 12.1 What changed, and why
+
+| Item | Before | Now | Reason |
+| --- | --- | --- | --- |
+| API + ML containers | two containers contemplated | **one image, already built that way** | §12.2.1 |
+| Frontend | App Service F1 | **unchanged — F1** | free in UAE North, verified live |
+| Registry | ACR Basic $5.07/mo | **public ghcr.io, $0** | repository is public |
+| Logs | Log Analytics, $3.29/GB | **`--logs-destination none`, $0** | §12.2.4 |
+| Database | always-on B1MS, $19.02/mo | **A1: created per demo, deleted after** | §12.2.3 traps |
+| Budget alert | $25 | **$5**, at 50/80/100 % | $25 was an alert proposal, not a budget |
+
+### 12.2 Investigation results
+
+#### 12.2.1 Can the backend and the ML service share one Container App or one image? — Yes; they already do
+
+Evidence — `Dockerfile` lines 1–41 (no `ml-service/Dockerfile` exists):
+
+- one `node:22-bookworm-slim` base, `python3` + venv installed in the same image;
+- `CMD ["node", "backend/src/index.js"]`, with `PYTHON_EXECUTABLE` pointing at
+  `/app/ml-service/.venv/bin/python`, so `backend/src/services/duplicateCheck.js` spawns
+  `predict.py --server` **as a child process of the same container**;
+- xgboost installed `--no-deps` so the ~350 MB CUDA/NCCL wheel never enters the image, guarded by
+  a build-time assertion that `pip list` contains no `nvidia-*`;
+- a build-time gate runs `predict_pairs(...)` and asserts the score is in [0, 1].
+
+Consequences: **one Container App, one replica, one image, one port (5000)**. No inter-service
+network hop, no second container to size or pay for, no version skew between API and model, and the
+ML process costs nothing beyond the replica that hosts it. **No change is required** for
+requirement 1. (Container Apps would also allow both processes as two containers in one revision —
+unnecessary here.)
+
+#### 12.2.2 Is there a free PostgreSQL on Azure? — No. Verified three ways
+
+- `az postgres flexible-server create --tier` accepts **only** `Burstable, GeneralPurpose,
+  MemoryOptimized` (CLI 2.91) — there is no `Free` tier to select.
+- `az postgres flexible-server list-skus -l uaenorth` lists no `Free` SKU.
+- The product's own docs name exactly three pricing tiers, and the flexible-server documentation
+  table of contents contains **no** free-tier article.
+
+One genuine curiosity, recorded so it is not re-investigated: the retail catalogue does publish
+`Compute - Free vCore` at **$0.00/h** in UAE North. That is an *entitlement* meter behind the
+free-account 12-month offer, not a selectable tier, and the Azure for Students FAQ states that free
+monthly amounts continue only if the account converts to pay-as-you-go. **It is not assumable for
+this subscription** and the plan does not depend on it. (Worth one glance in the portal at
+provisioning time; if it ever applies it would save exactly $4.42/mo.)
+
+Hard floor if a server exists at all: minimum storage **32 GiB** × $0.138/GiB-mo = **$4.42/mo**,
+billed whether or not the server is running.
+
+#### 12.2.3 Can PostgreSQL be stopped when unused? — Yes, with two traps
+
+Confirmed from the pricing FAQ: *"While your server is stopped, you will only be billed for the
+storage you have provisioned and any backup storage you consume that exceed 100% of your primary
+provisioned storage volume. While your server is stopped, you will not be billed for compute."*
+
+- **Trap 1 — a stopped server restarts itself after 7 days.** The official stop-compute article
+  quotes the service error verbatim: `Server will be automatically started after 7 days if you do
+  not perform a manual start operation`. Compute ($0.02/h, $14.60/mo) silently resumes, so
+  "stop it and forget it" is **not** a safe idle strategy.
+- **Trap 2 — scheduled monthly maintenance** may briefly restart a stopped server, then re-stop it.
+
+Billing granularity is **per whole hour of existence**: create a server and delete it after five
+minutes and you pay one full hour of compute *and* storage.
+
+#### 12.2.4 Log Analytics can be removed entirely
+
+`az containerapp env create --logs-destination` accepts `azure-monitor | log-analytics | none`
+(default `log-analytics`). Using **`none`** means no workspace resource and **$0 ingestion** — it
+removes the entire $3.29/GB line from §11. The price of the choice: no console or system logs in
+Azure. `/api/health`, `/api/ready`, revision provisioning state and `az containerapp revision list`
+all remain available; for a debugging session the environment can be recreated with
+`log-analytics` (the stack is ephemeral anyway).
+
+#### 12.2.5 A genuinely free frontend in a permitted region — F1 confirmed live
+
+`az appservice list-locations --sku F1 --linux-workers-enabled` returns 49 regions including
+**UAE North**, Italy North and North Europe. App Service **F1 = $0**, no fixed charge, HTTPS on
+`*.azurewebsites.net`, SPA deep links handled by `frontend/public/web.config` rewrites. Static Web
+Apps remain impossible on this subscription (§11.4), so F1 is the free option.
+
+#### 12.2.6 No storage account and no volumes are needed
+
+No `multer`, `diskStorage`, `writeFileSync` or `uploads/` usage in `backend/` or `ml-service/` — the
+application is stateless. No Azure Files share, no Blob container, no Container Apps volume, and
+therefore no additional storage meters.
+
+#### 12.2.7 A public GHCR image is safe to publish
+
+`.dockerignore` excludes `**/.env`, `.env.*`, `.git`, `node_modules`, `.venv`, `ml-service/data`,
+`evaluation`, `experiments`, `reports`, `training`, and every model artifact except the production
+`xgb_duplicate_model.joblib`. The only secret file on disk (`backend/.env`) cannot enter the build
+context. Runtime secrets (DB URL, JWT secret) arrive as Container App secrets.
+
+### 12.3 Verified unit prices — UAE North, 31 October 2026
+
+All from the Azure Retail Prices API (`prices.azure.com`) or the CLI, not from memory:
+
+| Meter | Unit | Price | Note |
+| --- | --- | --- | --- |
+| PostgreSQL Flexible — `B1MS` compute | 1 hour | **$0.0200** | $14.60 / 730 h |
+| PostgreSQL Flexible — `Storage Data Stored` | 1 GiB-month | **$0.1380** | 32 GiB minimum = **$4.42/mo** |
+| PostgreSQL Flexible — `Backup Storage LRS` | 1 GiB-month | $0.1050 | first 100 % of provisioned storage free |
+| Container Apps — vCPU active | 1 vCPU-second | $0.000024 | = $0.0864 / vCPU-hour |
+| Container Apps — memory active | 1 GiB-second | $0.000003 | = $0.0108 / GiB-hour |
+| Container Apps — vCPU idle | 1 vCPU-second | $0.000003 | only while a replica exists |
+| Container Apps — memory idle | 1 GiB-second | $0.000003 | only while a replica exists |
+| Container Apps — requests | 1 M | $0.4000 | 2 M free / month |
+| Container Apps — free grant | — | $0.00 | 180 000 vCPU-s + 360 000 GiB-s + 2 M requests per month |
+| App Service — `F1` | — | **$0.00** | free plan, no meter |
+| Log Analytics | 1 GB ingested | — | **not used** (`--logs-destination none`) |
+| Container Registry Basic | month | — | **not used** (public ghcr.io) |
+
+Free grant translated into a shape that matters: **180 000 vCPU-s ÷ (0.5 vCPU × 3600) = 100 hours**
+of a 0.5 vCPU / 1 GiB replica per month at zero cost. A demonstration never comes close.
+
+### 12.4 Architecture A — everything on Azure, at the floor
+
+**Resources actually created (A1):**
+
+| # | Resource | SKU / setting | Cost |
+| --- | --- | --- | --- |
+| 1 | Resource group `rg-sbms` | — | $0 |
+| 2 | Container Apps environment `cae-sbms` | Consumption, **`--logs-destination none`** | $0 fixed |
+| 3 | Container App `ca-sbms-api` | **`--min-replicas 0`**, max 1–2, 0.5 vCPU / 1 GiB, external ingress :5000 | $0 idle |
+| 4 | App Service plan `asp-sbms-web` + web app `sbms-web` | **F1 (free), Linux, UAE North** | $0 |
+| 5 | PostgreSQL flexible `pg-sbms` | **B1MS, 32 GiB, PG 16** — exists only around demos in A1 | $0 idle / $0.02 per hour |
+| 6 | Budget `budget-sbms` | $5, alerts at 50/80/100 % | $0 |
+
+Explicitly **not** created: Log Analytics workspace, Container Registry, virtual network, NAT
+gateway, public IP, private endpoint, workload profile, storage account, Azure Files share, DNS zone,
+Application Insights, Front Door, CDN.
+
+**Three database lifetimes — the only meaningful cost variable:**
+
+| Variant | What happens between demos | Idle cost | 8-hour demo | ~100 h usage month | Notes |
+| --- | --- | --- | --- | --- | --- |
+| **A1 — ephemeral** (recommended) | server **deleted**; schema and seed data rebuilt by script | **$0.00** | **$0.21** | **$2.61** | needs `provision.sh`/`teardown.sh`; data does not survive unless dumped |
+| A2 — persistent, stopped | server stopped | **$4.42** (storage) | $4.42 + $0.16 = **$4.58** | **$6.42** | must be re-stopped **weekly** (7-day auto-start), else it becomes A3 |
+| A3 — persistent, running | nothing | **$19.02** | **$19.02** | $19.02 | the old §10.4 model — rejected |
+
+Arithmetic for A1, 8-hour demo: compute 8 × $0.02 = $0.16, storage 8 × $0.00605 = $0.048 →
+**$0.208**; the Container App and F1 contribute **$0** because the demo sits inside the free grant
+(8 h ≪ 100 h). A 24-hour demo is **$0.625**; a 72-hour demo is **$1.88**; A1 with one 24-hour demo
+per month and nothing else for 29 days costs **$0.63/month**.
+
+The application must therefore tolerate a database that appears and disappears. It already does:
+`/api/ready` is the readiness gate (it reports `503` when the DB is unreachable), the schema and seed
+data are scripted, and the Container App scales to zero independently of the database.
+
+### 12.5 Architecture B — Azure app, external free PostgreSQL
+
+Same as A minus resource 5, with the database moved to an external managed PostgreSQL. Verified
+candidate (pricing page read directly, not assumed):
+
+| | Neon **Free** plan | Neon Launch (paid) |
+| --- | --- | --- |
+| Price | **$0**, no card, "no time limits" | $0.106 / CU-hour + $0.35 / GB-month |
+| Compute | **100 CU-hours per project per month**, up to 2 CU (8 GB RAM) | metered |
+| Storage | **1 GB per project** | metered |
+| Idle behaviour | **scale to zero after 5 minutes inactive** | same, configurable |
+| Projects | 100 | 1 000+ |
+| Region | no UAE / Middle East region — nearest EU or US | same |
+| Compatibility | PostgreSQL 14–17, standard wire protocol, TLS required | same |
+
+Azure side is unchanged and still **$0** (Container App inside the free grant, F1 free). So
+**Architecture B totals $0.00/month at idle and $0.00 for a demonstration month**, with the database
+as someone else's bill.
+
+What it costs you, stated plainly:
+
+- **Data leaves Azure and the permitted regions.** Every query crosses the public internet to the EU
+  or US: roughly 100–200 ms round trip from the UAE, and the demo's database is a third-party
+  dependency that can change terms.
+- **Cold resume**: after 5 idle minutes the first query pays a resume penalty (sub-second to a couple
+  of seconds) — visible on the first screen a marker opens.
+- **Hard caps**: 1 GB storage (our schema and seed data are megabytes, so fine) and 100 CU-hours per
+  month.
+- **Narrative risk**: the deliverable is an *Azure* deployment. A database on Neon weakens that
+  claim in a defence, even though the credentials, network path and TLS are legitimate.
+- **Security posture is comparable, not better**: TLS required, strong password, allowlist optional;
+  no private connectivity on the free plan.
+
+### 12.6 Side-by-side
+
+| | **A1** ephemeral Azure PG | **A2** persistent, stopped | **A3** persistent, running | **B** Neon free |
+| --- | --- | --- | --- | --- |
+| Minimum monthly (idle) | **$0.00** | $4.42 | $19.02 | **$0.00** |
+| Demonstration day (8 h) | **$0.21** | $4.58 | $19.02 | **$0.00** |
+| Typical month (~100 h up) | **$2.61** | $6.42 | $19.02 | **$0.00** |
+| Charged while "off" | nothing | storage $4.42 | everything | nothing |
+| Data survives teardown | no (dump/seed required) | yes | yes | yes |
+| Postgres compatibility | native | native | native | native (PG 14–17) |
+| Where data lives | UAE North | UAE North | UAE North | EU/US |
+| Cold start on wake | ACA replica + DB create | ACA replica only | none | DB resume ~1 s |
+| Free-tier ceilings that bite | ACA 100 h/mo, F1 60 CPU-min/day | same + PG 32 GiB | PG 32 GiB | 1 GB, 100 CU-h/mo |
+| Operational effort | highest (create/destroy cycle) | medium (weekly re-stop) | lowest | low, but external account |
+| Fits "Azure deployment" story | **yes** | yes | yes | partially |
+
+### 12.7 Options considered and rejected
+
+| Option | Why rejected |
+| --- | --- |
+| PostgreSQL as a second container in the same Container App | Azure Files over SMB (the only volume type on Consumption) is not POSIX-file-locking safe for a PostgreSQL data directory — **data integrity risk**, exactly what must not be traded away. Scale-in also risks an ungraceful shutdown. |
+| PostgreSQL on Azure Container Instances | ≈$0.045/h compute + memory ≈ **$33/mo**, no managed backups, no patching. Worse on every axis. |
+| Azure SQL Database (free serverless offer) | Not PostgreSQL — would break compatibility. |
+| Cosmos DB free tier | No PostgreSQL wire protocol. |
+| "Free vCore" PostgreSQL meter in the retail API | Entitlement meter for the free-account 12-month offer; no `Free` tier selectable, not assumable for a student offer (§12.2.2). |
+| Private endpoint for PostgreSQL | +$7.30/mo for the endpoint, for a demo database. |
+| NAT gateway / static egress IP | Hourly gateway charge + data processing; not needed with a public PostgreSQL firewall rule. |
+| Azure Container Registry (Basic) | $5.07/mo for something ghcr.io does free on a public repo. |
+| Log Analytics workspace | $3.29/GB to store logs nobody reads; `--logs-destination none` removes $0. |
+| Workload profiles / Dedicated plan | Environment Management Hour ≈$103/mo (§11.9 trap). |
+| Static Web Apps | Not available in any permitted region (§11.4). |
+| Azure CDN / Front Door | Fixed monthly minimums for a single-region demo. |
+| Keeping `minReplicas: 1` | $23.65/mo idle on its own (§11.9); the free grant covers only ~100 h/mo. |
+
+### 12.8 What keeps charging when the system is "off"
+
+| State | Still billed | Amount |
+| --- | --- | --- |
+| PostgreSQL **stopped** | provisioned storage (32 GiB) + backup beyond 100 % of it | **$4.42/mo**, $0.00605/h |
+| PostgreSQL **deleted** | nothing — backups are deleted with the server | $0.00 |
+| Container App at **0 replicas** | nothing; the Consumption environment has no fixed fee | $0.00 |
+| Container App replica **alive but idle** | vCPU idle + memory idle meters | $0.000003/vCPU-s, $0.0108/GiB-h |
+| App Service **F1** | nothing, ever (quota-limited, not metered) | $0.00 |
+| Budget / alerts | nothing | $0.00 |
+| Anything **deleted** | nothing | $0.00 |
+
+The only silent-resume risk in the whole design is the **7-day PostgreSQL auto-start** (§12.2.3),
+which is precisely why A1 deletes rather than stops, and why `provision.sh`/`teardown.sh` must be
+re-runnable.
+
+### 12.9 Free-tier limits that actually bind
+
+- **Container Apps free grant**: 180 000 vCPU-s + 360 000 GiB-s + 2 M requests per month ⇒ **100 h**
+  of a 0.5 vCPU / 1 GiB replica. Beyond that, ≈$0.054/h. `maxReplicas` stays at 1–2 so a traffic
+  spike cannot multiply this.
+- **Container Apps minimum per container**: 0.25 vCPU / 0.5 GiB. We use 0.5 vCPU / 1 GiB — the
+  6.6 MB XGBoost model plus Node plus CPython is uncomfortable in 512 MiB.
+- **App Service F1**: 1 GiB RAM, **60 CPU-minutes/day**, 1 GB disk, no custom-domain TLS, app idles
+  out and cold-starts. Serving a built SPA (a few MB) never approaches the CPU quota.
+- **PostgreSQL**: 32 GiB minimum storage; burstable B1MS uses a **CPU-credit model** — sustained load
+  drains credits and the server degrades to baseline, so it is not for load tests.
+- **Backups**: 7–35 day retention included; backup storage is free up to 100 % of provisioned
+  storage.
+
+### 12.10 Risks and mitigations
+
+| Risk | Mitigation |
+| --- | --- |
+| Cold start 10–40 s (≈1.9 GB image + model load) on the first request after scale-to-zero | Warm the app 2 minutes before a demo (`curl /api/health`), or raise `--min-replicas 1` for the demo hour only (≈$0.05/h, still inside the free grant) and drop it back |
+| Forgetting to delete the database | `teardown.sh` is one command; the $5 budget alert fires at 50 % ($2.50) long before the credit is at risk |
+| Database gone but data needed | `teardown.sh --dump` writes a `pg_dump` locally before deletion; reseed otherwise |
+| No Log Analytics ⇒ no cloud logs | `/api/health`, `/api/ready`, `az containerapp revision list`, and `az containerapp logs show` only if the env is recreated with logs; the app's own structured logs are visible in local/Docker runs |
+| PostgreSQL reachable from the internet (public access) | TLS mandatory (`sslmode=require`), 32-character generated password stored as a Container App secret, firewall restricted to the Container Apps egress addresses; private endpoint rejected only because it costs $7.30/mo |
+| B1MS credit exhaustion under load | not used for load tests; monitor CPU credits if a demo is heavy |
+| Public image on ghcr.io | verified no secrets in the build context (§12.2.7) |
+| F1 60 CPU-min/day exceeded by a busy demo | static SPA serving is ~0 CPU; if it ever happened the site returns 403 until midnight UTC, the API is unaffected |
+
+### 12.11 Recommendation and the exact sequence on approval
+
+**Adopt A1.** It is the only variant that hits $0 idle *and* keeps PostgreSQL inside Azure in a
+permitted region, and the extra effort is a script that has to exist anyway.
+
+Order of operations (nothing below runs before approval):
+
+```
+1  gh auth / docker build -t ghcr.io/<owner>/sbms-api:<sha> . && docker push   # $0
+2  az group create -n rg-sbms -l uaenorth
+3  az containerapp env create -n cae-sbms -g rg-sbms -l uaenorth --logs-destination none   # $0
+4  az containerapp create ... --min-replicas 0 --max-replicas 1 --cpu 0.5 --memory 1Gi \
+       --ingress external --target-port 5000 --image ghcr.io/<owner>/sbms-api:<sha>        # $0
+5  az appservice plan create -n asp-sbms-web -g rg-sbms --sku F1 --is-linux -l uaenorth    # $0
+6  az webapp create -n sbms-web -g rg-sbms -p asp-sbms-web   + deploy frontend build      # $0
+7  az consumption budget create --amount 5 ...                                            # $0
+8  DEMO TIME: az postgres flexible-server create -g rg-sbms -n pg-sbms -l uaenorth \
+       --tier Burstable --sku-name Standard_B1ms --storage-size 32 --version 16 \
+       --public-access 0.0.0.0            # <- the only line that bills, $0.02/h
+9  bootstrap schema + admin, verify /api/health, /api/ready, login, QR /verify, ML score
+10 az postgres flexible-server delete -g rg-sbms -n pg-sbms --yes    # back to $0
+```
+
+Steps 1–7 cost **nothing** and can exist permanently. Step 8 is the only spending event, it is
+reversible within the same hour, and step 10 returns the subscription to **$0.00/month**.
+
+### 12.12 Approval checklist
+
+| # | Decision | Recommendation |
+| --- | --- | --- |
+| D1 | Region | **UAE North** — forced by policy, not a choice |
+| D2 | Frontend | **App Service F1**, UAE North — free, verified live |
+| D3 | Registry | **public ghcr.io** — $0 |
+| D4 | Database SKU | **PostgreSQL Flexible B1MS, 32 GiB, PG 16** |
+| D6 | Demo-window provisioning | **yes**, scripts re-runnable |
+| D7 | Logs | **`--logs-destination none`** — $0 |
+| D8 | **Database lifetime** | **A1 (ephemeral)** over A2 (stopped, $4.42 idle) and B (Neon, $0 but data leaves Azure) |
+| D9 | Budget alert | **$5**, not $25 |
+
+If D8 is answered "B", §12.11 stays identical except steps 8 and 10 are replaced by a Neon project
+and a connection string — the Azure side costs nothing either way.
