@@ -339,7 +339,7 @@ the compute, because it drives the whole bill.
 | Option | Frontend | API | Postgres | Notes |
 |---|---|---|---|---|
 | A | Static Web Apps (free) | App Service F1 | Azure Flexible Server | Cleanest Azure story; DB likely the only real cost |
-| B | Static Web Apps (free) | App Service F1 | **Existing Neon** (free) | $0 candidate; repo already depends on `@neon/config`, `.neon` exists |
+| B | Static Web Apps (free) | App Service F1 | **Existing Neon** (free) | $0 candidate; the repo's `@neon/config` + `@neon/env` devDependencies were unused and removed on 2026-10-31 (see `docs/repository-cleanup-2026-10-31.md`), so a free external Postgres is still viable but no longer pre-wired |
 | C | Static Web Apps (free) | Container Apps (scale-to-zero) | Azure Flexible Server | More moving parts; cold starts hurt a live demo |
 
 Option B is the only one that plausibly satisfies "don't create another database **and**

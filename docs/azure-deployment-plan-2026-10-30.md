@@ -237,7 +237,7 @@ scenario A is chosen.
 | 3 | Monthly ceiling: **≈$16–20** (scale to zero) vs **≈$50** (warm) vs **≈$89–136** | The cost/performance choice for the demonstration |
 | 4 | Approve the one-time database bootstrap, and whether to seed synthetic demo data | It writes the schema and an administrator into the production database |
 | 5 | The bootstrap administrator's name, email and password | Must come from the owner; never committed |
-| 6 | Whether "all on Azure" is strict — a free non-Azure Postgres (Neon/Supabase) would make the total **$0**, and the repo already carries `@neon/config` and `@neon/env` | Changes the architecture and the wording of the report |
+| 6 | Whether "all on Azure" is strict — a free non-Azure Postgres (Neon/Supabase) would make the total **$0**; the repo's `@neon/config` + `@neon/env` devDependencies were removed on 2026-10-31 as unused (`docs/repository-cleanup-2026-10-31.md`), so nothing is pre-wired | Changes the architecture and the wording of the report |
 | 7 | Approve adding the Static Web App routes file and a GitHub Actions workflow | Touches the frontend and CI, not just cloud configuration |
 
 ## 9. What this document does not claim
@@ -253,3 +253,97 @@ scenario A is chosen.
   (hundreds of students), not for a county-wide production rollout.
 
    decision, not a technical one.
+
+## 10. Revision, 31 October 2026 — gaps closed, prices verified, totals corrected
+
+### 10.1 Prices closed out (31 Oct 2026, ZA North, Retail Prices API)
+
+| Item that §2 could not verify | Verified value | Note |
+| --- | --- | --- |
+| Container Apps availability and meters in ZA North | **16 meters present**, incl. Standard vCPU active $0.000024/vCPU-s, memory active $0.000003/GiB-s, requests $0.40/1M | §2's earlier "no rows" was a wrong `serviceName` filter (`Container Apps` instead of `Azure Container Apps`). The service is offered in ZA North. |
+| PostgreSQL storage per GiB | **$0.151/GiB-month** (`Azure Database for PostgreSQL Flex Server Storage`, meter `Storage Data Stored`); backup LRS $0.113/GiB-month | 32 GiB (the minimum practical size) = **$4.83/month** |
+| App Service Linux, ZA North | **B1 $0.0243/hour = $17.74/month**; B2 $0.0487 = $35.55; B3 $0.0973 = $71.03 | Custom containers on Linux need a paid plan; Free (F1) does not support them. B1 = 1 vCore / 1.75 GiB. |
+| Azure Container Registry, ZA North | **Basic $0.1666/day = $5.00 per 30 days** (10 GiB included); Standard $0.6666/day = $20.00/month | Was missing from §5 entirely — it is a real monthly line for any container deployment. |
+| Static Web Apps | Retail Prices API returns **no meters in any region** (billing is not exposed there). Free = $0 confirmed on the plan comparison page; **Standard remains $9/app/month** as recorded in §2 and must be confirmed in the portal | SWA has no ZA North presence; it is hosted from a fixed set of regions, so the host region is chosen at creation. The site is static, so this is a latency detail, not a blocker. |
+| USD→KES | **1 USD = 129.90 KES** on 31 Oct 2026 (exchangerate-api.com) | Used for every KES figure below |
+
+### 10.2 Corrected monthly cost table (USD and KES)
+
+§5 omitted database storage and the container registry, so its totals understated the real bill.
+Assumptions: 730 h/month; Static Web Apps Free ($0); one API replica at 0.5 vCPU / 1 GiB; the
+Container Apps free grant (180 000 vCPU-s, 360 000 GiB-s, 2 M requests) applied; PostgreSQL B1MS
+plus **32 GiB storage**; ACR Basic $5.00. Excludes tax, Log Analytics ingestion and any credit.
+
+| Scenario | API | DB (B1MS + 32 GiB) | ACR Basic | **USD / month** | **KES / month** |
+| --- | --- | --- | --- | --- | --- |
+| **A. Demo traffic, scale to zero** (`minReplicas: 0`) | $0–2.00 (inside the free grant) | $20.53 | $5.00 | **$25.50–27.50** | **3 310–3 570** |
+| **A′. Idle weeks: scale to zero + database stopped** | $0–2.00 | $4.83 (storage only) | $5.00 | **$9.80–11.80** | **1 270–1 530** |
+| **B. Demonstration fortnight, warm** (`minReplicas: 1`, ≈330 h) | $12.42 | $20.53 | $5.00 | **$37.95** | **4 930** |
+| **C. Warm for a whole month** (730 h, `minReplicas: 1`) | $34.02 | $20.53 | $5.00 | **$59.55** | **7 736** |
+| **D. Warm month, 1 vCPU / 2 GiB** | $73.44 | $20.53 | $5.00 | **$98.97** | **12 856** |
+| **E. C + Static Web Apps Standard (SLA)** | $34.02 | $20.53 | $5.00 + $9.00 SWA | **$68.55** | **8 905** |
+
+Arithmetic for the API line: 330 h × 3600 s × 0.5 vCPU = 594 000 vCPU-s − 180 000 free = 414 000 ×
+$0.000024 = $9.94; memory 330 h × 3600 × 1 GiB = 1 188 000 GiB-s − 360 000 free = 828 000 ×
+$0.000003 = $2.48; total **$12.42**. Scenario C is the same computation at 730 h (**$34.02**, matching
+§5). Scenario A charges nothing while zero replicas exist; the $0–2 band is for the demo requests.
+
+Two levers not yet counted, both real:
+
+- **Skip ACR** and pull the image from a free public GitHub Container Registry package: −$5.00/month.
+  Only acceptable if the owner is happy for the image (backend code + model) to be publicly
+  downloadable.
+- **Log Analytics**: a Container Apps environment writes to a Log Analytics workspace by default and
+  ingestion is billable (standard pay-as-you-go rate, not verified today). Set a daily cap.
+
+### 10.3 Architecture decision (recommendation, unchanged in shape, now costed)
+
+| Layer | Choice | Why this and not the alternative |
+| --- | --- | --- |
+| Frontend | **Static Web Apps Free**, `staticwebapp.config.json` for SPA fallback | $0, HTTPS + custom domain, no server logic in the SPA. Standard only if an SLA or >3 staging slots is required. |
+| API + ML | **Container Apps, consumption, one container**, `minReplicas: 0` normally and `1` during the demonstration window | The API spawns `predict.py` as a child process, so API and ML must share one container — a separate Python host would break the inference path. App Service B1 ($17.74) is always-on and only 1.75 GiB; Container Apps is inside the free grant at demo volume and scales to zero. |
+| Database | **PostgreSQL Flexible Server B1MS, 32 GiB, ZA North** | Only Azure-hosted option; no free tier exists. Stop it during idle weeks (A′). |
+| Registry | **ACR Basic $5.00** | Needed to host the image; GHCR public package is the −$5 alternative. |
+| Networking | No VNet, no private endpoint: public HTTPS ingress, PostgreSQL reachable only from Azure services and the operator's IP | The Container Apps *Environment Private Endpoint* meter is $0.146/h ≈ **$106/month** and would dominate the bill. Private endpoints are the correct production answer and the wrong capstone answer. |
+| Secrets | Container Apps secrets + GitHub Actions secrets; nothing in git | `.env` files stay templates only. |
+
+Cold start, restated with the cleanup applied: the container image goes from a measured ~2.07 GiB to
+an estimated ~1.74 GiB once the unused `nvidia-nccl-cu12` wheel is dropped
+(`docs/repository-cleanup-2026-10-31.md` §3). That is the payload a scale-to-zero start must pull
+before Python imports and the model loads, so it remains the main reason to keep `minReplicas: 1`
+during marking and `0` at all other times.
+
+### 10.4 The six approvals, reconciled
+
+Handover §20.4 lists **seven** decision items while §21.3 says "six approvals outstanding". The
+reconciliation, so nothing is lost: item 5 there is the bootstrap administrator's *name/email/password*,
+which is an **input** the owner supplies, not an approval. The six approvals are:
+
+| # | Approval | Status |
+| --- | --- | --- |
+| 1 | Azure subscription + region (**recommended: ZA North**) | **Outstanding** |
+| 2 | Funding route (free-account credit / Azure for Students / card) | **Outstanding** |
+| 3 | Monthly ceiling — A ≈$25.50–27.50, A′ ≈$9.80–11.80, B ≈$37.95, C ≈$59.55, D ≈$98.97, E ≈$68.55 | **Outstanding** |
+| 4 | One-time database bootstrap **and** whether synthetic demo data may be seeded | **Outstanding** |
+| 5 | Is "all on Azure" strict, or is a free external Postgres acceptable (total would drop to ≈$0)? | **Outstanding** |
+| 6 | Permission to add `frontend/public/staticwebapp.config.json`, a GitHub Actions workflow, and to apply the Phase 1 deletions listed in `docs/repository-cleanup-2026-10-31.md` | **Outstanding** |
+
+Inputs still needed besides those six (they block Phase 4, not Phase 3):
+
+- Subscription ID and tenant (or confirmation that the owner will run the provisioning commands).
+- The bootstrap administrator's name, email and password.
+- Demonstration dates, so the `minReplicas: 1` window and the database "stop between demos" schedule
+  can be set.
+- Whether the image may live in a **public** registry (saves $5.00/month) or must stay private in ACR.
+
+### 10.5 What this revision still does not claim
+
+- **Nothing is provisioned and nothing is deployed.** No subscription, resource group, server,
+  container app, registry or static app exists.
+- The image size after the CUDA removal is an **estimate**, not a measurement: no Docker engine is
+  installed on this workstation.
+- Prices are Microsoft list prices read on 31 October 2026, before tax and before any credit; they
+  drift and are not a quote.
+- Static Web Apps Standard ($9/app/month) could not be re-verified through the Retail Prices API.
+- Kubernetes/KEDA autoscaling behaviour, cold-start seconds and Log Analytics cost are **not**
+  measured here; they will be measured on the deployed system, not asserted.
