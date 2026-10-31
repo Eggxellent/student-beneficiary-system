@@ -238,6 +238,14 @@ if (-not $Image) {
     $envVars = @(
         'NODE_ENV=production'
         'PYTHON_EXECUTABLE=/app/ml-service/.venv/bin/python'
+        # backend/src/index.js refuses to start unless the database it landed on is the one the
+        # operator meant (services/databaseStartup.js throws "Expected database name is required"
+        # when this is absent). Without it every replica crash-loops with the generic
+        # "Startup blocked" line and no log stream, which is how the first deploy failed.
+        "SBMS_EXPECTED_DATABASE_NAME=$DatabaseName"
+        # The API sits behind exactly one ingress hop (Container Apps), so the client address is the
+        # X-Forwarded-For entry. Without this every caller shares one rate-limit bucket.
+        'TRUST_PROXY_HOPS=1'
         "CORS_ORIGINS=$webOrigin"
         "PUBLIC_APP_URL=$webOrigin"
         'DATABASE_URL=secretref:database-url'

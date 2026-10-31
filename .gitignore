@@ -23,3 +23,5 @@ __pycache__/
 deploy/azure/.secrets.json
 deploy/azure/.state.json
 deploy/azure/backups/
+# Container-registry token, dropped here by the operator and never committed or printed.
+deploy/azure/.ghcr-token

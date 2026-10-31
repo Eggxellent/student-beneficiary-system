@@ -105,8 +105,14 @@ if (require.main === module) {
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
-  })().catch(() => {
-    console.error('Startup blocked: required SBMS configuration or authentication database is unavailable or incompatible.');
+  })().catch((error) => {
+    // The cause is appended to the fixed sentence on purpose. Every guard above raises authored
+    // text (a missing PUBLIC_APP_URL, an unexpected database name, a bad JWT secret), and this
+    // line is the only diagnostic available when the platform exposes no log stream - a Container
+    // Apps environment with logs-destination none, for example. Without it the operator sees a
+    // crash loop and no reason. Stacks are still withheld; the message carries no credentials.
+    const cause = error instanceof Error ? error.message : 'unknown error';
+    console.error('Startup blocked: required SBMS configuration or authentication database is unavailable or incompatible.', `Cause: ${cause}`);
     process.exit(1);
   });
 }
