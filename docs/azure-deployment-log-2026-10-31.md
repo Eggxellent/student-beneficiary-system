@@ -3,7 +3,7 @@
 One page of state only. **Detail, evidence and the full cost model live in
 `docs/azure-deployment-plan-2026-10-30.md` §12 (current, minimum-cost) and §11 (audit behind it)** —
 do not re-derive them, do not re-run the audit.
-**Deployed and verified live on 31 October 2026** — 1 resource group, 7 resources, 1 budget.
+**Deployed and verified live on 31 October 2026** — 1 resource group, 6 resources, 1 budget.
 
 - API: `https://ca-sbms-api.ambitiousstone-f2de8f67.uaenorth.azurecontainerapps.io`
 - Frontend: `https://sbms-web.azurewebsites.net`
