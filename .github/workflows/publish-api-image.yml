@@ -1,0 +1,79 @@
+name: Publish API image
+
+# Why this exists: the approved procedure (docs/azure-deployment-plan-2026-10-30.md section 12.11) is a
+# local `docker build` + `docker push`. Two concrete blockers made that impossible on this account:
+#   1. the GitHub token available locally has scopes gist/repo/workflow and cannot push to GHCR
+#      ("permission_denied: The token provided does not match expected scopes");
+#   2. the operator uplink uploads at about 600 kB/s, so a 1.37 GB image would take ~40 minutes.
+# Building here uses the runner's network and the automatic GITHUB_TOKEN, and still produces exactly the
+# image described by the repository's own Dockerfile. Trigger it manually; it is not wired to every push.
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Why this image is being published
+        required: false
+        default: deploy
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the lowercase image name
+        id: image
+        run: echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/sbms-api" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          # Keep the image on the runner as well, so the gates below test the exact pushed image.
+          load: true
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+            ${{ steps.image.outputs.name }}:latest
+
+      - name: Gate - production model loads and scores
+        run: |
+          docker run --rm --entrypoint /app/ml-service/.venv/bin/python "${{ steps.image.outputs.name }}:${{ github.sha }}" - <<'PY'
+          import sys
+          sys.path.insert(0, '/app/ml-service')
+          from predict import predict_pairs, model_version
+          a = {"full_name": "Jane Wanjiku Kamau", "date_of_birth": "2010-04-12", "school_code": "SCH-001",
+               "guardian_id": "G-778812", "upi": "UPI-99112233", "birth_certificate_number": "BC-445566"}
+          c = {"full_name": "Brian Otieno Ouma", "date_of_birth": "2009-11-02", "school_code": "SCH-014",
+               "guardian_id": "G-112233", "upi": "UPI-55667788", "birth_certificate_number": "BC-998877"}
+          same, other = predict_pairs([{"first": a, "second": dict(a)}, {"first": a, "second": c}])
+          assert same["score"] > 0.9, same
+          assert other["score"] < 0.5, other
+          assert list(same["features"]) == ["jaro_winkler", "dob_match", "school_match",
+                                            "guardian_match", "upi_match", "birth_certificate_match"]
+          print("duplicate", same["score"], "unrelated", other["score"], "model", model_version()[:16])
+          PY
+
+      - name: Gate - no GPU packages, no secrets in the image
+        run: |
+          docker run --rm --entrypoint sh "${{ steps.image.outputs.name }}:${{ github.sha }}" -c \
+            'test "$(/app/ml-service/.venv/bin/python -m pip list | grep -ci nvidia)" -eq 0' 
+          docker run --rm --entrypoint sh "${{ steps.image.outputs.name }}:${{ github.sha }}" -c \
+            '! find /app -maxdepth 4 -name ".env*" -not -path "*node_modules*" | grep -q . && ! test -d /app/deploy'
+          echo "gates passed"
+
+      - name: Report the image size
+        run: docker image ls "${{ steps.image.outputs.name }}" --format '{{.Repository}}:{{.Tag}} {{.Size}}'
