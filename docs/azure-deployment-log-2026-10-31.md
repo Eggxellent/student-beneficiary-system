@@ -216,7 +216,7 @@ An administrator could not check a flagged pair against the documents a guardian
 | `backend/src/controllers/duplicateFlags.controller.js` | selects `primary_phone` for both students, returns it masked as `guardian_contact`, and adds `revealIdentifiers`: the full identifier set for one case, written to `audit_logs` as `REVEAL_DUPLICATE_IDENTIFIERS` |
 | `backend/src/routes/duplicateFlags.routes.js` | `GET /api/duplicate-flags/:id/identifiers`, `admin` only |
 | `backend/tests/duplicateFlags.test.js` | the queue still masks; the reveal returns the stored UPI, birth certificate, National ID and guardian contact; a field officer gets 403; an unknown case gets 404; the audit row names the reviewer |
-| `frontend/src/pages/DuplicateReview.jsx` | `Guardian contact` row, a `Reveal identifiers` control with its audit confirmation, and the stale-closure fix (`setSelectedId` resolved inside the updater; `fetchCases` no longer depends on `selectedId`) |
+| `frontend/src/pages/DuplicateReview.jsx` | `Guardian no:` row, a `Reveal identifiers` control with its audit confirmation, and the stale-closure fix (`setSelectedId` resolved inside the updater; `fetchCases` no longer depends on `selectedId`) |
 | `scripts/admin-reveal-smoke.mjs` | headless-Chrome check of the whole admin path |
 
 The queue payload stays masked, and the reveal is per case, admin-only and audited, so O10 (admins
@@ -234,7 +234,7 @@ do not read `/api/students`) is unchanged: a live admin token still gets 403 the
 | Live `GET /api/duplicate-flags/:id/identifiers` as `admin@sbms.test` | 200; `revealed_fields=guardian_id,guardian_contact,upi,birth_certificate_number,national_id_number`; values differ from the masked queue; `audit_logs` row `REVEAL_DUPLICATE_IDENTIFIERS` for `admin@sbms.test` on the same case |
 | Live admin `GET /api/students` | 403 (O10 intact) |
 | `npm --prefix frontend run build` + `az webapp deploy` | redeployed; the live `index.html` serves the new bundle hash |
-| `node scripts/admin-reveal-smoke.mjs` against production | **9/9** — sign-in, queue, the case dialog stays open, 60 masked characters, guardian contact row present, reveal confirmation, 0 masked characters after the reveal, no page errors |
+| `node scripts/admin-reveal-smoke.mjs` against production | **9/9** — sign-in, queue, the case dialog stays open, 60 masked characters, the `Guardian no:` row present, reveal confirmation, 0 masked characters after the reveal, no page errors |
 
 ### Carry-forward
 

@@ -30,7 +30,7 @@ function identityRows(student) {
     ["Date of birth", student.date_of_birth],
     ["School identifier (stored value)", student.school_code],
     ["Guardian identifier", student.guardian_id],
-    ["Guardian contact", student.guardian_contact],
+    ["Guardian no:", student.guardian_contact],
     ["UPI", student.upi],
     ["Birth certificate", student.birth_certificate_number],
     ["National ID", student.national_id_number],

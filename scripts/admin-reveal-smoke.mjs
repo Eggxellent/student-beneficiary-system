@@ -121,7 +121,7 @@ record('case dialog opened', opened === true);
 const before = await evaluate(`document.querySelector('[role=dialog]').innerText`);
 const maskedBefore = (before.match(/\u2022/g) || []).length;
 record('queue view masks identifiers', maskedBefore > 0, `maskedChars=${maskedBefore}`);
-record('guardian contact row shows', /Guardian contact/.test(before));
+record('guardian number row shows', /Guardian no:/.test(before));
 
 const clicked = await evaluate(`(() => {
   const button = [...document.querySelectorAll('[role=dialog] button')].find((item) => /Reveal identifiers/i.test(item.textContent));
