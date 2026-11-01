@@ -248,3 +248,42 @@ do not read `/api/students`) is unchanged: a live admin token still gets 403 the
   previous session; only the files above were committed.
 - The database is still **running** ($0.02/h): re-stop by **2026-11-08 11:03Z**.
 
+
+## 9. Registration form captures UPI and birth certificate number
+
+**Date:** 2026-11-01
+
+**Problem.** The duplicate rules give an exact UPI or birth-certificate agreement critical status, and
+the review queue already had rows for both, but the registration form posted only `full_name`,
+`date_of_birth`, `school_code`, `national_id_number` and `primary_phone`. The API accepts `upi` and
+`birth_certificate_number`, so the columns existed and stayed NULL for every real registration: the
+critical rule could only ever fire for the seeded synthetic records.
+
+**Change.** `frontend/src/pages/StudentRegistration.jsx` adds **Birth certificate number** and **UPI**
+inputs. Both are optional, because a guardian may not have the document at the counter, and a blank box
+is dropped from the payload rather than sent as an empty string (`normalizeIdentifier` would turn `""`
+into `undefined` anyway, but the request now matches what the officer actually recorded). The server
+uppercases both, like the other identifiers.
+
+### Evidence
+
+| Check | Result |
+| --- | --- |
+| `npm --prefix frontend run build` with `VITE_API_ORIGIN` + `az webapp deploy` (zip) | exit 0; the live `index.html` serves `assets/index-KTiUJ9pN.js` and the live bundle contains `Birth certificate number` and `Unique personal identifier` |
+| `node scripts/registration-fields-smoke.mjs` against production | **11/11** — officer sign-in, both inputs present and not `required`, the six original fields still posted, the payload carries both markers, a blank identifier is omitted, the blocked request surfaces the error panel instead of a success panel |
+| Live `POST /api/students` as `officer.1031205024@sbms.test`, lowercase `e2e-bc-…`/`e2e-upi-…` | 201; a second student sharing those identifiers produced `exact_identifier_matches: ["UPI","birth certificate number"]`, `birth_certificate_match: 1`, `upi_match: 1`, `model_score: 0.9382`, `priority: high` |
+| Live `GET /api/students/:id` for that student | `upi: E2E-UPI-20261101-X1`, `birth_certificate_number: E2E-BC-20261101-X1` — stored non-null and uppercased |
+
+### Carry-forward
+
+- The two probe students (**E2E Probe Alpha**, **E2E Probe Beta**) and the one case they raised are
+  still in production. Clear them with `DELETE FROM duplicate_flags WHERE student_id IN (SELECT id FROM
+  students WHERE full_name LIKE 'E2E Probe%'); DELETE FROM students WHERE full_name LIKE 'E2E Probe%';`
+- The queue/reveal screens were **not** re-checked for these values: the stored admin password in
+  `deploy/azure/.secrets.json` returns 401 for both `admin@sbms.com` and `admin@sbms.test`, so the admin
+  password has drifted from the store. Reset it, then re-run `scripts/admin-reveal-smoke.mjs`.
+- `scripts/browser-smoke.mjs` reads `SBMS_VERIFY_OFFICER_EMAIL`, `SBMS_VERIFY_ADMIN_EMAIL` and a single
+  `SBMS_VERIFY_PASSWORD` (not `SBMS_OFFICER_*`), so it cannot be pointed at two accounts with different
+  passwords. It was not re-run for the same admin-password reason; the officer flow is covered by the
+  new smoke.
+
