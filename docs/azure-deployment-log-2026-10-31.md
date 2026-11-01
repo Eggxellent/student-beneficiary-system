@@ -239,9 +239,11 @@ do not read `/api/students`) is unchanged: a live admin token still gets 403 the
 ### Carry-forward
 
 - The live student records hold **no `primary_phone` and no `national_id_number`**, so those two rows
-  read "Unavailable" for the existing cases; the queue shows them as soon as a record stores them
-  (the registration form requires both). Backfilling the demo records needs a temporary single-IP
-  firewall rule and a direct `UPDATE`, and was not done because it changes beneficiary data.
+  read "Unavailable" for the existing cases. The registration form now also captures **UPI and birth
+  certificate number** (optional), so newly registered students populate those rows and the critical
+  exact-match rule can fire; the three existing demo rows still have neither. Backfilling them needs a
+  temporary single-IP firewall rule and a direct `UPDATE`, and was not done because it changes
+  beneficiary data.
 - `frontend/src/pages/Verification.jsx` and `backend/src/index.js` are still uncommitted from the
   previous session; only the files above were committed.
 - The database is still **running** ($0.02/h): re-stop by **2026-11-08 11:03Z**.

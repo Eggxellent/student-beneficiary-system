@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, CreditCard, Phone } from "lucide-react";
+import { CalendarDays, CreditCard, FileText, Phone } from "lucide-react";
 import api from "../services/api";
 
-const emptyForm = { first_name: "", last_name: "", date_of_birth: "", school_code: "", national_id_number: "", primary_phone: "" };
+const emptyForm = { first_name: "", last_name: "", date_of_birth: "", school_code: "", national_id_number: "", birth_certificate_number: "", upi: "", primary_phone: "" };
 
 function screeningSentence(screening) {
   if (!screening) return "";
@@ -48,6 +48,10 @@ export default function StudentRegistration() {
         school_code: form.school_code,
         national_id_number: form.national_id_number.trim(),
         primary_phone: form.primary_phone.trim(),
+        // The API stores both identifiers as optional, so a blank box must not send an empty
+        // string: an absent identifier can never be reported as an exact match.
+        ...(form.birth_certificate_number.trim() ? { birth_certificate_number: form.birth_certificate_number.trim() } : {}),
+        ...(form.upi.trim() ? { upi: form.upi.trim() } : {}),
       });
       setResult(response.data);
       setForm(emptyForm);
@@ -124,6 +128,16 @@ export default function StudentRegistration() {
 
           <label className={`${labelClass} mb-3`}>National ID number
             <span className="relative block"><CreditCard size={14} className="pointer-events-none absolute left-2 top-[14px] text-slate-600" aria-hidden="true" /><input name="national_id_number" value={form.national_id_number} onChange={handleChange} className={`${fieldClass} pl-8`} placeholder="XXXXXXXX-X" required /></span>
+          </label>
+
+          {/* Optional, but these two are the identifiers that carry a critical exact-match rule,
+              so an officer who has the document should record it here. */}
+          <label className={`${labelClass} mb-3`}>Birth certificate number
+            <span className="relative block"><FileText size={14} className="pointer-events-none absolute left-2 top-[14px] text-slate-600" aria-hidden="true" /><input name="birth_certificate_number" value={form.birth_certificate_number} onChange={handleChange} className={`${fieldClass} pl-8`} placeholder="Birth certificate number" /></span>
+          </label>
+
+          <label className={`${labelClass} mb-3`}>UPI
+            <span className="relative block"><FileText size={14} className="pointer-events-none absolute left-2 top-[14px] text-slate-600" aria-hidden="true" /><input name="upi" value={form.upi} onChange={handleChange} className={`${fieldClass} pl-8`} placeholder="Unique personal identifier" /></span>
           </label>
 
           <label className={`${labelClass} mb-5`}>Primary phone

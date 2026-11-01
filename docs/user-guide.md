@@ -23,8 +23,12 @@ Open **Students** and choose **Register Student**. Enter:
 - Date of birth
 - One of the five approved schools
 - National ID number
+- Birth certificate number (optional)
+- UPI (optional)
 - Primary phone number
 - Link a QR token
+
+Birth certificate number and UPI are optional because a guardian may not have the document at the counter, but they are the two identifiers with a critical exact-match rule: leave them blank only when the document is genuinely unavailable, because a missing identifier can never be matched against another record. Both are trimmed and stored in uppercase like the other identifiers, and a blank box is not sent at all.
 
 Submit the form to save the student and run duplicate comparison against existing records. A QR code is returned for a successful registration.
 
