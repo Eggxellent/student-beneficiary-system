@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import AwardCertificatePanel from "../components/AwardCertificatePanel";
 
 const emptyAward = { student_id: "", requested_amount: "" };
 const emptyVerification = { award_id: "", outcome: "verified", notes: "", evidence_ref: "" };
@@ -264,6 +265,8 @@ export default function Disbursements() {
           </tbody>
         </table>
       </section>
+
+      <AwardCertificatePanel awards={awards} isAdmin={isAdmin} onChanged={loadData} />
 
       <section className="rounded border border-slate-200 bg-white p-4">
         <h2 className="font-semibold text-slate-900">Issue payment</h2>

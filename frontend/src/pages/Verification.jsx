@@ -1,36 +1,27 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, ShieldCheck, ShieldQuestion, WifiOff } from "lucide-react";
+import api from "../services/api";
+import useHashToken from "../hooks/useHashToken";
+import {
+  PublicVerificationLayout,
+  RetryButton,
+  StatusBadge,
+  DetailRow,
+  LoadingState,
+  formatTimestamp,
+} from "../components/PublicVerificationLayout";
 
-function readToken() {
-  return new URLSearchParams(window.location.hash.slice(1)).get("token");
-}
-
-function stripTokenFromUrl() {
-  window.history.replaceState(
-    window.history.state,
-    "",
-    `${window.location.pathname}${window.location.search}`
-  );
-}
-
+// Public page opened by scanning a student QR code. The backend deliberately answers with
+// `{ found: true | false }` and nothing else, so this page communicates a verification result
+// without asking for - or implying the existence of - beneficiary details.
 export default function Verification() {
+  const { token, readFailed } = useHashToken();
   const [status, setStatus] = useState("loading");
-
-  // Captured during render, because the effect below removes the token from the URL and
-  // React StrictMode runs effects twice in development: reading the hash inside the effect
-  // would leave the second pass with nothing to verify.
-  const initialToken = useRef(readToken());
-  const [token, setToken] = useState(initialToken.current);
+  const [checkedAt, setCheckedAt] = useState(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    try {
-      stripTokenFromUrl();
-    } catch {
-      setStatus("invalid");
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!token) {
+    if (readFailed || !token) {
       setStatus("invalid");
       return undefined;
     }
@@ -38,63 +29,118 @@ export default function Verification() {
     let cancelled = false;
     setStatus("loading");
 
-    fetch("/api/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    })
-      .then(async (response) => {
+    // The API is a separate origin in production (VITE_API_ORIGIN), and the SPA host does not
+    // proxy /api/, so this request must go through the shared client rather than a relative
+    // fetch - a relative call is answered by IIS with a 404 and every scan looks invalid.
+    api
+      .post("/verify", { token })
+      .then((response) => {
         if (cancelled) return;
-        if (response.status === 503 || response.status >= 500 || response.status === 429) {
-          setStatus("service-error");
-          return;
-        }
-        if (!response.ok) {
-          setStatus("invalid");
-          return;
-        }
-        const result = await response.json();
-        if (!cancelled) setStatus(result.found === true ? "found" : "invalid");
+        setCheckedAt(new Date());
+        setStatus(response.data?.found === true ? "found" : "invalid");
       })
-      .catch(() => {
-        if (!cancelled) setStatus("service-error");
+      .catch((error) => {
+        if (cancelled) return;
+        setCheckedAt(new Date());
+        const code = error.response?.status;
+        if (code === 429) setStatus("rate-limited");
+        // A refused token is a normal answer, not an outage; everything else is reported as one.
+        else if (code && code < 500) setStatus("invalid");
+        else setStatus("unavailable");
       });
 
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, readFailed, attempt]);
 
-  // A second code opened in the same tab only changes the fragment, so the component is not
-  // remounted and the previous result would otherwise stay on screen.
-  useEffect(() => {
-    function handleHashChange() {
-      const next = readToken();
-      try {
-        stripTokenFromUrl();
-      } catch {
-        setStatus("invalid");
-        return;
-      }
-      setToken(next);
-    }
-
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  }, []);
-
-  const message = {
-    loading: "Checking code…",
-    found: "Record found",
-    invalid: "Unable to verify this code",
-    "service-error": "Verification is temporarily unavailable. Try again later.",
-  }[status];
+  const checked = formatTimestamp(checkedAt);
 
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-50 px-5 py-10 text-slate-900">
-      <section className="w-full max-w-md border border-slate-200 bg-white p-6 text-center shadow-sm sm:p-8" aria-live="polite">
-        <p className="text-base" role="status">{message}</p>
-      </section>
-    </main>
+    <PublicVerificationLayout>
+      <div>
+        <h1 className="text-xl font-bold tracking-tight text-[#173D35]">Student record verification</h1>
+        <p className="mt-1 text-sm text-slate-600">Scanned SBMS student QR code</p>
+      </div>
+
+      {status === "loading" && <div className="mt-8"><LoadingState message="Checking this code..." /></div>}
+
+      {status === "found" && (
+        <div className="mt-6 space-y-5">
+          <StatusBadge tone="success" icon={ShieldCheck}>Record found</StatusBadge>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">This code matches a student record in SBMS</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-700">
+              The QR code you scanned was generated by the Student Beneficiary Management System and
+              corresponds to a student record held by the awarding office.
+            </p>
+          </div>
+          <dl className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2">
+            <DetailRow label="Result" value="Student record exists" />
+            <DetailRow label="Checked" value={checked ? `${checked} (device time)` : null} />
+          </dl>
+          <div className="rounded-lg border border-slate-200 p-4">
+            <h3 className="text-sm font-semibold text-slate-900">What this result means</h3>
+            <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-slate-700">
+              <li>It confirms that the record exists. It does not confirm identity, eligibility, approval or payment.</li>
+              <li>It is not a bursary certificate. A bursary certificate carries its own QR code and verification page.</li>
+              <li>Before releasing funds or personal information, confirm identity with the awarding office.</li>
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {status === "invalid" && (
+        <div className="mt-6 space-y-5">
+          <StatusBadge tone="danger" icon={ShieldQuestion}>Not verified</StatusBadge>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">We could not verify this code</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-700">
+              No SBMS student record matches this code. The code may be damaged, copied incorrectly,
+              or belong to a different system. This result does not prove that a person is not
+              registered with SBMS.
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-4">
+            <h3 className="text-sm font-semibold text-slate-900">What to do next</h3>
+            <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-slate-700">
+              <li>Scan the code again in good light, holding the phone steady.</li>
+              <li>Check that you scanned the student QR code and not a different document.</li>
+              <li>Ask the awarding office to confirm the record directly.</li>
+            </ul>
+          </div>
+          {checked && <p className="text-xs text-slate-600">Checked at {checked} (device time).</p>}
+        </div>
+      )}
+
+      {status === "rate-limited" && (
+        <div className="mt-6 space-y-5">
+          <StatusBadge tone="warning" icon={AlertTriangle}>Please wait</StatusBadge>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Too many checks in a short time</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-700">
+              To protect the system, verification requests are limited. No result was produced for
+              this code. Wait a few minutes, then try again.
+            </p>
+          </div>
+          <RetryButton onClick={() => setAttempt((value) => value + 1)}>Try again</RetryButton>
+        </div>
+      )}
+
+      {status === "unavailable" && (
+        <div className="mt-6 space-y-5">
+          <StatusBadge tone="warning" icon={WifiOff}>Connection problem</StatusBadge>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Verification is temporarily unavailable</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-700">
+              The verification service could not be reached, so this code was <strong>not</strong> checked.
+              This is a connection problem, not a statement that the record does not exist.
+            </p>
+          </div>
+          <RetryButton onClick={() => setAttempt((value) => value + 1)} />
+        </div>
+      )}
+
+    </PublicVerificationLayout>
   );
 }

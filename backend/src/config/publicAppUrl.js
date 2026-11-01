@@ -167,4 +167,13 @@ function buildStudentVerificationUrl(token, value = process.env.PUBLIC_APP_URL, 
   return url.toString();
 }
 
-module.exports = { getPublicAppOrigin, buildStudentVerificationUrl };
+// A bursary certificate is a different artefact from a student record, so it gets its own page and
+// its own token namespace. Both keep the token in the fragment, for the same reason: a fragment is
+// never sent to a web server, never written to an access log and never forwarded as a Referer.
+function buildCertificateVerificationUrl(token, value = process.env.PUBLIC_APP_URL, nodeEnv = process.env.NODE_ENV) {
+  const url = new URL('/verify-certificate', getPublicAppOrigin(value, nodeEnv));
+  url.hash = new URLSearchParams({ token }).toString();
+  return url.toString();
+}
+
+module.exports = { getPublicAppOrigin, buildStudentVerificationUrl, buildCertificateVerificationUrl };

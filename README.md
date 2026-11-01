@@ -153,3 +153,34 @@ The verification evidence reference is a generic audit pointer, not an upload
 or document checklist. Required document types and an independent school
 account flow remain policy decisions. QR verification checks only whether a
 student record exists; it does not confirm identity, award, clearance, or receipt.
+
+## Bursary award certificates
+
+An approved bursary award can be issued as a QR-verifiable certificate. Only an
+administrator issues or revokes one; a field officer can read and print it. The
+certificate copies the award facts it prints into its own row
+(`bursary_certificates`), so a later change to the award cannot rewrite a printed
+document, and verification reports `not_current` when the award is no longer
+approved or its approved amount has changed since issue.
+
+The QR code points to `/verify-certificate#token=...`. The frontend page removes the
+token from the visible URL and posts it to the public
+`POST /api/certificates/verify`, which answers with authenticity facts only -
+certificate reference, award period, issue and approval dates, and the issuing
+authority - never the student's name, UPI, school or the award amount. A revoked
+certificate reports `revoked`; a malformed or unknown token reports
+`not_recognised`. The public endpoint has its own budget of 20 requests per client
+IP per 15 minutes, separate from student-record verification.
+
+`GET /api/awards/:id/certificate.pdf` renders an A4 landscape PDF carrying the same
+QR code and an explicit "approval is not payment" statement. Apply
+`backend/src/db/migrations/20261031_bursary_certificates.sql` before using the
+endpoints: `GET /api/ready` reports not ready until it is applied, and the
+repository does not apply migrations automatically. See
+[docs/bursary-certificates-2026-11-01.md](docs/bursary-certificates-2026-11-01.md)
+for the response contracts, security decisions and the checks that were not run.
+
+Authenticity is answered live from the database, so a reprinted copy or a
+hand-generated QR code cannot pass verification. The certificate confirms an
+approval; it does not confirm that funds were disbursed.
+

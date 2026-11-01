@@ -265,3 +265,31 @@ matter for the submission — real phone-camera QR scanning, browser UAT, hosted
 any accuracy claim about the duplicate model — remain unverified and are listed in section 8.
 
 
+
+## 10. Bursary award certificates — run of 2026-11-01
+
+This section supersedes the totals in §1 and §2 for the current working tree; the earlier figures
+are kept because they describe the commands as they were run on 2026-10-31.
+
+| Check | Result | Command |
+|---|---|---|
+| Backend Jest suite (whole) | **PASS — 24 suites / 151 tests**, exit 0 | `npx jest --runInBand tests` after loading `backend/.env.test` |
+| Frontend production build | **PASS — exit 0**, 2,006 modules, 10.11 s | `npm.cmd --prefix frontend run build` |
+| Headless-Chrome student QR smoke (`scripts/qr-smoke.mjs`) | **NOT RUN** | no Chrome DevTools session, API or frontend server was running |
+| Headless-Chrome certificate verification page | **NOT RUN — no script exists for it yet** | it is covered by API tests only |
+| Phone-camera scan of a printed certificate | **NOT RUN** | needs a public HTTPS origin |
+| Azure/production certificate behaviour | **NOT RUN** | nothing is provisioned |
+
+Two suites are new for this feature: `backend/tests/bursaryCertificates.test.js` (issue, read,
+PDF, revoke, public verification, `not_current` after an amount change, audit rows) and
+`backend/tests/certificateVerificationRoute.test.js` (public route contract and its own rate
+limit). `backend/tests/schemaReadiness.test.js` now asserts that `bursary_certificates` is part of
+the readiness contract, so `GET /api/ready` fails closed if the migration is missing.
+
+The migration `backend/src/db/migrations/20261031_bursary_certificates.sql` was applied to the
+local disposable `sbms_test` database only. No production database was touched and the repository
+still does not apply migrations automatically.
+
+Behaviour, response shapes and the checks that were not run are recorded in
+`docs/bursary-certificates-2026-11-01.md`.
+

@@ -128,6 +128,40 @@ describe('Admin and Field Officer authorization', () => {
     expect((await request(app).get('/api/admin/dashboard').set('Authorization', `Bearer ${officerToken}`)).statusCode).toBe(403);
   });
 
+  // Student records are a field-officer capability by design, not an oversight: no admin screen
+  // calls /api/students (frontend/src/pages/Disbursements.jsx requests it only for field officers,
+  // and only field officers create awards), administrators read beneficiary identity through
+  // /api/duplicate-flags, /api/awards and /api/reports, and the deployment plan documents the 403.
+  // Pinning the whole route group keeps any future widening deliberate rather than accidental.
+  test('student routes stay field-officer-only while admin data paths keep working', async () => {
+    const absentStudentId = '00000000-0000-4000-8000-000000000000';
+
+    expect((await request(app).get('/api/students')).statusCode).toBe(401);
+    expect((await request(app).get('/api/students/schools')).statusCode).toBe(401);
+    expect((await request(app).get(`/api/students/${absentStudentId}`)).statusCode).toBe(401);
+    expect((await request(app).post('/api/students').send({})).statusCode).toBe(401);
+
+    const adminRefusals = await Promise.all([
+      request(app).get('/api/students').set('Authorization', `Bearer ${adminToken}`),
+      request(app).get('/api/students/schools').set('Authorization', `Bearer ${adminToken}`),
+      request(app).get(`/api/students/${absentStudentId}`).set('Authorization', `Bearer ${adminToken}`),
+      request(app).post('/api/students').set('Authorization', `Bearer ${adminToken}`).send({}),
+    ]);
+    expect(adminRefusals.map(({ statusCode }) => statusCode)).toEqual([403, 403, 403, 403]);
+
+    const listing = await request(app).get('/api/students').set('Authorization', `Bearer ${officerToken}`);
+    expect(listing.statusCode).toBe(200);
+    expect(Array.isArray(listing.body)).toBe(true);
+    const schools = await request(app).get('/api/students/schools').set('Authorization', `Bearer ${officerToken}`);
+    expect(schools.statusCode).toBe(200);
+    expect(schools.body).toContain('Nairobi School');
+    const absent = await request(app).get(`/api/students/${absentStudentId}`).set('Authorization', `Bearer ${officerToken}`);
+    expect(absent.statusCode).toBe(404);
+
+    // The administrator's own beneficiary data path is unaffected by the refusals above.
+    expect((await request(app).get('/api/duplicate-flags').set('Authorization', `Bearer ${adminToken}`)).statusCode).toBe(200);
+  });
+
   test('Field Officers cannot manage users or read/change global thresholds', async () => {
     expect((await request(app).get('/api/users').set('Authorization', `Bearer ${officerToken}`)).statusCode).toBe(403);
     const officerCreatedEmail = `officer-create-${emailSuffix}@example.test`;

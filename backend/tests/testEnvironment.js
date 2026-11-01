@@ -17,3 +17,4 @@ if (!process.env.PUBLIC_APP_URL) {
 // within their own file.
 require('../src/middleware/loginRateLimit').reset();
 require('../src/middleware/verificationRateLimit').reset();
+require('../src/middleware/certificateRateLimit').reset();

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
 import Verification from "./pages/Verification";
+import CertificateVerification from "./pages/CertificateVerification";
 import AdminDashboard from "./pages/AdminDashboard";
 import Students from "./pages/Students";
 import StudentRegistration from "./pages/StudentRegistration";
@@ -57,6 +58,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/verify" element={<Verification />} />
+      <Route path="/verify-certificate" element={<CertificateVerification />} />
       <Route path="/login" element={<Login />} />
       <Route path="/admin/login" element={<Login role="admin" />} />
       <Route path="/field-officer/login" element={<Login role="field_officer" />} />

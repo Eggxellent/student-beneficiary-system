@@ -12,6 +12,8 @@ const auditRouter = require('./routes/audit.routes');
 const studentsRouter = require('./routes/students.routes');
 const verificationController = require('./controllers/verification.controller');
 const verificationRateLimit = require('./middleware/verificationRateLimit');
+const certificatesController = require('./controllers/certificates.controller');
+const certificateRateLimit = require('./middleware/certificateRateLimit');
 const duplicateFlagsRouter = require('./routes/duplicateFlags.routes');
 const disbursementsRouter = require('./routes/disbursements.routes');
 const bursaryAwardsRouter = require('./routes/bursaryAwards.routes');
@@ -54,8 +56,15 @@ if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
   app.set('trust proxy', trustProxyHops);
 }
 
-app.post('/api/verify', verificationRateLimit);
-app.use(express.json({ limit: '100kb' }));
+// The public QR verification endpoint is registered once, as a single chain: the rate limiter
+// must run before the body is parsed, while the handler needs a parsed body. Registering the
+// limiter as a separate route made the endpoint depend on Express matching the same path twice,
+// so a later edit could silently detach the limiter from the handler. The parser instance is
+// shared with the app-wide mount below; body-parser skips a body that is already parsed.
+const jsonBodyParser = express.json({ limit: '100kb' });
+app.post('/api/verify', verificationRateLimit, jsonBodyParser, verificationController.verify);
+app.post('/api/certificates/verify', certificateRateLimit, jsonBodyParser, certificatesController.verifyPublic);
+app.use(jsonBodyParser);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -79,7 +88,6 @@ app.get('/api/ready', async (req, res) => {
 app.use('/api/beneficiaries', beneficiariesRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/audit-logs', auditRouter);
-app.post('/api/verify', verificationController.verify);
 app.use('/api/students', studentsRouter);
 app.use('/api/duplicate-flags', duplicateFlagsRouter);
 app.use('/api/disbursements', disbursementsRouter);

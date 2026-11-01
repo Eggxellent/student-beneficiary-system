@@ -18,6 +18,7 @@ describe('Database schema readiness', () => {
       'beneficiaries',
       'bursary_award_verification_events',
       'bursary_awards',
+      'bursary_certificates',
       'disbursement_reconciliation_events',
       'disbursements',
       'duplicate_flags',

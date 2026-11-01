@@ -11,6 +11,7 @@ const REQUIRED_TABLES = Object.freeze([
   'reports',
   'bursary_awards',
   'bursary_award_verification_events',
+  'bursary_certificates',
   'disbursement_reconciliation_events',
 ]);
 
