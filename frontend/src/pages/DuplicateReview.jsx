@@ -23,6 +23,20 @@ function formatDate(value) {
   return value ? new Date(value).toLocaleString() : "—";
 }
 
+// Shared by the masked queue payload and the audited reveal response, so a revealed case
+// renders exactly the same rows as a masked one.
+function identityRows(student) {
+  return [
+    ["Date of birth", student.date_of_birth],
+    ["School identifier (stored value)", student.school_code],
+    ["Guardian identifier", student.guardian_id],
+    ["Guardian contact", student.guardian_contact],
+    ["UPI", student.upi],
+    ["Birth certificate", student.birth_certificate_number],
+    ["National ID", student.national_id_number],
+  ];
+}
+
 export default function DuplicateReview() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -42,6 +56,9 @@ export default function DuplicateReview() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [revealed, setRevealed] = useState({});
+  const [revealing, setRevealing] = useState(false);
+  const [revealError, setRevealError] = useState("");
   const fetchCases = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -88,6 +105,29 @@ export default function DuplicateReview() {
   }
 
   const selected = cases.find((item) => item.id === selectedId);
+
+  // Identifiers arrive masked so the queue itself cannot leak them. This reveal is a separate,
+  // audited request that returns the full values for the case currently open.
+  useEffect(() => {
+    setRevealed({});
+    setRevealError("");
+  }, [selectedId]);
+
+  async function revealIdentifiers() {
+    if (!selected) return;
+    setRevealing(true);
+    setRevealError("");
+    try {
+      const { data } = await api.get(`/duplicate-flags/${selected.id}/identifiers`);
+      const byReference = {};
+      (data.students || []).forEach((student) => { byReference[student.reference] = student; });
+      setRevealed(byReference);
+    } catch (err) {
+      setRevealError(err.response?.data?.message || "Could not reveal the identifiers for this case.");
+    } finally {
+      setRevealing(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-7xl p-5 sm:p-8">
@@ -157,8 +197,18 @@ export default function DuplicateReview() {
       {selected && <div className="fixed inset-0 z-40 overflow-y-auto bg-slate-950/40 p-3 sm:p-8" role="dialog" aria-modal="true" aria-labelledby="case-heading">
         <section className="mx-auto my-4 max-w-5xl rounded bg-white p-5 shadow-xl sm:p-7">
           <div className="flex items-start justify-between gap-4"><div><h2 id="case-heading" className="text-xl font-bold">Potential match</h2><p className="mt-1 text-sm text-slate-600">{selected.priority} · {prettyStatus(selected.status)} · {selected.model_score != null ? `XGBoost score ${Math.round(selected.model_score * 100)}%` : `Rule score ${Math.round((selected.legacy_rule_score || 0) * 100)}%`} · not a calibrated probability or decision</p>{selected.model_version && <p className="text-xs text-slate-500">Model: {selected.model_version} · cutoff: {selected.review_threshold}</p>}<p className="mt-2 text-sm text-slate-700">{selected.reason}</p></div><button type="button" onClick={() => setSelectedId(null)} className="rounded border px-3 py-1.5 text-sm">Close</button></div>
+          <div className="mt-5 flex flex-wrap items-center gap-3 rounded border border-slate-200 bg-slate-50 p-3">
+            <p className="flex-1 text-xs text-slate-600">Identifiers are masked in the queue. Reveal them to compare with the documents presented; every reveal is written to the audit log against your account.</p>
+            <button type="button" onClick={revealIdentifiers} disabled={revealing} className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold disabled:opacity-50">{revealing ? "Revealing…" : Object.keys(revealed).length ? "Reveal again" : "Reveal identifiers"}</button>
+            {Object.keys(revealed).length > 0 && <span className="w-full text-xs font-medium text-green-700" role="status">Revealed. This view was recorded in the audit log.</span>}
+            {revealError && <span className="w-full text-sm text-red-700" role="alert">{revealError}</span>}
+          </div>
+
           <div className="mt-5 grid gap-4 md:grid-cols-2">
-            {selected.students.map((student) => <article key={student.reference} className="rounded border border-slate-200 p-4"><h3 className="font-semibold">{student.full_name}</h3><p className="mb-3 text-xs text-slate-500">Case reference: {student.reference}</p><dl className="space-y-2 text-sm">{[["Date of birth", student.date_of_birth], ["School identifier (stored value)", student.school_code], ["Guardian", student.guardian_id], ["UPI", student.upi], ["Birth certificate", student.birth_certificate_number], ["National ID", student.national_id_number]].map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b border-slate-100 pb-1"><dt className="text-slate-500">{label}</dt><dd className="text-right font-medium">{value || "Unavailable"}</dd></div>)}</dl></article>)}
+            {selected.students.map((student) => {
+              const shown = revealed[student.reference] || student;
+              return <article key={student.reference} className="rounded border border-slate-200 p-4"><h3 className="font-semibold">{student.full_name}</h3><p className="mb-3 text-xs text-slate-500">Case reference: {student.reference}</p><dl className="space-y-2 text-sm">{identityRows(shown).map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b border-slate-100 pb-1"><dt className="text-slate-500">{label}</dt><dd className="text-right font-medium">{value || "Unavailable"}</dd></div>)}</dl></article>;
+            })}
           </div>
           <section className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Field comparison</h3><dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{Object.entries(evidenceLabels).map(([key, label]) => <div key={key} className="flex justify-between gap-3"><dt>{label}</dt><dd className="font-medium capitalize">{selected.evidence[key]}</dd></div>)}</dl>{selected.exact_identifier_matches.length > 0 && <p className="mt-3 text-sm font-semibold text-slate-800">Exact match: {selected.exact_identifier_matches.join(", ")}. Verify it; this is not proof of misconduct.</p>}</section>
           <section className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Review history</h3>{selected.history.length ? <ol className="mt-2 space-y-3">{selected.history.map((event) => <li key={event.id} className="border-l-2 border-slate-300 pl-3 text-sm"><p className="font-medium">{prettyStatus(event.decision)} · {event.reviewer_name}</p><p className="text-slate-700">Reason: {event.reason}</p>{event.notes && <p className="text-slate-600">Notes: {event.notes}</p>}<time className="text-xs text-slate-500">{formatDate(event.created_at)}</time></li>)}</ol> : <p className="mt-2 text-sm text-slate-500">No previous review actions.</p>}</section>

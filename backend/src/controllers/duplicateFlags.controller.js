@@ -41,12 +41,16 @@ function maskIdentifier(value) {
   return `${'•'.repeat(Math.max(4, text.length - visible.length))}${visible}`;
 }
 
+const CASE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const REVEALED_IDENTIFIER_FIELDS = ['guardian_id', 'guardian_contact', 'upi', 'birth_certificate_number', 'national_id_number'];
+
 function toReviewCase(row) {
   const first = {
     full_name: row.student_name,
     date_of_birth: row.student_date_of_birth,
     school_code: row.student_school,
     guardian_id: row.student_guardian_id,
+    primary_phone: row.student_guardian_contact,
     upi: row.student_upi,
     birth_certificate_number: row.student_birth_certificate_number,
     national_id_number: row.student_national_id_number,
@@ -57,6 +61,7 @@ function toReviewCase(row) {
     date_of_birth: row.matched_date_of_birth,
     school_code: row.matched_school,
     guardian_id: row.matched_guardian_id,
+    primary_phone: row.matched_guardian_contact,
     upi: row.matched_upi,
     birth_certificate_number: row.matched_birth_certificate_number,
     national_id_number: row.matched_national_id_number,
@@ -103,8 +108,8 @@ function toReviewCase(row) {
     reason,
     exact_identifier_matches: exactIdentifiers,
     students: [
-      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code, school_code: first.school_code, guardian_id: maskIdentifier(first.guardian_id), upi: maskIdentifier(first.upi), birth_certificate_number: maskIdentifier(first.birth_certificate_number), national_id_number: maskIdentifier(first.national_id_number) },
-      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code, school_code: second.school_code, guardian_id: maskIdentifier(second.guardian_id), upi: maskIdentifier(second.upi), birth_certificate_number: maskIdentifier(second.birth_certificate_number), national_id_number: maskIdentifier(second.national_id_number) },
+      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code, school_code: first.school_code, guardian_id: maskIdentifier(first.guardian_id), guardian_contact: maskIdentifier(first.primary_phone), upi: maskIdentifier(first.upi), birth_certificate_number: maskIdentifier(first.birth_certificate_number), national_id_number: maskIdentifier(first.national_id_number) },
+      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code, school_code: second.school_code, guardian_id: maskIdentifier(second.guardian_id), guardian_contact: maskIdentifier(second.primary_phone), upi: maskIdentifier(second.upi), birth_certificate_number: maskIdentifier(second.birth_certificate_number), national_id_number: maskIdentifier(second.national_id_number) },
     ],
     evidence: {
       name: fieldEvidence(first.full_name, second.full_name, 'name', features.jaro_winkler || 0),
@@ -282,12 +287,14 @@ async function list(req, res, next) {
               s1.upi AS student_upi,
               s1.birth_certificate_number AS student_birth_certificate_number,
               s1.national_id_number AS student_national_id_number,
+              s1.primary_phone AS student_guardian_contact,
               s2.full_name AS matched_student_name, s2.school_code AS matched_school,
               TO_CHAR(s2.date_of_birth, 'YYYY-MM-DD') AS matched_date_of_birth,
               s2.guardian_id AS matched_guardian_id,
               s2.upi AS matched_upi,
               s2.birth_certificate_number AS matched_birth_certificate_number,
               s2.national_id_number AS matched_national_id_number,
+              s2.primary_phone AS matched_guardian_contact,
               s1.date_of_birth IS NOT DISTINCT FROM s2.date_of_birth AS date_of_birth_match,
               s1.school_code IS NOT DISTINCT FROM s2.school_code AS school_match,
               s1.guardian_id IS NOT DISTINCT FROM s2.guardian_id AS guardian_match,
@@ -359,6 +366,89 @@ async function list(req, res, next) {
   }
 }
 
+// The review queue deliberately ships masked identifiers so a queue screenshot cannot leak
+// a beneficiary's UPI, birth certificate or National ID. A reviewer still has to compare
+// those values with the documents a guardian presents, so this endpoint reveals them for a
+// single case, only to an administrator, and records who looked at them and when.
+async function revealIdentifiers(req, res, next) {
+  try {
+    if (!CASE_ID_PATTERN.test(String(req.params.id || ''))) {
+      return res.status(404).json({ message: 'Duplicate flag not found' });
+    }
+    const { rows } = await pool.query(
+      `SELECT df.id,
+              s1.id AS student_id, s1.full_name AS student_name,
+              s1.is_synthetic AS student_is_synthetic,
+              TO_CHAR(s1.date_of_birth, 'YYYY-MM-DD') AS student_date_of_birth,
+              s1.school_code AS student_school,
+              s1.guardian_id AS student_guardian_id,
+              s1.primary_phone AS student_guardian_contact,
+              s1.upi AS student_upi,
+              s1.birth_certificate_number AS student_birth_certificate_number,
+              s1.national_id_number AS student_national_id_number,
+              s2.id AS matched_student_id, s2.full_name AS matched_student_name,
+              s2.is_synthetic AS matched_student_is_synthetic,
+              TO_CHAR(s2.date_of_birth, 'YYYY-MM-DD') AS matched_date_of_birth,
+              s2.school_code AS matched_school,
+              s2.guardian_id AS matched_guardian_id,
+              s2.primary_phone AS matched_guardian_contact,
+              s2.upi AS matched_upi,
+              s2.birth_certificate_number AS matched_birth_certificate_number,
+              s2.national_id_number AS matched_national_id_number
+       FROM duplicate_flags df
+       JOIN students s1 ON df.student_id = s1.id
+       JOIN students s2 ON df.matched_student_id = s2.id
+       WHERE df.id = $1`,
+      [req.params.id]
+    );
+    const row = rows[0];
+    if (!row) return res.status(404).json({ message: 'Duplicate flag not found' });
+
+    const students = [
+      {
+        reference: row.student_id,
+        full_name: row.student_name,
+        is_synthetic: row.student_is_synthetic,
+        date_of_birth: row.student_date_of_birth,
+        school_code: row.student_school,
+        guardian_id: row.student_guardian_id,
+        guardian_contact: row.student_guardian_contact,
+        upi: row.student_upi,
+        birth_certificate_number: row.student_birth_certificate_number,
+        national_id_number: row.student_national_id_number,
+      },
+      {
+        reference: row.matched_student_id,
+        full_name: row.matched_student_name,
+        is_synthetic: row.matched_student_is_synthetic,
+        date_of_birth: row.matched_date_of_birth,
+        school_code: row.matched_school,
+        guardian_id: row.matched_guardian_id,
+        guardian_contact: row.matched_guardian_contact,
+        upi: row.matched_upi,
+        birth_certificate_number: row.matched_birth_certificate_number,
+        national_id_number: row.matched_national_id_number,
+      },
+    ];
+
+    await logAudit(req.user.id || req.user.sub, 'REVEAL_DUPLICATE_IDENTIFIERS', 'duplicate_flags', row.id, {
+      student_ids: [row.student_id, row.matched_student_id],
+      fields: REVEALED_IDENTIFIER_FIELDS,
+      purpose: 'manual verification of a duplicate-review case',
+    });
+
+    res.json({
+      case_id: row.id,
+      revealed_at: new Date().toISOString(),
+      revealed_fields: REVEALED_IDENTIFIER_FIELDS,
+      students,
+      notice: 'Identifier reveal recorded in the audit log.',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function update(req, res, next) {
   const validation = decisionSchema.safeParse(req.body);
   if (!validation.success) return res.status(400).json({ message: 'Select a decision and provide a reason of at least 5 characters.' });
@@ -412,4 +502,4 @@ async function update(req, res, next) {
   }
 }
 
-module.exports = { evaluate, list, scanExisting, update };
+module.exports = { evaluate, list, revealIdentifiers, scanExisting, update };

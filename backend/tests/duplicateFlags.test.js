@@ -42,14 +42,20 @@ async function createStudent(overrides = {}) {
     school_code: 'Nairobi School',
     guardian_id: 'G-100',
     upi: `UPI-TEST-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    national_id_number: null,
+    birth_certificate_number: null,
+    primary_phone: null,
     ...overrides,
   };
 
   const result = await pool.query(
-    `INSERT INTO students (full_name, date_of_birth, school_code, guardian_id, upi)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO students
+       (full_name, date_of_birth, school_code, guardian_id, upi,
+        national_id_number, birth_certificate_number, primary_phone)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
-    [student.full_name, student.date_of_birth, student.school_code, student.guardian_id, student.upi]
+    [student.full_name, student.date_of_birth, student.school_code, student.guardian_id, student.upi,
+      student.national_id_number, student.birth_certificate_number, student.primary_phone]
   );
 
   return result.rows[0];
@@ -125,6 +131,73 @@ describe('Duplicate flags and disbursements API', () => {
     expect(officerDecision.statusCode).toBe(403);
 
     await pool.query('DELETE FROM duplicate_flags WHERE id = $1', [flagResult.rows[0].id]);
+    await pool.query('DELETE FROM students WHERE id = $1 OR id = $2', [student.id, matchedStudent.id]);
+  });
+
+  test('GET /api/duplicate-flags/:id/identifiers reveals identifiers for verification and audits the reveal', async () => {
+    const sharedUpi = `UPI-REVEAL-${Date.now()}`;
+    const sharedCertificate = `BC-REVEAL-${Date.now()}`;
+    const student = await createStudent({
+      full_name: `Reveal Flag ${Date.now()}`,
+      upi: sharedUpi,
+      birth_certificate_number: sharedCertificate,
+      national_id_number: 'NID-REVEAL-001',
+      primary_phone: '+254712345678',
+    });
+    const matchedStudent = await createStudent({
+      full_name: `Reveal Match ${Date.now()}`,
+      upi: `${sharedUpi}-B`,
+      birth_certificate_number: `${sharedCertificate}-B`,
+      national_id_number: 'NID-REVEAL-002',
+      primary_phone: '+254712345679',
+    });
+    const flagResult = await pool.query(
+      `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
+       VALUES ($1, $2, $3, 'pending')
+       RETURNING *`,
+      [student.id, matchedStudent.id, 0.94]
+    );
+    const caseId = flagResult.rows[0].id;
+
+    // The queue keeps identifiers masked, so a queued case cannot be screenshotted into a leak.
+    const queue = await request(app)
+      .get('/api/duplicate-flags?status=pending')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const queuedCase = queue.body.cases.find((flag) => flag.id === caseId);
+    expect(queuedCase.students[0].upi).not.toBe(sharedUpi);
+    expect(queuedCase.students[0].guardian_contact).not.toBe('+254712345678');
+    expect(queuedCase.students[0].guardian_contact).toMatch(/678$/);
+    expect(queuedCase.students[0].guardian_contact).not.toContain('254712345678');
+
+    const officerReveal = await request(app)
+      .get(`/api/duplicate-flags/${caseId}/identifiers`)
+      .set('Authorization', `Bearer ${officerToken}`);
+    expect(officerReveal.statusCode).toBe(403);
+
+    const reveal = await request(app)
+      .get(`/api/duplicate-flags/${caseId}/identifiers`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(reveal.statusCode).toBe(200);
+    expect(reveal.body.students[0].upi).toBe(sharedUpi);
+    expect(reveal.body.students[0].birth_certificate_number).toBe(sharedCertificate);
+    expect(reveal.body.students[0].national_id_number).toBe('NID-REVEAL-001');
+    expect(reveal.body.students[0].guardian_contact).toBe('+254712345678');
+    expect(reveal.body.students[1].upi).toBe(`${sharedUpi}-B`);
+
+    const revealAudit = await pool.query(
+      "SELECT user_id, details FROM audit_logs WHERE record_id = $1 AND action = 'REVEAL_DUPLICATE_IDENTIFIERS' ORDER BY created_at DESC LIMIT 1",
+      [caseId]
+    );
+    expect(revealAudit.rows[0].user_id).toBe(jwt.decode(adminToken).id);
+    expect(revealAudit.rows[0].details.fields).toContain('upi');
+    expect(revealAudit.rows[0].details.fields).toContain('guardian_contact');
+
+    const missingCase = await request(app)
+      .get('/api/duplicate-flags/00000000-0000-4000-8000-000000000000/identifiers')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(missingCase.statusCode).toBe(404);
+
+    await pool.query('DELETE FROM duplicate_flags WHERE id = $1', [caseId]);
     await pool.query('DELETE FROM students WHERE id = $1 OR id = $2', [student.id, matchedStudent.id]);
   });
 
