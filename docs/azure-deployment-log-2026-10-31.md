@@ -4,6 +4,7 @@ One page of state only. **Detail, evidence and the full cost model live in
 `docs/azure-deployment-plan-2026-10-30.md` §12 (current, minimum-cost) and §11 (audit behind it)** —
 do not re-derive them, do not re-run the audit.
 **Deployed and verified live on 31 October 2026** — 1 resource group, 6 resources, 1 budget.
+**Brought back up on 1 November 2026** and a real QR-scanning defect found and fixed — see §7.
 
 - API: `https://ca-sbms-api.ambitiousstone-f2de8f67.uaenorth.azurecontainerapps.io`
 - Frontend: `https://sbms-web.azurewebsites.net`
@@ -97,6 +98,12 @@ do not re-derive them, do not re-run the audit.
 
 - **Demo day**: `./deploy/azure/start.ps1` (starts PostgreSQL, warms the API until `/api/ready` is 200),
   then open the two URLs above.
+- **Sign-in**: `https://sbms-web.azurewebsites.net/admin/login` for the administrator and
+  `https://sbms-web.azurewebsites.net/field-officer/login` for a field officer — both roles exist
+  in the live database; passwords are only in `deploy/azure/.secrets.json`.
+- **QR scanning**: a student QR image encodes `https://sbms-web.azurewebsites.net/verify#token=…`.
+  The SPA host does **not** proxy `/api/`, so the page must call the API through the shared client
+  (`VITE_API_ORIGIN`) and never with a relative `fetch("/api/verify")` — see §7.
 - **After the demo**: `./deploy/azure/teardown.ps1 -Stop`. Repeat **at least every 7 days** — Azure
   auto-starts a stopped server after seven days, which silently turns $4.42/mo into $19.02/mo
   (plan §12.13). `status.ps1` prints the countdown and the reminder.
@@ -118,8 +125,10 @@ do not re-derive them, do not re-run the audit.
 | --- | --- | --- |
 | 2026-10-31 21:11 | `teardown.ps1 -Stop` after the acceptance run | 2026-11-07 21:11 |
 | 2026-10-31 21:22 | `start.ps1` (ready/health/frontend all 200) → `stop.ps1` — the demo-day round trip | 2026-11-07 21:22 |
+| 2026-11-01 11:03 | `start.ps1` — PostgreSQL `Ready` 11:05:52Z; `/api/health`, `/api/ready`, frontend all 200 | **2026-11-08 11:03** |
 
-`status.ps1` afterwards: server `Stopped`, **$4.42/month**, 7 days left on the countdown.
+`status.ps1` when the server is stopped: server `Stopped`, **$4.42/month**, 7 days left on the
+countdown. Since 2026-11-01 11:03Z it is **Ready** and billing $0.02/h.
 
 ## 6. Next actions
 
@@ -128,3 +137,112 @@ do not re-derive them, do not re-run the audit.
 2. Phase 2: supervisor gap remediation **SBMS-01…18**.
 3. Credit balance and expiry remain portal-only (`microsoftazuresponsorships.com/Usage`) — they change
    the runway, not the architecture.
+
+## 7. 1 November 2026 — bring-up and the QR defect
+
+The stack was started again for use (§5 stop log). Two paths that the 31 October acceptance had only
+covered at the API level were re-checked end to end, and one of them was broken.
+
+| Check | Result |
+| --- | --- |
+| `start.ps1` | PostgreSQL `Ready`; `/api/health` 200, `/api/ready` 200, frontend 200 with `#root` |
+| Field-officer sign-in (live API and the deployed form) | 200; `/field-officer` renders the officer dashboard |
+| Administrator sign-in (`peter.ngigi@o365.strathmore.edu`) | 200; `/dashboard` renders the admin dashboard |
+| Admin surfaces | `/api/admin/dashboard`, `/api/duplicate-flags`, `/api/awards`, `/api/disbursements`, `/api/users`, `/api/audit-logs` → 200; `/api/students` → 403 (intended, O10) |
+| **QR scan through the SPA** | **was broken** — `POST https://sbms-web.azurewebsites.net/api/verify` → 404 |
+
+### The defect
+
+`frontend/src/pages/Verification.jsx` called `fetch("/api/verify", …)`. The SPA runs on App Service
+(IIS) and `frontend/public/web.config` deliberately leaves `/api/` alone, so the request never left
+the SPA host: every scan rendered "Unable to verify this code", valid codes included. The 31 October
+acceptance (plan §12.15) checked `POST /api/verify` **directly against the container app**, so this
+path had never been exercised.
+
+The fix routes the call through the shared axios client, which already honours `VITE_API_ORIGIN`
+(`frontend/src/services/api.js`); `429`/`5xx` still map to "Verification is temporarily unavailable"
+and every other refusal to "Unable to verify this code". This is the only frontend change.
+
+### Evidence after the fix
+
+| Check | Result |
+| --- | --- |
+| `npm --prefix frontend run build` with `VITE_API_ORIGIN` | exit 0, 2002 modules, 12.37 s, bundle `assets/index-DZGqI0VB.js` |
+| `az webapp deploy` (zip) | succeeded; the live `index.html` serves that bundle hash |
+| `node scripts/qr-smoke.mjs` in headless Chrome, `SBMS_BROWSER_APP=https://sbms-web.azurewebsites.net` | **9/9** — valid code → "Record found", token stripped from the URL, no student data, unknown/absent/query-string tokens refused, a second scan in the same tab re-verifies, no page errors |
+| Real-browser sign-in for both roles | **9/9** — form renders, protected route reached, session token stored, dashboard content rendered, no page errors |
+| Field-officer screens | `/students` renders the three live records (3.2 s warm, measured from `performance.getEntriesByType('resource')`); `/students/register` renders its 6 inputs; both make CORS requests from the App Service origin that return 200 |
+| QR images for the three live students | written to `%USERPROFILE%\Desktop\SBMS_QR\` — scannable with a phone camera |
+
+### Carry-forward
+
+- The frontend fix is **local and uncommitted** (`frontend/src/pages/Verification.jsx`). A later
+  `provision.ps1 -DeployFrontend` from a clean checkout would silently restore the defect until the
+  change is committed.
+- The container app still runs image `ghcr.io/eggxellent/sbms-api:f3ad3be…`. The uncommitted backend
+  work (single `/api/verify` registration, tests) is **not** deployed and is not needed for the app
+  to work.
+- Reading the `users` table needed a temporary single-IP firewall rule for the operator machine; it
+  was created at 11:10:20Z and deleted at 11:11:33Z (activity log), so the firewall is back to
+  "Azure services only".
+- The database is **running** ($0.02/h). Re-stop by **2026-11-08 11:03** with `stop.ps1` or
+  `teardown.ps1 -Stop`.
+- Sign-in is rate limited to **10 attempts / 15 minutes per IP** (`backend/src/middleware/loginRateLimit.js`,
+  in-memory, per process). The scripted runs in this session tripped it and produced a 429 and two
+  misleading "page did not render" results; a person is unaffected unless they submit ten times.
+
+
+## 8. Admin verification of masked identifiers (1 November 2026)
+
+### The defect the owner hit
+
+An administrator could not check a flagged pair against the documents a guardian presents:
+
+1. `GET /api/duplicate-flags` masked `guardian_id`, `upi`, `birth_certificate_number` and
+   `national_id_number` via `maskIdentifier()` (`backend/src/controllers/duplicateFlags.controller.js`),
+   and **no endpoint revealed them**. The mask was pinned by `backend/tests/duplicateFlags.test.js:117`,
+   so it was deliberate — but nothing replaced it with a way to verify.
+2. The guardian's phone (`students.primary_phone`, collected by the registration form) was **never
+   selected**, so the queue could not show a guardian contact at all.
+3. Opening a case closed it again: `fetchCases` depended on `selectedId`, so opening a row fired a
+   fresh queue request, and the earlier in-flight response ran
+   `if (!cases.some(id === selectedId)) setSelectedId(null)` with a stale `selectedId`. Reproduced in
+   production **with no reveal involved** (`dialog_after_open_no_reveal=false`).
+
+### The patch
+
+| File | Change |
+| --- | --- |
+| `backend/src/controllers/duplicateFlags.controller.js` | selects `primary_phone` for both students, returns it masked as `guardian_contact`, and adds `revealIdentifiers`: the full identifier set for one case, written to `audit_logs` as `REVEAL_DUPLICATE_IDENTIFIERS` |
+| `backend/src/routes/duplicateFlags.routes.js` | `GET /api/duplicate-flags/:id/identifiers`, `admin` only |
+| `backend/tests/duplicateFlags.test.js` | the queue still masks; the reveal returns the stored UPI, birth certificate, National ID and guardian contact; a field officer gets 403; an unknown case gets 404; the audit row names the reviewer |
+| `frontend/src/pages/DuplicateReview.jsx` | `Guardian contact` row, a `Reveal identifiers` control with its audit confirmation, and the stale-closure fix (`setSelectedId` resolved inside the updater; `fetchCases` no longer depends on `selectedId`) |
+| `scripts/admin-reveal-smoke.mjs` | headless-Chrome check of the whole admin path |
+
+The queue payload stays masked, and the reveal is per case, admin-only and audited, so O10 (admins
+do not read `/api/students`) is unchanged: a live admin token still gets 403 there.
+
+### Evidence
+
+| Check | Result |
+| --- | --- |
+| `npx jest tests/duplicateFlags.test.js -t "identifiers"` | pass (new test) |
+| `npx jest tests/duplicateFlags.test.js -t "should return pending duplicate flags"` | pass (queue still masks) |
+| `npx jest tests/roleAuthorization.test.js` | 6/6 pass |
+| GitHub Actions `publish-api-image.yml` for `a3714f8` | success |
+| `az containerapp update --image ghcr.io/eggxellent/sbms-api:a3714f8c…` | revision `ca-sbms-api--latest` Provisioned at 12:03Z |
+| Live `GET /api/duplicate-flags/:id/identifiers` as `admin@sbms.test` | 200; `revealed_fields=guardian_id,guardian_contact,upi,birth_certificate_number,national_id_number`; values differ from the masked queue; `audit_logs` row `REVEAL_DUPLICATE_IDENTIFIERS` for `admin@sbms.test` on the same case |
+| Live admin `GET /api/students` | 403 (O10 intact) |
+| `npm --prefix frontend run build` + `az webapp deploy` | redeployed; the live `index.html` serves the new bundle hash |
+| `node scripts/admin-reveal-smoke.mjs` against production | **9/9** — sign-in, queue, the case dialog stays open, 60 masked characters, guardian contact row present, reveal confirmation, 0 masked characters after the reveal, no page errors |
+
+### Carry-forward
+
+- The live student records hold **no `primary_phone` and no `national_id_number`**, so those two rows
+  read "Unavailable" for the existing cases; the queue shows them as soon as a record stores them
+  (the registration form requires both). Backfilling the demo records needs a temporary single-IP
+  firewall rule and a direct `UPDATE`, and was not done because it changes beneficiary data.
+- `frontend/src/pages/Verification.jsx` and `backend/src/index.js` are still uncommitted from the
+  previous session; only the files above were committed.
+- The database is still **running** ($0.02/h): re-stop by **2026-11-08 11:03Z**.
+

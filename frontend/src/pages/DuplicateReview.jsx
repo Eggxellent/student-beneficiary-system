@@ -70,13 +70,16 @@ export default function DuplicateReview() {
       setPagination(response.data.pagination);
       setPolicy(response.data.policy);
       setSchools(response.data.schools || []);
-      if (!response.data.cases.some((item) => item.id === selectedId)) setSelectedId(null);
+      // Resolve against the newest selection inside the updater. A response from a request
+      // that started before a reviewer opened a row must not close the dialog they just opened.
+      const availableIds = new Set(response.data.cases.map((item) => item.id));
+      setSelectedId((current) => (current && !availableIds.has(current) ? null : current));
     } catch (err) {
       setError(err.response?.data?.message || "Could not load review cases.");
     } finally {
       setLoading(false);
     }
-  }, [filters, page, selectedId]);
+  }, [filters, page]);
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
 
