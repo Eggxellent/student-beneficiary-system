@@ -134,3 +134,23 @@ repaired after submission.
 - It does not resolve contradictions in favour of the more convenient version; it records them.
 - It does not replace the author's judgement on the six ambiguities in `ACADEMIC_GUIDE_REQUIREMENTS.md` §6.
 
+---
+
+## 9. PDF rendering
+
+`docs/final-documentation-content/pdf/` holds a PDF of every file in this folder, plus
+`SBMS_CHAPTERS_4_5_6_DOCUMENTATION_PACKAGE.pdf`, which carries a cover page, a contents list and all 27 files in the
+§1 reading order. The PDFs add no content: they are this markdown, paginated, so a claim is no stronger in PDF than
+it is in the `.md` source.
+
+Regenerate after any edit:
+
+```
+node scripts/docs-to-pdf.mjs            # every file, then the combined package
+node scripts/docs-to-pdf.mjs --combined # combined package only
+```
+
+The renderer uses headless Chrome and no third-party packages, so a PDF can be no more than one command out of date
+with its source.
+
+
