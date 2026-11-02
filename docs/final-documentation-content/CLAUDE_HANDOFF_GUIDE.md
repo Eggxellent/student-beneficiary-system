@@ -138,19 +138,29 @@ repaired after submission.
 
 ## 9. PDF rendering
 
-`docs/final-documentation-content/pdf/` holds a PDF of every file in this folder, plus
-`SBMS_CHAPTERS_4_5_6_DOCUMENTATION_PACKAGE.pdf`, which carries a cover page, a contents list and all 27 files in the
-§1 reading order. The PDFs add no content: they are this markdown, paginated, so a claim is no stronger in PDF than
-it is in the `.md` source.
+`docs/final-documentation-content/pdf/` holds four files:
+
+- `SBMS_CHAPTERS_4_5_6_DOCUMENTATION_PACKAGE.pdf` — cover page, contents list and all 27 files in the §1 reading
+  order. This is the set; nothing in the folder is missing from it.
+- `CHAPTER_4_SYSTEM_ANALYSIS_AND_DESIGN.pdf`, `CHAPTER_5_IMPLEMENTATION_TESTING_AND_EVALUATION.pdf`,
+  `CHAPTER_6_CONCLUSIONS_RECOMMENDATIONS_AND_FUTURE_WORKS.pdf` — the three chapters kept apart because they are
+  printed, annotated and submitted on their own.
+
+Per-file PDFs for the other 24 documents are deliberately not kept: each would be a second copy of a document that
+is already in the package. The PDFs add no content in any case — they are this markdown, paginated, so a claim is no
+stronger in PDF than in the `.md` source.
 
 Regenerate after any edit:
 
 ```
-node scripts/docs-to-pdf.mjs            # every file, then the combined package
+node scripts/docs-to-pdf.mjs            # combined package + the three chapters
 node scripts/docs-to-pdf.mjs --combined # combined package only
+node scripts/docs-to-pdf.mjs --all      # one PDF per file, all 27, if you really want them
 ```
 
-The renderer uses headless Chrome and no third-party packages, so a PDF can be no more than one command out of date
-with its source.
+A run that writes the per-file PDFs also deletes any PDF it did not produce, so the folder cannot drift back into
+duplicates. The renderer uses headless Chrome and no third-party packages, so a PDF can be no more than one command
+out of date with its source.
+
 
 

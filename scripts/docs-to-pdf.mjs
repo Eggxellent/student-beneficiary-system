@@ -5,10 +5,15 @@
  * No third-party dependency: a small CommonMark-subset renderer produces styled HTML,
  * and headless Chrome (already installed) prints it to A4 PDF.
  *
- *   node scripts/docs-to-pdf.mjs                  # every file + one combined PDF
+ *   node scripts/docs-to-pdf.mjs                  # combined PDF + the three chapter drafts
  *   node scripts/docs-to-pdf.mjs --combined       # combined PDF only
- *   node scripts/docs-to-pdf.mjs --individual     # one PDF per file only
+ *   node scripts/docs-to-pdf.mjs --all            # one PDF for every file (28 files)
  *   node scripts/docs-to-pdf.mjs --only=CHAPTER_4_SYSTEM_ANALYSIS_AND_DESIGN.md
+ *
+ * The default is deliberately small: the combined package already contains every document,
+ * so a per-file PDF for it would be a second copy. Only the chapters are also kept apart,
+ * because those are the files that get printed, annotated and submitted on their own.
+ * A full per-file run prunes any PDF the current run did not produce.
  *
  * Output: docs/final-documentation-content/pdf/
  * The HTML used for printing is written to the OS temp directory, never to the repo.
@@ -54,6 +59,14 @@ const ORDER = [
   'EVIDENCE_AND_VERIFICATION_REPORT.md',
   'OBJECTIVE_REQUIREMENT_TEST_TRACEABILITY.md',
   'SBMS_COMPREHENSIVE_CHAPTERS_4_5_6_INFORMATION_REPORT.md',
+];
+
+// Standalone PDFs kept in addition to the combined package: the three chapters, because those
+// are read, annotated and printed separately from the evidence set they are built on.
+const DELIVERABLES = [
+  'CHAPTER_4_SYSTEM_ANALYSIS_AND_DESIGN.md',
+  'CHAPTER_5_IMPLEMENTATION_TESTING_AND_EVALUATION.md',
+  'CHAPTER_6_CONCLUSIONS_RECOMMENDATIONS_AND_FUTURE_WORKS.md',
 ];
 
 const CHROME_CANDIDATES = [
@@ -498,8 +511,12 @@ function main() {
   const argv = process.argv.slice(2);
   const onlyArg = argv.find((arg) => arg.startsWith('--only='));
   const filter = onlyArg ? onlyArg.slice('--only='.length) : null;
-  const wantCombined = !argv.includes('--individual');
-  const wantIndividual = !argv.includes('--combined');
+  const onlyCombined = argv.includes('--combined');
+  const onlyIndividual = argv.includes('--individual');
+  const wantAll = argv.includes('--all');
+  // Additive, so passing both flags (or neither) means "both" rather than silently doing nothing.
+  const wantCombined = onlyCombined || !onlyIndividual;
+  const wantIndividual = onlyIndividual || !onlyCombined;
 
   const chrome = findChrome();
   fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -517,7 +534,10 @@ function main() {
   const report = [];
 
   if (wantIndividual) {
-    for (const name of documents) {
+    const standalone =
+      filter || wantAll ? documents : documents.filter((name) => DELIVERABLES.includes(name));
+    const produced = new Set([COMBINED_NAME]);
+    for (const name of standalone) {
       const { html } = rendered.get(name);
       const base = path.basename(name, '.md');
       const htmlPath = path.join(workDir, `${base}.html`);
@@ -525,7 +545,17 @@ function main() {
       const withFirstFlag = html.replace('<h1 class="doc-start"', '<h1 class="doc-start first"');
       fs.writeFileSync(htmlPath, documentShell(base, withFirstFlag), 'utf8');
       const bytes = printPdf({ chrome, htmlPath, pdfPath, workDir });
+      produced.add(`${base}.pdf`);
       report.push({ file: `${base}.pdf`, pages: pageCount(pdfPath), bytes });
+    }
+    if (!filter) {
+      // A full run owns the output folder: remove PDFs this run did not produce, so a wider
+      // earlier run cannot leave duplicate copies behind.
+      const pruned = fs
+        .readdirSync(OUT_DIR)
+        .filter((entry) => entry.endsWith('.pdf') && !produced.has(entry));
+      for (const entry of pruned) fs.rmSync(path.join(OUT_DIR, entry));
+      if (pruned.length) console.log(`Pruned ${pruned.length} PDF(s) not in this set: ${pruned.join(', ')}`);
     }
   }
 
@@ -563,7 +593,7 @@ ${documents.map((name) => `<section class="part" data-doc="${escapeHtml(name)}">
     report.push({ file: COMBINED_NAME, pages: pageCount(pdfPath), bytes });
   }
 
-  console.log(`Rendered with ${path.basename(chrome)} (${documents.length} markdown files)`);
+  console.log(`Rendered with ${path.basename(chrome)}: ${report.length} PDF(s) from ${documents.length} markdown files`);
   for (const item of report) {
     console.log(`  ${item.file.padEnd(64)} ${String(item.pages).padStart(4)} pages ${(item.bytes / 1024).toFixed(0).padStart(6)} KB`);
   }
