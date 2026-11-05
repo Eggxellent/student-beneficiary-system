@@ -4,14 +4,23 @@ const { z } = require('zod');
 const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
 const certificateModel = require('../models/bursaryCertificate.model');
-const { buildCertificateVerificationUrl } = require('../config/publicAppUrl');
+const {
+  buildCertificateVerificationUrl,
+  buildCertificateVerificationPageUrl,
+} = require('../config/publicAppUrl');
+const { getCertificateIdentity } = require('../config/certificateIdentity');
+const {
+  generateCertificateReference,
+  normalizeCertificateReference,
+} = require('../services/certificateReference');
 const { renderCertificatePdf } = require('../services/certificateDocument');
 
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 const AWARD_PERIOD_PATTERN = /^\d{4}(\/\d{4})?$/;
-// The only organisation named on a certificate. Nothing here claims an endorsement, seal or
-// signature that the project cannot produce.
-const ISSUING_AUTHORITY = 'Student Beneficiary Management System (SBMS)';
+// A reference is only written into the table by `issue()`; this is the retry budget when the
+// database's UNIQUE constraint rejects a freshly generated one.
+const REFERENCE_ATTEMPTS = 5;
+
 
 const issueSchema = z.object({
   award_period: z.string().trim().regex(AWARD_PERIOD_PATTERN, 'Use a year such as 2026 or a range such as 2025/2026').optional(),
@@ -27,7 +36,7 @@ function toIso(value) {
 
 // Staff-facing shape: enough to print and reconcile the certificate, including the identifiers that
 // appear on the paper document.
-function staffView(row, verificationUrl) {
+function staffView(row, verificationUrl, manualVerificationUrl) {
   return {
     id: row.id,
     award_id: row.award_id,
@@ -44,13 +53,24 @@ function staffView(row, verificationUrl) {
     revoked_at: row.revoked_at ? toIso(row.revoked_at) : null,
     revocation_reason: row.revocation_reason || null,
     verification_url: verificationUrl,
+    verification_page_url: manualVerificationUrl,
   };
 }
 
-// Public shape: the minimum needed to establish authenticity. Deliberately excludes the student's
-// name, UPI, school, date of birth and identifiers, and the award amount, because the holder of the
-// link may be anyone who scanned a printed certificate.
+// Public shape. It exists so a stranger can compare a paper document against the authority of the
+// database, which means it must show what the paper shows: the name, the institution, the academic
+// year, the approved amount and the issue date. That is a deliberate disclosure decision, recorded
+// in `docs/bursary-certificates-2026-11-01.md`; the holder of a certificate is handing it to a
+// school or an employer precisely so they can read those facts.
+//
+// What it never shows: UPI or any other identifier, date of birth, national ID, birth certificate
+// number, guardian or phone details, address, supporting-document references, duplicate-detection
+// scores or flags, administrative notes, database identifiers, or the verification token itself.
+// A revoked certificate answers with the minimum needed to identify it, because the disclosure
+// decision above was made for a document that is current.
 function publicView(row) {
+  const identity = getCertificateIdentity();
+
   if (!row) return { valid: false, status: 'not_recognised' };
 
   if (row.status === 'revoked') {
@@ -60,7 +80,7 @@ function publicView(row) {
       certificate_reference: row.certificate_reference,
       award_period: row.award_period,
       revoked_at: row.revoked_at ? toIso(row.revoked_at) : null,
-      issuing_authority: ISSUING_AUTHORITY,
+      issuing_authority: identity.issuingAuthority,
     };
   }
 
@@ -72,7 +92,7 @@ function publicView(row) {
       valid: false,
       status: 'not_current',
       certificate_reference: row.certificate_reference,
-      issuing_authority: ISSUING_AUTHORITY,
+      issuing_authority: identity.issuingAuthority,
     };
   }
 
@@ -80,13 +100,41 @@ function publicView(row) {
     valid: true,
     status: 'verified',
     certificate_reference: row.certificate_reference,
+    beneficiary_name: row.student_name,
+    institution: row.school_code,
+    programme: identity.programme,
+    constituency: identity.constituency,
     award_period: row.award_period,
+    approved_amount: Number(row.approved_amount),
     issued_at: toIso(row.issued_at),
     award_approved_at: toIso(row.award_approved_at),
     award_status: 'approved',
-    issuing_authority: ISSUING_AUTHORITY,
+    issuing_authority: identity.issuingAuthority,
   };
 }
+
+// The database owns uniqueness. A reference collision is astronomically unlikely at 55 bits, but it
+// is still possible, and it must not surface as a 500. Each attempt runs inside its own savepoint
+// because a failed INSERT aborts the surrounding transaction.
+async function insertWithUniqueReference(client, data, year) {
+  for (let attempt = 1; attempt <= REFERENCE_ATTEMPTS; attempt += 1) {
+    const certificateReference = generateCertificateReference({ year });
+    await client.query('SAVEPOINT certificate_insert');
+    try {
+      const created = await certificateModel.insert({ ...data, certificate_reference: certificateReference }, client);
+      await client.query('RELEASE SAVEPOINT certificate_insert');
+      return created;
+    } catch (error) {
+      await client.query('ROLLBACK TO SAVEPOINT certificate_insert');
+      const detail = `${error.constraint || ''} ${error.detail || ''}`;
+      const referenceClash = error.code === '23505' && detail.includes('certificate_reference');
+      if (!referenceClash) throw error;
+    }
+  }
+
+  throw new Error('Unable to allocate a unique certificate reference');
+}
+
 
 async function qrDataUrl(verificationUrl) {
   return QRCode.toDataURL(verificationUrl, { margin: 1, width: 320 });
@@ -137,14 +185,13 @@ async function issue(req, res, next) {
     const year = new Date(approvedAt).getUTCFullYear();
     const awardPeriod = parsed.data.award_period || String(year);
     const token = randomBytes(32).toString('hex');
-    const reference = `SBMS-CERT-${year}-${randomBytes(4).toString('hex').toUpperCase()}`;
-    // Resolved before the row is written so a bad PUBLIC_APP_URL fails without leaving a
-    // certificate that no QR code can reach.
+    // Both URLs are resolved before the row is written, so a bad PUBLIC_APP_URL fails without
+    // leaving a certificate that no QR code can reach.
     const verificationUrl = buildCertificateVerificationUrl(token);
+    const manualVerificationUrl = buildCertificateVerificationPageUrl();
 
-    const created = await certificateModel.insert({
+    const created = await insertWithUniqueReference(client, {
       award_id: award.id,
-      certificate_reference: reference,
       verification_token: token,
       award_period: awardPeriod,
       student_name: student.full_name,
@@ -153,14 +200,14 @@ async function issue(req, res, next) {
       approved_amount: award.approved_amount,
       award_approved_at: approvedAt,
       issued_by: actorId,
-    }, client);
+    }, year);
     if (!created) {
       await client.query('ROLLBACK');
       return res.status(409).json({ message: 'A certificate has already been issued for this award.' });
     }
     await logAudit(actorId, 'AWARD_CERTIFICATE_ISSUED', 'bursary_certificates', created.id, {
       award_id: award.id,
-      certificate_reference: reference,
+      certificate_reference: created.certificate_reference,
       award_period: awardPeriod,
     }, client);
     await client.query('COMMIT');
@@ -168,9 +215,10 @@ async function issue(req, res, next) {
     const row = await certificateModel.findById(created.id);
     return res.status(201).json({
       message: 'Certificate issued.',
-      certificate: staffView(row, verificationUrl),
+      certificate: staffView(row, verificationUrl, manualVerificationUrl),
       qr_code: await qrDataUrl(verificationUrl),
       verification_url: verificationUrl,
+      verification_page_url: manualVerificationUrl,
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -185,10 +233,12 @@ async function get(req, res, next) {
     const row = await certificateModel.findByAwardId(req.params.id);
     if (!row) return res.status(404).json({ message: 'No certificate has been issued for this award.' });
     const verificationUrl = buildCertificateVerificationUrl(row.verification_token);
+    const manualVerificationUrl = buildCertificateVerificationPageUrl();
     return res.json({
-      certificate: staffView(row, verificationUrl),
+      certificate: staffView(row, verificationUrl, manualVerificationUrl),
       qr_code: await qrDataUrl(verificationUrl),
       verification_url: verificationUrl,
+      verification_page_url: manualVerificationUrl,
     });
   } catch (error) {
     return next(error);
@@ -200,7 +250,14 @@ async function downloadPdf(req, res, next) {
     const row = await certificateModel.findByAwardId(req.params.id);
     if (!row) return res.status(404).json({ message: 'No certificate has been issued for this award.' });
     const verificationUrl = buildCertificateVerificationUrl(row.verification_token);
-    const pdf = await renderCertificatePdf({ certificate: row, verificationUrl });
+    const pdf = await renderCertificatePdf({
+      certificate: row,
+      // The QR carries the opaque token. The paper prints the base page and the reference, so a
+      // reader who cannot scan types a reference instead of copying a token out of print.
+      verificationUrl,
+      manualVerificationUrl: buildCertificateVerificationPageUrl(),
+      identity: getCertificateIdentity(),
+    });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${row.certificate_reference}.pdf"`);
     res.setHeader('Cache-Control', 'no-store');
@@ -246,25 +303,39 @@ async function revoke(req, res, next) {
 }
 
 // Public endpoint. It is deliberately shaped like the student-record endpoint: exactly one key,
-// a fixed token shape, and the same answer for a malformed and an unknown token so the endpoint
-// cannot be used to tell "this token exists but was refused" from "this token was never issued".
+// a fixed token shape, and the same answer for a malformed and an unknown value so the endpoint
+// cannot be used to tell "this value exists but was refused" from "this value was never issued".
+//
+// Two things resolve to the same certificate row: the opaque QR token, and the reference printed on
+// the certificate for someone who cannot scan. Both are answered from the database, both share this
+// route's rate-limit budget, and neither is logged.
+const NOT_RECOGNISED = { valid: false, status: 'not_recognised' };
+
 async function verifyPublic(req, res) {
   const body = req.body;
-  const hasExactShape = body
-    && typeof body === 'object'
-    && !Array.isArray(body)
-    && Object.keys(body).length === 1
-    && Object.hasOwn(body, 'token');
+  const keys = body && typeof body === 'object' && !Array.isArray(body) ? Object.keys(body) : [];
+  if (keys.length !== 1) return res.json(NOT_RECOGNISED);
 
-  if (!hasExactShape || typeof body.token !== 'string' || !TOKEN_PATTERN.test(body.token)) {
-    return res.json({ valid: false, status: 'not_recognised' });
-  }
+  const [key] = keys;
+  let row;
 
   try {
-    const row = await certificateModel.findByVerificationToken(body.token);
+    if (key === 'token') {
+      if (typeof body.token !== 'string' || !TOKEN_PATTERN.test(body.token)) {
+        return res.json(NOT_RECOGNISED);
+      }
+      row = await certificateModel.findByVerificationToken(body.token);
+    } else if (key === 'reference') {
+      const reference = normalizeCertificateReference(body.reference);
+      if (!reference) return res.json(NOT_RECOGNISED);
+      row = await certificateModel.findByReference(reference);
+    } else {
+      return res.json(NOT_RECOGNISED);
+    }
+
     return res.json(publicView(row));
   } catch {
-    // Never log or return the submitted token or database error details.
+    // Never log or return the submitted value or database error details.
     return res.status(503).json({ error: 'temporarily_unavailable' });
   }
 }

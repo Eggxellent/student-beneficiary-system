@@ -26,6 +26,14 @@ async function findByVerificationToken(token, executor = pool) {
   return rows[0] || null;
 }
 
+// The manual-verification path. The caller passes an already-normalised reference (see
+// `services/certificateReference`), so the comparison is an exact match on an indexed unique
+// column and cannot be widened by clever input.
+async function findByReference(reference, executor = pool) {
+  const { rows } = await executor.query(`${WITH_LIVE_AWARD} WHERE c.certificate_reference = $1`, [reference]);
+  return rows[0] || null;
+}
+
 async function insert({
   award_id, certificate_reference, verification_token, award_period, student_name, student_upi,
   school_code, approved_amount, award_approved_at, issued_by,
@@ -54,4 +62,4 @@ async function revoke(id, { actorId, reason }, executor = pool) {
   return rows[0] || null;
 }
 
-module.exports = { findByAwardId, findById, findByVerificationToken, insert, revoke };
+module.exports = { findByAwardId, findById, findByVerificationToken, findByReference, insert, revoke };

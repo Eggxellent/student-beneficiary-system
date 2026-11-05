@@ -38,7 +38,8 @@ export function PublicVerificationLayout({ children }) {
 
         <p className="mt-5 text-center text-xs leading-relaxed text-slate-600">
           Verification is answered live from the SBMS database. These public pages never display
-          beneficiary names, dates of birth, identifiers, school details or award amounts.
+          national ID numbers, birth certificate numbers, dates of birth, guardian contacts, home
+          addresses, supporting documents or duplicate-detection results.
         </p>
       </div>
     </div>

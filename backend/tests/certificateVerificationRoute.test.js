@@ -73,6 +73,24 @@ describe("Public certificate verification route wiring", () => {
     expect(JSON.stringify(response.body)).not.toMatch(/name|school|upi|birth|phone|amount/i);
   });
 
+  test("the manual-reference path is on the same limited route and answers the same way", async () => {
+    const typed = await request(app)
+      .post("/api/certificates/verify")
+      .send({ reference: "SBMS-2026-2222-2222-222" });
+    expect(typed.statusCode).toBe(200);
+    expect(typed.body).toEqual({ valid: false, status: "not_recognised" });
+
+    // A reference lookup spends the same per-IP budget as a QR lookup, so neither path can be used
+    // to brute force around the other.
+    await exhaustBudget();
+
+    const refused = await request(app)
+      .post("/api/certificates/verify")
+      .send({ reference: "SBMS-2026-2222-2222-222" });
+    expect(refused.statusCode).toBe(429);
+    expect(refused.body).toEqual({ message: "Too many requests. Try again later." });
+  });
+
   test("the student-record and certificate budgets are separate", async () => {
     await exhaustBudget();
 

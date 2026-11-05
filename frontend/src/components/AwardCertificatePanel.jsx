@@ -325,6 +325,12 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
                               <dt className="text-slate-600">Verification link encoded in the QR code</dt>
                               <dd className="mt-1 break-all font-mono text-[11px] text-slate-700">{certificate.verification_url}</dd>
                             </div>
+                            <div className="pt-2">
+                              <dt className="text-slate-600">Manual verification page (reference is printed on the PDF)</dt>
+                              <dd className="mt-1 break-all font-mono text-[11px] text-slate-700">
+                                {certificate.verification_page_url}
+                              </dd>
+                            </div>
                             {certificate.status === "revoked" && certificate.revocation_reason && (
                               <div className="pt-2">
                                 <dt className="text-slate-600">Revocation reason</dt>

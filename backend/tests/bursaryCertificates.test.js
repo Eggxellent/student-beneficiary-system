@@ -187,13 +187,16 @@ describe("Bursary award certificates", () => {
     expect(response.statusCode).toBe(201);
 
     certificate = response.body.certificate;
-    expect(certificate.certificate_reference).toMatch(/^SBMS-CERT-\d{4}-[0-9A-F]{8}$/);
+    expect(certificate.certificate_reference).toMatch(
+      /^SBMS-\d{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{3}$/
+    );
     expect(certificate.award_period).toBe("2025/2026");
     expect(certificate.approved_amount).toBe(45000);
     expect(certificate.student_name).toBe(student.full_name);
     expect(certificate.school_code).toBe("Nairobi School");
     expect(certificate.issued_by_name).toBe("CertificateAdmin");
     expect(certificate.status).toBe("active");
+    expect(certificate.verification_page_url).toBe("https://sbms-test-fixture.ac.ke/verify-certificate");
 
     expect(response.body.verification_url).toMatch(
       /^https:\/\/sbms-test-fixture\.ac\.ke\/verify-certificate#token=[a-f0-9]{64}$/
@@ -207,6 +210,11 @@ describe("Bursary award certificates", () => {
     );
     expect(stored.rows[0].verification_token).toBe(token);
     expect(Number(stored.rows[0].approved_amount)).toBe(45000);
+
+    // The QR payload carries the opaque token and the printed reference carries neither the token
+    // nor any database identifier.
+    expect(response.body.verification_url).not.toContain(certificate.certificate_reference);
+    expect(certificate.certificate_reference).not.toContain(token);
   });
 
   test("a second certificate cannot be issued for the same award", async () => {
@@ -232,40 +240,112 @@ describe("Bursary award certificates", () => {
     expect(pdf.body.subarray(0, 4).toString()).toBe("%PDF");
     expect(pdf.body.length).toBeGreaterThan(5000);
 
+    // One A4 landscape page: the printed certificate must not spill onto a second sheet.
+    const raw = pdf.body.toString("latin1");
+    expect((raw.match(/\/Type \/Page[^s]/g) || [])).toHaveLength(1);
+    expect(raw).toContain("MediaBox [0 0 841.89 595.28]");
+    expect(raw).not.toMatch(/\/URI/);
+
+    // A reprint of the same certificate is the same document, byte for byte.
+    const reprint = await request(app)
+      .get(`/api/awards/${approvedAward}/certificate.pdf`)
+      .set(auth(officer));
+    expect(reprint.statusCode).toBe(200);
+    expect(reprint.body.equals(pdf.body)).toBe(true);
+
     const missing = await request(app).get(`/api/awards/${pendingAward}/certificate`).set(auth(admin));
     expect(missing.statusCode).toBe(404);
     const missingPdf = await request(app).get(`/api/awards/${pendingAward}/certificate.pdf`).set(auth(admin));
     expect(missingPdf.statusCode).toBe(404);
   });
 
-  test("the public endpoint confirms authenticity without exposing beneficiary data", async () => {
+  test("the public endpoint shows the certificate facts a printed copy can be compared with", async () => {
     const token = await tokenFromVerificationUrl(certificate.verification_url);
     const response = await request(app).post("/api/certificates/verify").send({ token });
 
     expect(response.statusCode).toBe(200);
     expect(Object.keys(response.body).sort()).toEqual([
+      "approved_amount",
       "award_approved_at",
       "award_period",
       "award_status",
+      "beneficiary_name",
       "certificate_reference",
+      "constituency",
+      "institution",
       "issued_at",
       "issuing_authority",
+      "programme",
       "status",
       "valid",
     ]);
     expect(response.body.valid).toBe(true);
     expect(response.body.status).toBe("verified");
     expect(response.body.certificate_reference).toBe(certificate.certificate_reference);
+    expect(response.body.beneficiary_name).toBe(student.full_name);
+    expect(response.body.institution).toBe("Nairobi School");
+    expect(response.body.programme).toBe("NG-CDF bursary programme");
+    expect(response.body.constituency).toBeNull();
+    expect(response.body.approved_amount).toBe(45000);
     expect(response.body.award_period).toBe("2025/2026");
     expect(response.body.issuing_authority).toBe("Student Beneficiary Management System (SBMS)");
     expect(Number.isNaN(Date.parse(response.body.issued_at))).toBe(false);
     expect(Number.isNaN(Date.parse(response.body.award_approved_at))).toBe(false);
 
-    // The whole body, not a chosen field, is checked: a future edit that adds the student name,
-    // school, identifier or amount would fail here.
+    // The disclosure is limited to what the paper document shows. The whole body is checked, so a
+    // future edit that adds an identifier, a contact, a document reference, a duplicate score or
+    // the verification token itself fails here.
     const serialized = JSON.stringify(response.body);
-    for (const forbidden of [student.full_name, student.upi, "Nairobi School", "45000", "birth_certificate"]) {
+    for (const forbidden of [
+      student.upi,
+      student.national_id_number || "NATIONAL-ID-NOT-SET",
+      student.birth_certificate_number || "BIRTH-CERT-NOT-SET",
+      "primary_phone",
+      "date_of_birth",
+      "guardian",
+      "award_id",
+      "verification_token",
+      "duplicate",
+      token,
+    ]) {
       expect(serialized).not.toContain(forbidden);
+    }
+  });
+
+  test("the printed reference verifies the same certificate as the QR code", async () => {
+    const token = await tokenFromVerificationUrl(certificate.verification_url);
+    const byToken = await request(app).post("/api/certificates/verify").send({ token });
+    const reference = certificate.certificate_reference;
+
+    for (const typed of [reference, reference.toLowerCase(), `  ${reference}  `, reference.replace(/-/g, " ")]) {
+      const byReference = await request(app).post("/api/certificates/verify").send({ reference: typed });
+      expect(byReference.statusCode).toBe(200);
+      expect(byReference.body).toEqual(byToken.body);
+    }
+
+    // The code part alone is enough: people copy only that part of the printed reference.
+    const bodyOnly = await request(app)
+      .post("/api/certificates/verify")
+      .send({ reference: reference.replace(/^SBMS-/, "") });
+    expect(bodyOnly.body.certificate_reference).toBe(reference);
+  });
+
+  test("a reference that matches nothing is refused without revealing anything", async () => {
+    const bodies = [
+      { reference: "SBMS-2026-2222-2222-222" },
+      { reference: "SBMS-CERT-2026-00000000" },
+      { reference: "SBMS-2026-IIII-IIII-III" },
+      { reference: "not a reference" },
+      { reference: 12345 },
+      { reference: null },
+      { reference: certificate.certificate_reference, token: "a".repeat(64) },
+      { certificate_reference: certificate.certificate_reference },
+    ];
+
+    for (const body of bodies) {
+      const response = await request(app).post("/api/certificates/verify").send(body);
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toEqual({ valid: false, status: "not_recognised" });
     }
   });
 
@@ -316,6 +396,13 @@ describe("Bursary award certificates", () => {
     expect(issued.statusCode).toBe(201);
     secondCertificate = issued.body.certificate;
     const token = await tokenFromVerificationUrl(issued.body.verification_url);
+
+    // Every certificate gets its own reference: two awards never share one, and the code part is
+    // not a sequence number.
+    expect(secondCertificate.certificate_reference).not.toBe(certificate.certificate_reference);
+    expect(secondCertificate.certificate_reference.slice(10)).not.toBe(
+      certificate.certificate_reference.slice(10)
+    );
 
     const before = await request(app).post("/api/certificates/verify").send({ token });
     expect(before.body.status).toBe("verified");
