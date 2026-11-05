@@ -78,7 +78,6 @@ async function main() {
   console.log(`Pending review flags eligible to seed: ${eligible.length}`);
   console.log(`Scenario pairs: ${JSON.stringify(caseCounts)}`);
   console.log(`Scenario outcomes: ${JSON.stringify(scenarioOutcomes)}`);
-  console.log(`Scholarship disbursement examples planned: ${ordinaryStudents.length}`);
   if (!APPLY) {
     console.log('Dry run only. To add these marked records to this local development database, review the target, then set SBMS_ALLOW_LOCAL_SYNTHETIC_SEED=YES and pass --apply. No rows were written.');
     return;
@@ -140,36 +139,15 @@ async function main() {
       seededByCategory[item.category] = (seededByCategory[item.category] || 0) + 1;
     }
 
-    let disbursementsInserted = 0;
-    for (let index = 0; index < ordinaryStudents.length; index += 1) {
-      const record = ordinaryStudents[index];
-      const studentId = idsByCode.get(record.code);
-      const amount = [8500, 12000, 15000, 18000, 22000, 10000, 13500, 24500][index];
-      const date = `2026-${String(index + 1).padStart(2, '0')}-15`;
-      const existingPayment = await client.query(
-        `SELECT id FROM disbursements
-         WHERE student_id = $1 AND amount = $2 AND disbursement_date = $3 AND created_by IS NULL LIMIT 1`,
-        [studentId, amount, date]
-      );
-      if (!existingPayment.rows.length) {
-        await client.query(
-          `INSERT INTO disbursements (student_id, amount, disbursement_date, status)
-           VALUES ($1, $2, $3, 'completed')`,
-          [studentId, amount, date]
-        );
-        disbursementsInserted += 1;
-      }
-    }
-
-    if (studentsInserted || flagsInserted || disbursementsInserted) {
+    if (studentsInserted || flagsInserted) {
       await client.query(
         `INSERT INTO audit_logs (action, table_name, details)
          VALUES ('SEED_SYNTHETIC_KENYAN_TEST_DATA', 'students', $1)`,
-        [{ seed_id: SEED_ID, synthetic: true, students_inserted: studentsInserted, review_flags_inserted: flagsInserted, review_flags_existing: flagsAlreadyPresent, disbursements_inserted: disbursementsInserted, comparisons: evaluated.length, scenario_pairs: caseCounts, outcomes: outcomeCounts }]
+        [{ seed_id: SEED_ID, synthetic: true, students_inserted: studentsInserted, review_flags_inserted: flagsInserted, review_flags_existing: flagsAlreadyPresent, comparisons: evaluated.length, scenario_pairs: caseCounts, outcomes: outcomeCounts }]
       );
     }
     await client.query('COMMIT');
-    console.log(`Seed applied (idempotent). New students: ${studentsInserted}/${records.length}; new pending review flags: ${flagsInserted}; already-present eligible flags: ${flagsAlreadyPresent}; new sample disbursements: ${disbursementsInserted}/${ordinaryStudents.length}.`);
+    console.log(`Seed applied (idempotent). New students: ${studentsInserted}/${records.length}; new pending review flags: ${flagsInserted}; already-present eligible flags: ${flagsAlreadyPresent}.`);
     console.log(`Scenario flags created or already present: ${JSON.stringify(seededByCategory)}.`);
     console.log('Duplicate cases are available to Admin users for review.');
     console.log('Every seeded student has is_synthetic=true and an SBMS-SYNTHETIC QR marker. No existing record was updated or deleted.');

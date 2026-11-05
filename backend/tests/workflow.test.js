@@ -1,4 +1,4 @@
-const request = require("supertest");
+﻿const request = require("supertest");
 const bcrypt = require("bcrypt");
 const app = require("../src/index");
 const pool = require("../src/config/db");
@@ -70,7 +70,6 @@ describe("Beneficiary workflow end to end", () => {
   let confirmedPair;
   let clearedPair;
   let payableAwardId;
-  let disbursementId;
 
   beforeAll(async () => {
     officer = await createUser("field_officer", "WorkflowOfficer");
@@ -99,18 +98,6 @@ describe("Beneficiary workflow end to end", () => {
   afterAll(async () => {
     const studentIds = created.students;
     if (studentIds.length) {
-      const disbursements = await pool.query(
-        "SELECT id FROM disbursements WHERE student_id = ANY($1::uuid[])",
-        [studentIds]
-      );
-      const disbursementIds = disbursements.rows.map((row) => row.id);
-      if (disbursementIds.length) {
-        await pool.query(
-          "DELETE FROM disbursement_reconciliation_events WHERE disbursement_id = ANY($1::uuid[])",
-          [disbursementIds]
-        ).catch(() => {});
-        await pool.query("DELETE FROM disbursements WHERE id = ANY($1::uuid[])", [disbursementIds]);
-      }
       const awards = await pool.query("SELECT id FROM bursary_awards WHERE student_id = ANY($1::uuid[])", [studentIds]);
       const awardIds = awards.rows.map((row) => row.id);
       if (awardIds.length) {
@@ -150,7 +137,7 @@ describe("Beneficiary workflow end to end", () => {
     expect(early.body.message).toMatch(/verify the beneficiary/i);
   });
 
-  test("a pending duplicate blocks award approval and disbursement", async () => {
+  test("a pending duplicate blocks award approval", async () => {
     const awardId = await createVerifiedAward(confirmedPair.flagged.id, 5000, officer.token);
 
     const blockedApproval = await request(app)
@@ -159,16 +146,9 @@ describe("Beneficiary workflow end to end", () => {
       .send({ decision: "approved", approved_amount: 5000, reason: "Verified and complete" });
     expect(blockedApproval.statusCode).toBe(409);
     expect(blockedApproval.body.message).toMatch(/resolve duplicate review cases/i);
-
-    const blockedDisbursement = await request(app)
-      .post("/api/disbursements")
-      .set(auth(officer))
-      .send({ award_id: awardId, amount: 1000, payment_method: "Bank transfer" });
-    expect(blockedDisbursement.statusCode).toBe(409);
-    expect(blockedDisbursement.body.message).toMatch(/only verified, approved awards/i);
   });
 
-  test("confirming a duplicate keeps the beneficiary unpayable", async () => {
+  test("confirming a duplicate keeps the beneficiary unable to receive an approved award", async () => {
     const decision = await request(app)
       .patch(`/api/duplicate-flags/${confirmedPair.flag.id}`)
       .set(auth(admin))
@@ -226,78 +206,6 @@ describe("Beneficiary workflow end to end", () => {
     payableAwardId = awardId;
   });
 
-  test("a payment cannot exceed the approved amount", async () => {
-    const first = await request(app)
-      .post("/api/disbursements")
-      .set(auth(officer))
-      .send({ award_id: payableAwardId, amount: 3000, payment_method: "Bank transfer", payment_reference: "BANK-REF-1" });
-    expect(first.statusCode).toBe(201);
-    expect(first.body.message).toMatch(/clearance is not confirmed/i);
-    disbursementId = first.body.disbursement.id;
-
-    const over = await request(app)
-      .post("/api/disbursements")
-      .set(auth(officer))
-      .send({ award_id: payableAwardId, amount: 3000, payment_method: "Bank transfer" });
-    expect(over.statusCode).toBe(409);
-    expect(over.body.message).toMatch(/exceeds the remaining approved amount/i);
-  });
-
-  test("clearance needs evidence and is written to the reconciliation trail", async () => {
-    const noEvidence = await request(app)
-      .patch(`/api/disbursements/${disbursementId}/payment-status`)
-      .set(auth(officer))
-      .send({ payment_status: "cleared" });
-    expect(noEvidence.statusCode).toBe(400);
-
-    const cleared = await request(app)
-      .patch(`/api/disbursements/${disbursementId}/payment-status`)
-      .set(auth(officer))
-      .send({ payment_status: "cleared", evidence_ref: "BANK-STATEMENT-2026-10" });
-    if (cleared.statusCode !== 200) {
-      throw new Error(`clearance failed: ${cleared.statusCode} ${JSON.stringify(cleared.body)}`);
-    }
-
-    const events = await pool.query(
-      "SELECT event_type FROM disbursement_reconciliation_events WHERE disbursement_id = $1 ORDER BY created_at ASC, id ASC",
-      [disbursementId]
-    );
-    const types = events.rows.map((row) => row.event_type);
-    expect(types).toContain("payment_issued");
-    expect(types).toContain("payment_cleared");
-  });
-
-
-  test("receipt acknowledgement is recorded, and a short payment is flagged as a discrepancy", async () => {
-    const shortfall = await request(app)
-      .patch(`/api/disbursements/${disbursementId}/acknowledgement`)
-      .set(auth(officer))
-      .send({ acknowledged_amount: 2500, evidence_ref: "ACK-SLIP-1" });
-    expect(shortfall.statusCode).toBe(200);
-    expect(shortfall.body.disbursement.receipt_status).toBe("discrepancy");
-
-    const full = await request(app)
-      .patch(`/api/disbursements/${disbursementId}/acknowledgement`)
-      .set(auth(officer))
-      .send({ acknowledged_amount: 3000, evidence_ref: "ACK-SLIP-2" });
-    expect(full.statusCode).toBe(200);
-    expect(full.body.disbursement.receipt_status).toBe("acknowledged");
-
-    const events = await pool.query(
-      "SELECT count(*)::int AS total FROM disbursement_reconciliation_events WHERE disbursement_id = $1 AND event_type = 'receipt_acknowledged'",
-      [disbursementId]
-    );
-    expect(events.rows[0].total).toBe(2);
-
-    // deadline_days is null when ACKNOWLEDGEMENT_OVERDUE_DAYS is unset: the API then
-    // reports no overdue exceptions rather than inventing a deadline.
-    const exceptions = await request(app).get("/api/disbursements/exceptions").set(auth(officer));
-    expect(exceptions.statusCode).toBe(200);
-    expect(exceptions.body).toHaveProperty("deadline_days");
-    const deadline = exceptions.body.deadline_days;
-    expect(deadline === null || (Number.isInteger(deadline) && deadline >= 1)).toBe(true);
-    expect(Array.isArray(exceptions.body.exceptions)).toBe(true);
-  });
 
   test("the audit trail records every step of the workflow", async () => {
     const actions = await pool.query(
@@ -311,9 +219,6 @@ describe("Beneficiary workflow end to end", () => {
       "DUPLICATE_CONFIRMED_DUPLICATE",
       "DUPLICATE_NOT_DUPLICATE",
       "AWARD_APPROVED",
-      "PAYMENT_ISSUED",
-      "PAYMENT_CLEARED",
-      "RECEIPT_ACKNOWLEDGED_OFFICER_ASSISTED",
     ]) {
       expect(seen.has(expected)).toBe(true);
     }
@@ -321,7 +226,7 @@ describe("Beneficiary workflow end to end", () => {
     const viaApi = await request(app).get("/api/audit-logs").set(auth(admin));
     expect(viaApi.statusCode).toBe(200);
     const entries = Array.isArray(viaApi.body) ? viaApi.body : viaApi.body.value;
-    expect(entries.some((entry) => entry.action === "PAYMENT_ISSUED")).toBe(true);
+    expect(entries.some((entry) => entry.action === "AWARD_APPROVED")).toBe(true);
   });
 
   test("role boundaries hold across the workflow", async () => {

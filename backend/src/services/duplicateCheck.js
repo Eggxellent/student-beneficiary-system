@@ -209,7 +209,7 @@ function duplicateReviewReason(features, score, reviewThreshold) {
     features.national_id_match === 1 ? 'National ID number' : null,
   ].filter(Boolean);
   if (matchedIdentifiers.length > 0) {
-    return `Critical identifier match: exact ${matchedIdentifiers.join(' and ')} across student records. Verify the original documents and resolve this flag before disbursement.`;
+    return `Critical identifier match: exact ${matchedIdentifiers.join(' and ')} across student records. Verify the original documents and resolve this flag before approving a bursary award.`;
   }
   if (score >= reviewThreshold) return null;
   if (hasCorroboratingMajority(features)) return 'Four or more fields show strong similarity; manual review is required.';

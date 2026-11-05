@@ -27,10 +27,6 @@ async function main() {
       const events = flags.rowCount
         ? await client.query('SELECT count(*)::int AS count FROM duplicate_review_events WHERE duplicate_flag_id = ANY($1::uuid[])', [flags.rows.map(({ id }) => id)])
         : { rows: [{ count: 0 }] };
-      const disbursements = await client.query(
-        'SELECT count(*)::int AS count FROM disbursements WHERE student_id = ANY($1::uuid[])',
-        [studentIds],
-      );
       const deleted = await client.query('DELETE FROM students WHERE id = ANY($1::uuid[])', [studentIds]);
       const schoolConstraintMigration = fs.readFileSync(
         path.join(__dirname, '../src/db/migrations/20261019_enforce_supported_schools.sql'),
@@ -49,7 +45,6 @@ async function main() {
         deletedStudents: deleted.rowCount,
         cascadedDuplicateCases: flags.rowCount,
         cascadedReviewEvents: events.rows[0].count,
-        cascadedDisbursements: disbursements.rows[0].count,
         remainingStudents: verification.rows[0],
       }));
     } else {
@@ -66,7 +61,7 @@ async function main() {
         [approvedSchools],
       );
       await client.query('COMMIT');
-      console.log(JSON.stringify({ deletedStudents: 0, cascadedDuplicateCases: 0, cascadedReviewEvents: 0, cascadedDisbursements: 0, remainingStudents: verification.rows[0] }));
+      console.log(JSON.stringify({ deletedStudents: 0, cascadedDuplicateCases: 0, cascadedReviewEvents: 0, remainingStudents: verification.rows[0] }));
     }
   } catch (error) {
     await client.query('ROLLBACK');

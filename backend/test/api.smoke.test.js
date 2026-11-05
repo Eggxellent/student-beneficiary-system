@@ -33,16 +33,16 @@ test('admin can authenticate, read admin resources, and is blocked from field wo
   assert.ok(login.body.token);
 
   const headers = { authorization: `Bearer ${login.body.token}` };
-  const [students, eligibility, disbursements, flags] = await Promise.all([
+  const [students, eligibility, awards, flags] = await Promise.all([
     request('/api/students', { headers }),
     request('/api/eligibility', { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({}) }),
-    request('/api/disbursements', { headers }),
+    request('/api/awards', { headers }),
     request('/api/duplicate-flags?status=pending', { headers }),
   ]);
 
   assert.equal(students.response.status, 403);
   assert.equal(eligibility.response.status, 403);
-  assert.equal(disbursements.response.status, 200);
+  assert.equal(awards.response.status, 200);
   assert.equal(flags.response.status, 200);
 });
 

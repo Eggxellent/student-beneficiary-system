@@ -17,14 +17,14 @@ Use only a verified local or explicitly approved test environment with synthetic
 1. Sign in with the prepared demo account and show role-protected navigation.
 2. Register a synthetic student. Explain that similarity scores flag candidates; an authorized human reviewer makes the final duplicate decision.
 3. Open the duplicate-review queue, inspect a candidate, and record a reasoned human decision.
-4. Generate or scan the student's QR code. Show that verification returns record existence only and does not expose student details or confirm identity, eligibility, award, or payment.
+4. Generate or scan the student's QR code. Show that verification returns record existence only and does not expose student details or confirm identity, eligibility or award.
 5. Submit a bursary award, record verification evidence, and demonstrate approval/rejection authorization and duplicate-review blocking where applicable.
-6. Record an issued payment, then separately demonstrate clearance and acknowledgement/reconciliation using synthetic references. Explain that acknowledgement is officer-assisted under current behavior.
+6. Issue a bursary certificate for the approved award, then scan its QR code: verification reports the certificate as valid and states that approval is not payment.
 7. Show a report/dashboard total and its documented status definitions; do not interpret the legacy `scholarship_amount` without an approved mapping.
 8. Show audit events for the reviewed actions, avoiding display of private personal data.
 
 ## Stop conditions
 
 - Stop if `/api/ready` is not ready, schema checks fail, a model prediction errors, or the target database is uncertain.
-- Do not use production records or make production schema/account/payment changes during the capstone demo.
+- Do not use production records or make production schema or account changes during the capstone demo.
 - Do not describe workflows as end-to-end verified until they have passed in the selected isolated environment.

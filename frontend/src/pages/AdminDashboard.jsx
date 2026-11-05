@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ArrowRight, BadgeCheck, Bell, ChevronDown, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, Plus, Search, Settings, ShieldAlert, Users, Wallet } from "lucide-react";
+import { ArrowRight, BadgeCheck, Bell, ChevronDown, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, Plus, Search, Settings, ShieldAlert, Users } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 
@@ -36,7 +36,6 @@ function readDashboardCache(userId) {
       !Number.isFinite(cached.syntheticStudents) ||
       !Number.isFinite(cached.duplicateCount) ||
       !Array.isArray(cached.trend) ||
-      !Array.isArray(cached.disbursementTrend) ||
       !Array.isArray(cached.activities)
     ) return null;
 
@@ -56,7 +55,7 @@ function formatRelativeTime(value) {
 
 function activityDetails(action) {
   if (action?.includes("DUPLICATE")) return { label: "Duplicate review", detail: "Review updated", icon: ShieldAlert, color: "bg-orange-50 text-orange-600" };
-  if (action?.includes("DISBURSEMENT")) return { label: "Disbursement", detail: "Created", icon: Wallet, color: "bg-purple-50 text-purple-600" };
+  if (action?.includes("AWARD")) return { label: "Bursary award", detail: "Decision recorded", icon: BadgeCheck, color: "bg-purple-50 text-purple-600" };
   if (action?.includes("CREATE")) return { label: "Registration", detail: "Student added", icon: Plus, color: "bg-blue-50 text-blue-600" };
   return { label: action?.replaceAll("_", " ") || "System activity", detail: "Activity logged", icon: FileText, color: "bg-slate-100 text-slate-600" };
 }
@@ -104,23 +103,15 @@ export default function AdminDashboard() {
   }, []);
 
   const trend = cachedDashboard?.trend || [];
-  const disbursementTrend = cachedDashboard?.disbursementTrend || [];
-  const maxTrend = Math.max(...trend.map((item) => item.total), ...disbursementTrend.map((item) => item.total), 1);
+  const maxTrend = Math.max(...trend.map((item) => item.total), 1);
   const totalStudents = cachedDashboard?.totalStudents ?? 0;
   const eligibleStudents = cachedDashboard?.eligibleStudents ?? 0;
   const duplicateCount = cachedDashboard?.duplicateCount ?? 0;
-  const accountability = cachedDashboard?.accountability || {};
-  const accountabilityCards = [
-    { label: "Approved awards", value: Number(accountability.approved_awards || 0).toLocaleString() },
-    { label: "Awards without payment", value: Number(accountability.no_payment_awards || 0).toLocaleString() },
-    { label: "Awards with payment recorded", value: Number(accountability.disbursed_awards || 0).toLocaleString() },
-    { label: "Issued or cleared amount", value: `KSh ${Number(accountability.disbursed_amount || 0).toLocaleString()}` },
-    { label: "Awaiting clearance", value: Number(accountability.awaiting_clearance || 0).toLocaleString() },
-    { label: "Awaiting receipt", value: Number(accountability.awaiting_receipt || 0).toLocaleString() },
-    { label: "Overdue receipt", value: cachedDashboard?.acknowledgementOverdueDays == null ? "Not set" : Number(accountability.overdue_receipts || 0).toLocaleString(), detail: cachedDashboard?.acknowledgementOverdueDays == null ? "Set ACKNOWLEDGEMENT_OVERDUE_DAYS" : `${cachedDashboard.acknowledgementOverdueDays}-day deadline` },
-    { label: "Amount discrepancies", value: Number(accountability.amount_discrepancies || 0).toLocaleString() },
-    { label: "Partial awards", value: Number(accountability.partial_awards || 0).toLocaleString() },
-    { label: "Awaiting verification", value: Number(accountability.awards_awaiting_verification || 0).toLocaleString() },
+  const awards = cachedDashboard?.awards || {};
+  const awardCards = [
+    { label: "Approved awards", value: Number(awards.approved_awards || 0).toLocaleString() },
+    { label: "Awaiting a decision", value: Number(awards.submitted_awards || 0).toLocaleString() },
+    { label: "Awaiting beneficiary verification", value: Number(awards.awards_awaiting_verification || 0).toLocaleString() },
   ];
   const statistics = [
     { label: "Students", value: totalStudents.toLocaleString(), detail: "Registered", icon: Users, color: "bg-blue-50 text-blue-600" },
@@ -245,8 +236,8 @@ export default function AdminDashboard() {
           </div>
           <p className="mt-2 text-right text-[10px] text-slate-500">Synthetic test records included in totals: {cachedDashboard?.syntheticStudents ?? 0}</p>
 
-          <section aria-label="Bursary accountability" className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {accountabilityCards.map((item) => (
+          <section aria-label="Bursary awards" className="mt-4 grid gap-3 sm:grid-cols-3">
+            {awardCards.map((item) => (
               <article key={item.label} className="rounded-md border border-slate-200 bg-white p-3 shadow-sm">
                 <p className="text-[9px] font-medium uppercase text-slate-500">{item.label}</p>
                 <p className="mt-1 text-xl font-bold text-slate-900">{item.value}</p>
@@ -259,8 +250,8 @@ export default function AdminDashboard() {
             <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-800">Students and Disbursements</h3>
-                  <p className="mt-1 text-sm text-slate-500">Registration and disbursement trends</p>
+                  <h3 className="text-lg font-semibold text-slate-800">Student registration trend</h3>
+                  <p className="mt-1 text-sm text-slate-500">Newly registered beneficiaries per month</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button type="button" onClick={loadDashboard} disabled={loading} className="text-sm font-medium text-slate-500 hover:text-blue-700 disabled:opacity-50">
@@ -273,10 +264,6 @@ export default function AdminDashboard() {
                 <div className="flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
                   Students
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-                  Disbursements
                 </div>
               </div>
 
@@ -297,12 +284,6 @@ export default function AdminDashboard() {
                     fill="none"
                     stroke="#173D35"
                     strokeWidth="3"
-                  />
-                  <polyline
-                    points={disbursementTrend.map((item, index) => `${(index / (disbursementTrend.length - 1 || 1)) * 600},${160 - (item.total / maxTrend) * 130}`).join(" ")}
-                    fill="none"
-                    stroke="#C8A45D"
-                    strokeWidth="2"
                   />
                 </svg>
               </div>

@@ -60,13 +60,13 @@ Choose **Confirm Duplicate** when the records represent the same learner, or **C
 
 ## Issue and print a bursary certificate
 
-A certificate can be issued once an award has been approved. Open **Disbursements** and use the **Bursary certificates** panel:
+A certificate can be issued once an award has been approved. Open **Awards** and use the **Bursary certificates** panel:
 
 1. Enter the award period. A single year such as `2026` or a range such as `2025/2026` is accepted, and leaving it blank records the year of approval.
 2. Choose **Issue certificate**. The panel shows the certificate reference, the QR code and the verification link.
 3. Use **PDF** or **Print** to give the student or school a copy. **View QR** shows the code on screen.
 
-The QR code is what makes the paper checkable: scanning it opens the public verification page, which answers from the live database. The certificate states that the award was approved and that **approval is not payment** — no payment is claimed by the certificate, and only a cleared payment in the system is evidence that money was released.
+The QR code is what makes the paper checkable: scanning it opens the public verification page, which answers from the live database. The certificate states that the award was approved and that **approval is not payment** — the system records decisions only, so the certificate never claims that money was released.
 
 Only an administrator can issue or revoke a certificate; field officers can view and print it. **Revoke** requires a reason, is recorded in the audit log, and stops the certificate from verifying. A revoked certificate cannot be issued again for the same award, and a certificate that was already printed keeps its reference, so a revoked copy is reported as revoked rather than as unknown.
 
@@ -82,7 +82,7 @@ Register a student with identity values that do not match an existing record. Th
 
 ### Likely duplicate
 
-Register a student with the same UPI or birth certificate number as an existing record. The system creates a pending critical flag and alerts the field officer immediately. Both records are blocked from disbursement until an admin confirms or clears the flag. The system does not automatically declare the records to be the same learner.
+Register a student with the same UPI or birth certificate number as an existing record. The system creates a pending critical flag and alerts the field officer immediately. Both records are blocked from award approval until an admin confirms or clears the flag. The system does not automatically declare the records to be the same learner.
 
 ### Similar name, different learner
 

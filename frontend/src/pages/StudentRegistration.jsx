@@ -89,7 +89,7 @@ export default function StudentRegistration() {
           <h2 className="font-bold">Student registered</h2>
           <p className="mt-1">{result.message}</p>
           {duplicate && (
-            <p className="mt-2">Possible duplicate match found. An administrator must review this case before any disbursement.</p>
+            <p className="mt-2">Possible duplicate match found. An administrator must review this case before any bursary award is approved.</p>
           )}
           {flags.filter((flag) => flag.review_reason).map((flag) => (
             <p key={flag.id} className="mt-1">{flag.review_reason}</p>

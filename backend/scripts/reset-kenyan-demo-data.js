@@ -27,7 +27,6 @@ async function main() {
     const ids = students.rows.map((row) => row.id);
     if (ids.length) {
       await client.query('DELETE FROM duplicate_flags WHERE student_id = ANY($1::uuid[]) OR matched_student_id = ANY($1::uuid[])', [ids]);
-      await client.query('DELETE FROM disbursements WHERE student_id = ANY($1::uuid[])', [ids]);
       await client.query('DELETE FROM students WHERE id = ANY($1::uuid[])', [ids]);
     }
     await client.query(
@@ -36,7 +35,7 @@ async function main() {
          AND details->>'seed_id' = 'sbms-kenyan-synthetic-v1'`
     );
     await client.query('COMMIT');
-    console.log(`Removed ${ids.length} marked synthetic students and their linked review flags/disbursements. Other records were left untouched.`);
+    console.log(`Removed ${ids.length} marked synthetic students and their linked review cases. Other records were left untouched.`);
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;

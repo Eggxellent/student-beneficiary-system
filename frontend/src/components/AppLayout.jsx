@@ -6,7 +6,7 @@ const navigationByRole = {
   admin: [
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { name: "Duplicate Review", path: "/duplicate-review", icon: ShieldAlert },
-    { name: "Awards", path: "/disbursements", icon: Wallet },
+    { name: "Awards", path: "/awards", icon: Wallet },
     { name: "Audit Logs", path: "/audit", icon: FileText },
     { name: "Users", path: "/users", icon: UserCog },
     { name: "Reports", path: "/reports", icon: FileText },
@@ -17,7 +17,7 @@ const navigationByRole = {
     { name: "Students", path: "/students", icon: Users },
     { name: "Register Student", path: "/students/register", icon: UserPlus },
     { name: "Eligibility", path: "/eligibility", icon: BadgeCheck },
-    { name: "Disbursements", path: "/disbursements", icon: Wallet },
+    { name: "Awards", path: "/awards", icon: Wallet },
   ],
 };
 

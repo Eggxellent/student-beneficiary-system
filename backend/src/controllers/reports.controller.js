@@ -4,7 +4,6 @@ const PDFDocument = require("pdfkit");
 const { randomUUID } = require("crypto");
 const pool = require("../config/db");
 const logAudit = require("../services/auditLog");
-const { acknowledgementOverdueDays } = require("../config/reconciliation");
 
 async function exportReport(req, res, next) {
   try {
@@ -23,75 +22,50 @@ async function exportReport(req, res, next) {
     }
 
     const studentsResult = await pool.query(
-      `SELECT COUNT(*) AS total_students
+      `SELECT COUNT(*)::int AS total_students
        FROM students
        WHERE created_at::date BETWEEN $1 AND $2`,
       [start_date, end_date]
     );
 
-    const disbursementsResult = await pool.query(
-      `SELECT COUNT(*) AS total_disbursements,
-              COALESCE(SUM(amount), 0) AS total_amount
-       FROM disbursements
-       WHERE disbursement_date BETWEEN $1 AND $2`,
-      [start_date, end_date]
-    );
-
     const flagsResult = await pool.query(
-      `SELECT COUNT(*) AS pending_flags
+      `SELECT COUNT(*)::int AS pending_flags
        FROM duplicate_flags
        WHERE status IN ('pending', 'needs_verification')
        AND created_at::date BETWEEN $1 AND $2`,
       [start_date, end_date]
     );
 
-    const accountabilityResult = await pool.query(
+    const awardsResult = await pool.query(
       `SELECT
-         (SELECT COUNT(*)::int FROM bursary_awards WHERE status = 'approved') AS approved_awards,
-         (SELECT COUNT(*)::int FROM bursary_awards a WHERE a.status = 'approved'
-           AND NOT EXISTS (SELECT 1 FROM disbursements d WHERE d.award_id = a.id
-             AND (d.payment_status IS NULL OR d.payment_status NOT IN ('failed', 'cancelled')))) AS awards_without_payment,
-         (SELECT COUNT(*)::int FROM (
-           SELECT a.id FROM bursary_awards a JOIN disbursements d ON d.award_id = a.id
-           WHERE a.status = 'approved' AND (d.payment_status IS NULL OR d.payment_status NOT IN ('failed', 'cancelled'))
-           GROUP BY a.id, a.approved_amount
-           HAVING SUM(d.amount) > 0 AND SUM(d.amount) < a.approved_amount
-         ) partial) AS partial_awards,
-         (SELECT COUNT(*)::int FROM bursary_awards WHERE status = 'submitted' AND verification_status <> 'verified') AS awards_awaiting_verification,
-         (SELECT COUNT(*)::int FROM duplicate_flags WHERE status IN ('pending', 'needs_verification')) AS potential_duplicate_flags,
-         (SELECT COUNT(*)::int FROM disbursements WHERE payment_status = 'issued') AS awaiting_clearance,
-         (SELECT COUNT(*)::int FROM disbursements WHERE payment_status = 'cleared') AS cleared_payments,
-         (SELECT COALESCE(SUM(amount), 0)::numeric FROM disbursements WHERE payment_status = 'cleared') AS cleared_amount,
-         (SELECT COUNT(*)::int FROM disbursements WHERE receipt_status = 'awaiting_acknowledgement') AS awaiting_acknowledgement,
-         (SELECT COUNT(*)::int FROM disbursements WHERE receipt_status = 'awaiting_acknowledgement'
-           AND $1::int IS NOT NULL
-           AND disbursement_date < CURRENT_DATE - ($1 * INTERVAL '1 day')) AS overdue_acknowledgement,
-         (SELECT COUNT(*)::int FROM disbursements WHERE receipt_status = 'discrepancy') AS amount_discrepancies`,
-      [acknowledgementOverdueDays]
+         COUNT(*) FILTER (WHERE status = 'approved')::int AS approved_awards,
+         COALESCE(SUM(approved_amount) FILTER (WHERE status = 'approved'), 0)::numeric AS approved_amount,
+         COUNT(*) FILTER (WHERE status = 'rejected')::int AS rejected_awards,
+         COUNT(*) FILTER (WHERE status = 'submitted')::int AS submitted_awards,
+         COUNT(*) FILTER (WHERE status = 'submitted' AND verification_status <> 'verified')::int AS awaiting_verification
+       FROM bursary_awards
+       WHERE created_at::date BETWEEN $1 AND $2`,
+      [start_date, end_date]
     );
 
     const detailsResult = await pool.query(
-      `SELECT d.disbursement_date, s.full_name, d.amount, d.status
-       FROM disbursements d
-       JOIN students s ON s.id = d.student_id
-       WHERE d.disbursement_date BETWEEN $1 AND $2
-       ORDER BY d.disbursement_date DESC`,
+      `SELECT a.decided_at, s.full_name, a.status, a.approved_amount
+       FROM bursary_awards a
+       JOIN students s ON s.id = a.student_id
+       WHERE a.decided_at IS NOT NULL
+         AND a.decided_at::date BETWEEN $1 AND $2
+       ORDER BY a.decided_at ASC
+       LIMIT 500`,
       [start_date, end_date]
     );
 
     const totalStudents = studentsResult.rows[0].total_students;
-    const totalDisbursements = disbursementsResult.rows[0].total_disbursements;
-    const totalAmount = disbursementsResult.rows[0].total_amount;
     const pendingFlags = flagsResult.rows[0].pending_flags;
-    const accountability = accountabilityResult.rows[0];
+    const awards = awardsResult.rows[0];
     const reportId = randomUUID();
-    const reportsDir = path.resolve(__dirname, "../../reports");
-
-    if (!fs.existsSync(reportsDir)) {
-      fs.mkdirSync(reportsDir, { recursive: true });
-    }
-
-    const fileName = `report-${reportId}.pdf`;
+    const fileName = `sbms-report-${start_date}-to-${end_date}-${Date.now()}.pdf`;
+    const reportsDir = path.join(__dirname, "..", "..", "reports");
+    fs.mkdirSync(reportsDir, { recursive: true });
     const filePath = path.join(reportsDir, fileName);
     const relativeFilePath = `reports/${fileName}`;
     const doc = new PDFDocument({ margin: 50 });
@@ -100,50 +74,40 @@ async function exportReport(req, res, next) {
     doc.pipe(stream);
     doc.fontSize(20).text("Student Beneficiary Management System", { align: "center" });
     doc.moveDown();
-    doc.fontSize(16).text("Disbursement and Beneficiary Report", { align: "center" });
+    doc.fontSize(16).text("Beneficiary and Bursary Award Report", { align: "center" });
     doc.moveDown();
     doc.fontSize(11).text(`Report Period: ${start_date} to ${end_date}`);
     doc.text(`Generated: ${new Date().toLocaleString()}`);
     doc.moveDown();
     doc.fontSize(14).text("Summary");
     doc.moveDown(0.5);
-    doc.fontSize(11).text(`Total Students Registered: ${totalStudents}`);
-    doc.text(`Total Disbursements: ${totalDisbursements}`);
-    doc.text(`Total Disbursed Amount: KES ${Number(totalAmount).toLocaleString()}`);
-    doc.text(`Pending Duplicate Flags: ${pendingFlags}`);
+    doc.fontSize(11).text(`Students Registered: ${totalStudents}`);
+    doc.text(`Potential Duplicate Flags Awaiting Review: ${pendingFlags}`);
     doc.moveDown();
-    doc.fontSize(14).text("Accountability Snapshot");
+    doc.fontSize(14).text("Bursary Awards Submitted In Period");
     doc.moveDown(0.5);
-    doc.fontSize(11).text(`Approved Awards: ${accountability.approved_awards}`);
-    doc.text(`Awards Without Payment: ${accountability.awards_without_payment}`);
-    doc.text(`Partial Awards: ${accountability.partial_awards}`);
-    doc.text(`Awards Awaiting Verification: ${accountability.awards_awaiting_verification}`);
-    doc.text(`Potential Duplicate Flags Awaiting Review: ${accountability.potential_duplicate_flags}`);
-    doc.text(`Payments Awaiting Clearance: ${accountability.awaiting_clearance}`);
-    doc.text(`Cleared Payments: ${accountability.cleared_payments}`);
-    doc.text(`Cleared Amount: KES ${Number(accountability.cleared_amount).toLocaleString()}`);
-    doc.text(`Awaiting Receipt Acknowledgement: ${accountability.awaiting_acknowledgement}`);
-    doc.text(acknowledgementOverdueDays === null
-      ? "Overdue Acknowledgements: Deadline not configured"
-      : `Overdue Acknowledgements (${acknowledgementOverdueDays} days): ${accountability.overdue_acknowledgement}`);
-    doc.text(`Amount Discrepancies: ${accountability.amount_discrepancies}`);
-    doc.fontSize(9).text("Accountability values are a current snapshot; the report period applies to registrations, payments, and duplicate flags above.");
+    doc.fontSize(11).text(`Approved Awards: ${awards.approved_awards}`);
+    doc.text(`Approved Amount: KES ${Number(awards.approved_amount).toLocaleString()}`);
+    doc.text(`Rejected Awards: ${awards.rejected_awards}`);
+    doc.text(`Awards Awaiting A Decision: ${awards.submitted_awards}`);
+    doc.text(`Awards Awaiting Beneficiary Verification: ${awards.awaiting_verification}`);
     doc.moveDown();
-    doc.fontSize(14).text("Disbursement Details");
+    doc.fontSize(14).text("Award Decisions");
     doc.moveDown(0.5);
 
     if (detailsResult.rows.length === 0) {
-      doc.fontSize(11).text("No disbursements found for this period.");
+      doc.fontSize(11).text("No award decisions were recorded for this period.");
     } else {
       detailsResult.rows.forEach((item, index) => {
         doc.fontSize(10).text(
-          `${index + 1}. ${item.full_name} | ${item.disbursement_date} | KES ${Number(item.amount).toLocaleString()} | ${item.status}`
+          `${index + 1}. ${item.full_name} | ${new Date(item.decided_at).toISOString().slice(0, 10)} | ${item.status} | KES ${item.approved_amount == null ? "0" : Number(item.approved_amount).toLocaleString()}`
         );
         doc.moveDown(0.3);
       });
     }
 
     doc.moveDown();
+    doc.fontSize(9).text("An approved award is not a payment. This report does not record or confirm disbursement.");
     doc.fontSize(9).text("Generated by the Student Beneficiary Management System.");
     doc.end();
 
@@ -153,7 +117,7 @@ async function exportReport(req, res, next) {
           `INSERT INTO reports
            (id, generated_by, report_type, start_date, end_date, file_path)
            VALUES ($1, $2, $3, $4, $5, $6)`,
-          [reportId, req.user.id, "disbursement_summary", start_date, end_date, relativeFilePath]
+          [reportId, req.user.id, "beneficiary_award_summary", start_date, end_date, relativeFilePath]
         );
         await logAudit(req.user.id, "GENERATE_REPORT", "reports", reportId);
         res.download(filePath, fileName, (error) => {

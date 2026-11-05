@@ -137,7 +137,6 @@ async function run() {
              to_regclass('public.students') IS NOT NULL AS students,
              to_regclass('public.audit_logs') IS NOT NULL AS audit_logs,
              to_regclass('public.duplicate_flags') IS NOT NULL AS duplicate_flags,
-             to_regclass('public.disbursements') IS NOT NULL AS disbursements,
              EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='students' AND column_name='birth_certificate_number') AS birth_certificate_number
     `);
     if (Object.values(prerequisites.rows[0]).some((present) => !present)) {

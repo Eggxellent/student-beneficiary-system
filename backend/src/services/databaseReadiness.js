@@ -6,13 +6,11 @@ const REQUIRED_TABLES = Object.freeze([
   'beneficiaries',
   'duplicate_flags',
   'duplicate_review_events',
-  'disbursements',
   'audit_logs',
   'reports',
   'bursary_awards',
   'bursary_award_verification_events',
   'bursary_certificates',
-  'disbursement_reconciliation_events',
 ]);
 
 const READINESS_QUERY = `

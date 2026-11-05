@@ -79,10 +79,10 @@ export default function Reports() {
         <h2 className="text-xl font-semibold">Includes</h2>
         <ul className="mt-4 list-disc space-y-2 pl-6 text-gray-600">
           <li>Students registered</li>
-          <li>Number of disbursements</li>
-          <li>Total amount disbursed</li>
-          <li>Pending duplicate flags</li>
-          <li>Individual disbursement details</li>
+          <li>Potential duplicate flags awaiting review</li>
+          <li>Bursary awards submitted and approved</li>
+          <li>Approved award amounts</li>
+          <li>Individual award decisions</li>
         </ul>
       </div>
     </div>

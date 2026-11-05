@@ -29,17 +29,10 @@ async function list(req, res, next) {
   try {
     const { rows } = await pool.query(
       `SELECT a.*, s.full_name AS student_name, s.upi,
-              COALESCE(payments.total_disbursed, 0)::numeric AS total_disbursed,
-              COALESCE(payments.payment_count, 0)::int AS payment_count,
               COALESCE(duplicates.open_count, 0)::int AS open_duplicate_count,
               COALESCE(history.events, '[]'::jsonb) AS verification_history
        FROM bursary_awards a
        JOIN students s ON s.id = a.student_id
-       LEFT JOIN LATERAL (
-         SELECT SUM(d.amount) AS total_disbursed, COUNT(*) AS payment_count
-         FROM disbursements d WHERE d.award_id = a.id
-           AND (d.payment_status IS NULL OR d.payment_status NOT IN ('failed', 'cancelled'))
-       ) payments ON TRUE
        LEFT JOIN LATERAL (
          SELECT COUNT(*) AS open_count FROM duplicate_flags f
          WHERE (f.student_id = a.student_id OR f.matched_student_id = a.student_id)

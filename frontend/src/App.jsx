@@ -6,7 +6,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import Students from "./pages/Students";
 import StudentRegistration from "./pages/StudentRegistration";
 import DuplicateReview from "./pages/DuplicateReview";
-import Disbursements from "./pages/Disbursements";
+import Awards from "./pages/Awards";
 import Eligibility from "./pages/Eligibility";
 import FieldOfficerDashboard from "./pages/FieldOfficerDashboard";
 import Reports from "./pages/Reports";
@@ -87,10 +87,10 @@ export default function App() {
         }
       />
       <Route
-        path="/disbursements"
+        path="/awards"
         element={
           <ProtectedPage allowedRoles={["admin", "field_officer"]}>
-            <Disbursements />
+            <Awards />
           </ProtectedPage>
         }
       />

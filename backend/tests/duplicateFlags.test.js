@@ -1,4 +1,4 @@
-const request = require('supertest');
+﻿const request = require('supertest');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const app = require('../src/index');
@@ -75,7 +75,20 @@ async function createApprovedVerifiedAward(student, actorId) {
   return result.rows[0].id;
 }
 
-describe('Duplicate flags and disbursements API', () => {
+async function createSubmittedVerifiedAward(student, actorId) {
+  const result = await pool.query(
+    `INSERT INTO bursary_awards
+       (student_id, school_code, requested_amount, status, verification_status,
+        verification_notes, verification_evidence_ref, verified_by, verified_at, submitted_by)
+     VALUES ($1, $2, 5000, 'submitted', 'verified', 'Isolated test fixture verified.',
+        'test-fixture-evidence', $3, NOW(), $3)
+     RETURNING id`,
+    [student.id, student.school_code, actorId]
+  );
+  return result.rows[0].id;
+}
+
+describe('Duplicate flags and award API', () => {
   jest.setTimeout(30000);
   let adminToken;
   let officerToken;
@@ -89,6 +102,14 @@ describe('Duplicate flags and disbursements API', () => {
     if (createdUserIds.length) {
       await pool.query('DELETE FROM duplicate_flags WHERE resolved_by = ANY($1::uuid[])', [createdUserIds]);
       await pool.query('DELETE FROM duplicate_review_events WHERE reviewer_id = ANY($1::uuid[])', [createdUserIds]);
+      await pool.query('DELETE FROM bursary_award_verification_events WHERE actor_id = ANY($1::uuid[])', [createdUserIds]);
+      await pool.query(
+        `DELETE FROM bursary_awards
+          WHERE submitted_by = ANY($1::uuid[])
+             OR verified_by = ANY($1::uuid[])
+             OR decided_by = ANY($1::uuid[])`,
+        [createdUserIds]
+      );
       await pool.query('DELETE FROM audit_logs WHERE user_id = ANY($1::uuid[])', [createdUserIds]);
       await pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [createdUserIds]);
     }
@@ -325,90 +346,100 @@ describe('Duplicate flags and disbursements API', () => {
     await pool.query('DELETE FROM students WHERE id = $1 OR id = $2', [student.id, matchedStudent.id]);
   });
 
-  test('POST /api/disbursements blocks a pair after a reviewer confirms a duplicate', async () => {
-    const student = await createStudent({ full_name: `Blocked Student ${Date.now()}` });
-    const matchedStudent = await createStudent({ full_name: `Blocked Match ${Date.now()}` });
-    const actorId = jwt.decode(officerToken).id;
-    const studentAwardId = await createApprovedVerifiedAward(student, actorId);
-    const matchedAwardId = await createApprovedVerifiedAward(matchedStudent, actorId);
+  test('award approval is blocked after a reviewer confirms a duplicate', async () => {
+    const student = await createStudent({ full_name: `Award Block ${Date.now()}` });
+    const matchedStudent = await createStudent({ full_name: `Award Block Match ${Date.now()}` });
+    const officerId = jwt.decode(officerToken).id;
+    const awardId = await createSubmittedVerifiedAward(student, officerId);
+    const matchedAwardId = await createSubmittedVerifiedAward(matchedStudent, officerId);
 
     const flagResult = await pool.query(
-      `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
-       VALUES ($1, $2, $3, 'confirmed_duplicate')
-       RETURNING *`,
-      [student.id, matchedStudent.id, 0.79]
+      `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status, resolved_by, resolved_at)
+       VALUES ($1, $2, 0.93, 'confirmed_duplicate', $3, NOW())
+       RETURNING id`,
+      [student.id, matchedStudent.id, jwt.decode(adminToken).id]
     );
 
-    const response = await request(app)
-      .post('/api/disbursements')
-      .set('Authorization', `Bearer ${officerToken}`)
-      .send({
-        award_id: studentAwardId,
-        amount: 15000,
-        payment_method: 'Test transfer',
-      });
+    for (const id of [awardId, matchedAwardId]) {
+      const response = await request(app)
+        .patch(`/api/awards/${id}/decision`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ decision: 'approved', approved_amount: 5000, reason: 'Attempted approval despite a confirmed duplicate.' });
+      expect(response.statusCode).toBe(409);
+      expect(response.body.message).toMatch(/resolve duplicate review cases/i);
+    }
 
-    expect(response.statusCode).toBe(409);
-    expect(response.body.message).toMatch(/resolve duplicate review cases/i);
-
-    const matchedStudentResponse = await request(app)
-      .post('/api/disbursements')
-      .set('Authorization', `Bearer ${officerToken}`)
-      .send({ award_id: matchedAwardId, amount: 15000, payment_method: 'Test transfer' });
-
-    expect(matchedStudentResponse.statusCode).toBe(409);
-    expect(matchedStudentResponse.body.message).toMatch(/resolve duplicate review cases/i);
+    const stored = await pool.query(
+      'SELECT status FROM bursary_awards WHERE id = ANY($1::uuid[])',
+      [[awardId, matchedAwardId]]
+    );
+    expect(stored.rows.every((row) => row.status === 'submitted')).toBe(true);
 
     await pool.query('DELETE FROM duplicate_flags WHERE id = $1', [flagResult.rows[0].id]);
-    await pool.query('DELETE FROM bursary_awards WHERE id = ANY($1::uuid[])', [[studentAwardId, matchedAwardId]]);
+    await pool.query('DELETE FROM bursary_awards WHERE id = ANY($1::uuid[])', [[awardId, matchedAwardId]]);
     await pool.query('DELETE FROM students WHERE id = $1 OR id = $2', [student.id, matchedStudent.id]);
   });
 
-  test('pending and further-verification flags block disbursement until resolved', async () => {
-    const actorId = jwt.decode(officerToken).id;
-    for (const status of ['pending', 'needs_verification']) {
-      const student = await createStudent({ full_name: `Verification Student ${Date.now()}` });
-      const matchedStudent = await createStudent({ full_name: `Verification Match ${Date.now()}` });
-      const awardId = await createApprovedVerifiedAward(student, actorId);
-      const flagResult = await pool.query(
-        `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
-         VALUES ($1, $2, $3, $4) RETURNING id`,
-        [student.id, matchedStudent.id, 0.2, status]
-      );
-      const response = await request(app)
-        .post('/api/disbursements')
-        .set('Authorization', `Bearer ${officerToken}`)
-        .send({ award_id: awardId, amount: 1000, payment_method: 'Test transfer' });
-      expect(response.statusCode).toBe(409);
-      expect(response.body.message).toMatch(/resolve duplicate review cases/i);
-      await pool.query('DELETE FROM duplicate_flags WHERE id = $1', [flagResult.rows[0].id]);
-      await pool.query('DELETE FROM bursary_awards WHERE id = $1', [awardId]);
-      await pool.query('DELETE FROM students WHERE id = $1 OR id = $2', [student.id, matchedStudent.id]);
-    }
+  test('pending and further-verification flags block award approval until resolved', async () => {
+    const student = await createStudent({ full_name: `Award Pending ${Date.now()}` });
+    const matchedStudent = await createStudent({ full_name: `Award Pending Match ${Date.now()}` });
+    const officerId = jwt.decode(officerToken).id;
+    const awardId = await createSubmittedVerifiedAward(student, officerId);
+
+    const flagResult = await pool.query(
+      `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
+       VALUES ($1, $2, 0.78, 'pending')
+       RETURNING id`,
+      [student.id, matchedStudent.id]
+    );
+
+    const pendingResponse = await request(app)
+      .patch(`/api/awards/${awardId}/decision`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ decision: 'approved', approved_amount: 5000, reason: 'Attempted approval while a case is pending.' });
+    expect(pendingResponse.statusCode).toBe(409);
+    expect(pendingResponse.body.message).toMatch(/resolve duplicate review cases/i);
+
+    const escalated = await request(app)
+      .patch(`/api/duplicate-flags/${flagResult.rows[0].id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ decision: 'needs_verification', reason: 'The school must confirm the guardian record.' });
+    expect(escalated.statusCode).toBe(200);
+    expect(escalated.body.flag.status).toBe('needs_verification');
+
+    const verifyingResponse = await request(app)
+      .patch(`/api/awards/${awardId}/decision`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ decision: 'approved', approved_amount: 5000, reason: 'Attempted approval during further verification.' });
+    expect(verifyingResponse.statusCode).toBe(409);
+    expect(verifyingResponse.body.message).toMatch(/resolve duplicate review cases/i);
+
+    await pool.query('DELETE FROM duplicate_review_events WHERE duplicate_flag_id = $1', [flagResult.rows[0].id]);
+    await pool.query('DELETE FROM duplicate_flags WHERE id = $1', [flagResult.rows[0].id]);
+    await pool.query('DELETE FROM bursary_awards WHERE id = $1', [awardId]);
+    await pool.query('DELETE FROM students WHERE id = $1 OR id = $2', [student.id, matchedStudent.id]);
   });
 
-  test('POST /api/disbursements should create a valid disbursement for a clean student', async () => {
-    const student = await createStudent({ full_name: `Clean Student ${Date.now()}` });
-    const awardId = await createApprovedVerifiedAward(student, jwt.decode(officerToken).id);
+  test('a verified award for a student with no open duplicate case can be approved', async () => {
+    const student = await createStudent({ full_name: `Award Clean ${Date.now()}` });
+    const officerId = jwt.decode(officerToken).id;
+    const awardId = await createSubmittedVerifiedAward(student, officerId);
 
     const response = await request(app)
-      .post('/api/disbursements')
-      .set('Authorization', `Bearer ${officerToken}`)
-      .send({
-        award_id: awardId,
-        amount: 2500,
-        payment_method: 'Test transfer',
-        disbursement_date: '2026-09-10',
-      });
+      .patch(`/api/awards/${awardId}/decision`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ decision: 'approved', approved_amount: 4500, reason: 'Verified award, no open duplicate cases.' });
+    expect(response.statusCode).toBe(200);
 
-    expect(response.statusCode).toBe(201);
-    expect(response.body.message).toMatch(/recorded as issued/i);
-    expect(response.body.disbursement.student_id).toBe(student.id);
-    expect(Number(response.body.disbursement.amount)).toBe(2500);
+    const stored = await pool.query(
+      'SELECT status, approved_amount FROM bursary_awards WHERE id = $1',
+      [awardId]
+    );
+    expect(stored.rows[0].status).toBe('approved');
+    expect(Number(stored.rows[0].approved_amount)).toBe(4500);
 
-    await pool.query('DELETE FROM disbursement_reconciliation_events WHERE disbursement_id = $1', [response.body.disbursement.id]);
-    await pool.query('DELETE FROM disbursements WHERE id = $1', [response.body.disbursement.id]);
     await pool.query('DELETE FROM bursary_awards WHERE id = $1', [awardId]);
     await pool.query('DELETE FROM students WHERE id = $1', [student.id]);
   });
 });
+

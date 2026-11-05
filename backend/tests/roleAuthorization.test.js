@@ -129,7 +129,7 @@ describe('Admin and Field Officer authorization', () => {
   });
 
   // Student records are a field-officer capability by design, not an oversight: no admin screen
-  // calls /api/students (frontend/src/pages/Disbursements.jsx requests it only for field officers,
+  // calls /api/students (frontend/src/pages/Awards.jsx requests it only for field officers,
   // and only field officers create awards), administrators read beneficiary identity through
   // /api/duplicate-flags, /api/awards and /api/reports, and the deployment plan documents the 403.
   // Pinning the whole route group keeps any future widening deliberate rather than accidental.

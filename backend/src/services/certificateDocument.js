@@ -135,8 +135,7 @@ async function renderCertificatePdf({ certificate, verificationUrl }) {
   doc.font('Helvetica').fontSize(8.5).fillColor(MUTED)
     .text(
       'This certificate proves that SBMS approved the bursary award named above. It does not confirm '
-      + 'that funds have been disbursed. Payment is recorded separately, and only a cleared payment '
-      + 'in SBMS is evidence that money was released.',
+      + 'or record any payment; SBMS records bursary decisions only.',
       contentX,
       458,
       { width: contentWidth, align: 'justify', lineGap: 1.5 }
