@@ -19,12 +19,13 @@ function makeResponse() {
   };
 }
 
-function setupDecisionClient({ verificationStatus = 'verified', duplicateRows = [], awardStatus = 'submitted' } = {}) {
+function setupDecisionClient({ verificationStatus = 'verified', duplicateRows = [], awardStatus = 'submitted', submittedBy = 'a0b1c2d3-0000-4000-8000-000000000000' } = {}) {
   const award = {
     id: awardId,
     student_id: studentId,
     status: awardStatus,
     verification_status: verificationStatus,
+    submitted_by: submittedBy,
   };
   const client = {
     release: jest.fn(),
@@ -90,6 +91,22 @@ describe('bursary award decisions (isolated; no database)', () => {
     }, res, jest.fn());
 
     expect(res.statusCode).toBe(409);
+    expect(client.query.mock.calls.some(([sql]) => /UPDATE bursary_awards/.test(sql))).toBe(false);
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  test('blocks an officer from approving the award they proposed', async () => {
+    const client = setupDecisionClient({ submittedBy: actorId });
+    const res = makeResponse();
+
+    await controller.decide({
+      params: { id: awardId },
+      body: { decision: 'approved', approved_amount: 25000, reason: 'Verified and eligible' },
+      user: { id: actorId },
+    }, res, jest.fn());
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.message).toMatch(/cannot approve it/i);
     expect(client.query.mock.calls.some(([sql]) => /UPDATE bursary_awards/.test(sql))).toBe(false);
     expect(logAudit).not.toHaveBeenCalled();
   });

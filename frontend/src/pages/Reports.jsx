@@ -80,7 +80,7 @@ export default function Reports() {
         <ul className="mt-4 list-disc space-y-2 pl-6 text-gray-600">
           <li>Students registered</li>
           <li>Potential duplicate flags awaiting review</li>
-          <li>Bursary awards submitted and approved</li>
+          <li>Bursary awards proposed, rejected and approved</li>
           <li>Approved award amounts</li>
           <li>Individual award decisions</li>
         </ul>

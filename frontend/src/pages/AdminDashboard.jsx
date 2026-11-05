@@ -110,7 +110,7 @@ export default function AdminDashboard() {
   const awards = cachedDashboard?.awards || {};
   const awardCards = [
     { label: "Approved awards", value: Number(awards.approved_awards || 0).toLocaleString() },
-    { label: "Awaiting a decision", value: Number(awards.submitted_awards || 0).toLocaleString() },
+    { label: "Proposed, awaiting approval", value: Number(awards.submitted_awards || 0).toLocaleString() },
     { label: "Awaiting beneficiary verification", value: Number(awards.awards_awaiting_verification || 0).toLocaleString() },
   ];
   const statistics = [

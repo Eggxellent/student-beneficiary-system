@@ -85,7 +85,9 @@ async function create(req, res, next) {
       school_code: rows[0].school_code,
     }, client);
     await client.query('COMMIT');
-    res.status(201).json({ message: 'Award submitted.', award: rows[0] });
+    // The stored status stays 'submitted', but the officer has only *proposed* an amount. Nothing
+    // is awarded until an administrator approves it, and the wording says so.
+    res.status(201).json({ message: 'Award proposed. It awaits an administrator decision.', award: rows[0] });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);
@@ -163,6 +165,14 @@ async function decide(req, res, next) {
       await client.query('ROLLBACK');
       return res.status(409).json({ message: 'This award already has a decision.' });
     }
+    // Separation of duties: the officer who proposed the amount must not be the officer who
+    // approves it, even if their role was later raised to administrator. The route guard already
+    // keeps submission and decision in different roles; this check keeps the rule true for the
+    // data, not only for the current role table.
+    if (decision === 'approved' && award.submitted_by && award.submitted_by === actorId) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'The officer who proposed an award cannot approve it. A different authorised officer must decide.' });
+    }
     if (decision === 'approved') {
       if (award.verification_status !== 'verified') {
         await client.query('ROLLBACK');
@@ -192,7 +202,7 @@ async function decide(req, res, next) {
       reason,
     }, client);
     await client.query('COMMIT');
-    res.json({ message: `Award ${decision}.`, award: updated.rows[0] });
+    res.json({ message: decision === 'approved' ? 'Award approved. A certificate can now be issued.' : 'Award rejected.', award: updated.rows[0] });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);

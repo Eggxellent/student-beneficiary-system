@@ -15,8 +15,21 @@ function shortId(value) {
   return value ? value.slice(0, 8).toUpperCase() : "â€”";
 }
 
+// The database stores 'submitted', but the officer has only *proposed* an amount: the wording must
+// never read as if a proposed award were already an award. Selecting or receiving the beneficiary
+// list happens outside SBMS, so registering the student is where this screen starts.
+const STATUS_LABELS = {
+  submitted: "Proposed (awaiting approval)",
+  approved: "Approved",
+  rejected: "Rejected",
+  not_checked: "Not checked",
+  verified: "Verified",
+  not_found: "Not found",
+  needs_investigation: "Needs investigation",
+};
+
 function statusText(value) {
-  return String(value || "unverified").replaceAll("_", " ");
+  return STATUS_LABELS[String(value || "").toLowerCase()] || String(value || "unverified").replaceAll("_", " ");
 }
 
 function Status({ children }) {
@@ -102,7 +115,7 @@ export default function Awards() {
     <main className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
       <header>
         <h1 className="text-2xl font-bold text-slate-900">Bursary awards</h1>
-        <p className="mt-1 text-sm text-slate-600">Submit, verify and decide bursary awards. An approved award is a decision record, not a payment.</p>
+        <p className="mt-1 text-sm text-slate-600">Register the selected beneficiary, propose a bursary amount, verify the beneficiary, then let an authorised officer decide. A proposed award is not an award; only an approval is, and it stays a decision record, not a payment.</p>
       </header>
 
       {error && <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p>}
@@ -110,7 +123,8 @@ export default function Awards() {
       {loading && <p className="text-sm text-slate-600">Loading...</p>}
 
       {!isAdmin && <section className="rounded border border-slate-200 bg-white p-4">
-        <h2 className="font-semibold text-slate-900">Submit award</h2>
+        <h2 className="font-semibold text-slate-900">Propose bursary award</h2>
+        <p className="mt-1 text-sm text-slate-600">Proposing an amount does not award it. Beneficiary verification and an administrator decision are required first.</p>
         <form onSubmit={submitAward} className="mt-3 grid gap-3 sm:grid-cols-3">
           <label className="text-sm font-medium">Student
             <select required value={awardForm.student_id} onChange={(e) => setAwardForm({ ...awardForm, student_id: e.target.value })} className="mt-1 h-10 w-full border border-slate-300 px-2">
@@ -118,17 +132,17 @@ export default function Awards() {
               {students.map((student) => <option key={student.id} value={student.id}>{student.full_name} Â· {student.school_code || "No school"}</option>)}
             </select>
           </label>
-          <label className="text-sm font-medium">Requested amount (KSh)
+          <label className="text-sm font-medium">Proposed amount (KSh)
             <input required type="number" min="0.01" step="0.01" value={awardForm.requested_amount} onChange={(e) => setAwardForm({ ...awardForm, requested_amount: e.target.value })} className="mt-1 h-10 w-full border border-slate-300 px-2" />
           </label>
-          <button disabled={saving} className="self-end rounded bg-[#173D35] px-4 py-2.5 font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : "Submit award"}</button>
+          <button disabled={saving} className="self-end rounded bg-[#173D35] px-4 py-2.5 font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : "Propose award"}</button>
         </form>
       </section>}
 
       {!isAdmin && pendingAwards.length > 0 && <section className="rounded border border-slate-200 bg-white p-4">
         <h2 className="font-semibold text-slate-900">Beneficiary verification</h2>
         <form onSubmit={submitVerification} className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="text-sm font-medium">Submitted award
+          <label className="text-sm font-medium">Proposed award
             <select required value={verificationForm.award_id} onChange={(e) => setVerificationForm({ ...verificationForm, award_id: e.target.value })} className="mt-1 h-10 w-full border border-slate-300 px-2">
               <option value="">Select award</option>
               {pendingAwards.map((award) => <option key={award.id} value={award.id}>{shortId(award.id)} Â· {award.student_name} Â· {award.school_code}</option>)}
@@ -150,7 +164,7 @@ export default function Awards() {
       {isAdmin && pendingAwards.length > 0 && <section className="rounded border border-slate-200 bg-white p-4">
         <h2 className="font-semibold text-slate-900">Award decision</h2>
         <form onSubmit={submitDecision} className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="text-sm font-medium">Submitted award
+          <label className="text-sm font-medium">Proposed award
             <select required value={decisionForm.award_id} onChange={(e) => setDecisionForm({ ...decisionForm, award_id: e.target.value })} className="mt-1 h-10 w-full border border-slate-300 px-2">
               <option value="">Select award</option>
               {pendingAwards.map((award) => <option key={award.id} value={award.id}>{shortId(award.id)} Â· {award.student_name} Â· requested {money(award.requested_amount)} Â· {statusText(award.verification_status)}{award.open_duplicate_count ? " Â· duplicate review open" : ""}</option>)}
@@ -175,15 +189,15 @@ export default function Awards() {
           <span className="text-sm text-slate-600">{awards.length} total</span>
         </div>
         <table className="w-full min-w-[700px] text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="p-3">Award</th><th className="p-3">Student / school</th><th className="p-3">Requested</th><th className="p-3">Approved</th><th className="p-3">Status</th><th className="p-3">Verification</th></tr></thead>
+          <thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="p-3">Award</th><th className="p-3">Student / school</th><th className="p-3">Proposed</th><th className="p-3">Approved</th><th className="p-3">Status</th><th className="p-3">Verification</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {awards.map((award) => <tr key={award.id}>
               <td className="p-3 font-mono text-xs">{shortId(award.id)}</td>
               <td className="p-3">{award.student_name}<div className="text-xs text-slate-500">{award.school_code}</div></td>
               <td className="p-3">{money(award.requested_amount)}</td>
               <td className="p-3">{award.approved_amount == null ? "â€”" : money(award.approved_amount)}</td>
-              <td className="p-3"><Status>{award.status}</Status>{award.open_duplicate_count > 0 && <div className="mt-1 text-xs text-amber-800">Duplicate review open</div>}</td>
-              <td className="p-3"><Status>{award.verification_status}</Status></td>
+              <td className="p-3"><Status>{statusText(award.status)}</Status>{award.open_duplicate_count > 0 && <div className="mt-1 text-xs text-amber-800">Duplicate review open</div>}</td>
+              <td className="p-3"><Status>{statusText(award.verification_status)}</Status></td>
             </tr>)}
             {!loading && awards.length === 0 && <tr><td colSpan="6" className="p-6 text-center text-slate-500">No awards.</td></tr>}
           </tbody>
