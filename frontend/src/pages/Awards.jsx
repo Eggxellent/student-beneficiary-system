@@ -221,7 +221,7 @@ export default function Awards() {
                     <option value="">Select award</option>
                     {pendingAwards.map((award) => (
                       <option key={award.id} value={award.id}>
-                        {shortId(award.id)} - {award.student_name} - {money(award.requested_amount)} - {statusText(award.verification_status)}{award.open_duplicate_count ? " - duplicate open" : ""}
+                        {shortId(award.id)} - {award.student_name} - {money(award.requested_amount)} - {statusText(award.verification_status)}
                       </option>
                     ))}
                   </select>
@@ -276,10 +276,7 @@ export default function Awards() {
                   </td>
                   <td className="px-3 py-2">{money(award.requested_amount)}</td>
                   <td className="px-3 py-2">{award.approved_amount == null ? "-" : money(award.approved_amount)}</td>
-                  <td className="px-3 py-2">
-                    <Status>{statusText(award.status)}</Status>
-                    {award.open_duplicate_count > 0 && <span className="ml-1 text-xs text-amber-800">duplicate open</span>}
-                  </td>
+                  <td className="px-3 py-2"><Status>{statusText(award.status)}</Status></td>
                   <td className="px-3 py-2"><Status>{statusText(award.verification_status)}</Status></td>
                 </tr>
               ))}
