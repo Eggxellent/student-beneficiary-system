@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, BadgeCheck, ShieldAlert, ShieldQuestion, WifiOff } from "lucide-react";
+import { AlertTriangle, BadgeCheck, ShieldQuestion, WifiOff } from "lucide-react";
 import api from "../services/api";
 import useHashToken from "../hooks/useHashToken";
 import {
@@ -35,6 +35,18 @@ function formatDate(value) {
   return date.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 }
 
+function ResetButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-sm font-semibold text-[#173D35] underline underline-offset-2 hover:text-[#245747]"
+    >
+      Check another certificate
+    </button>
+  );
+}
+
 export default function CertificateVerification() {
   const { token, readFailed } = useHashToken();
   const [result, setResult] = useState(null);
@@ -49,10 +61,11 @@ export default function CertificateVerification() {
     const answer = data || {};
     setCheckedAt(new Date());
     setResult(answer);
+    // The reference is not kept in the box once it has been answered: the result below is the answer.
+    setReferenceInput("");
     // Only an explicit `verified` answer counts as success. Any unexpected shape is treated as
     // "not found" rather than being displayed as a valid certificate.
     if (answer.valid === true && answer.status === "verified") setStatus("verified");
-    else if (answer.status === "revoked") setStatus("revoked");
     else if (answer.status === "not_current") setStatus("not-current");
     else setStatus("not-found");
   }, []);
@@ -63,6 +76,15 @@ export default function CertificateVerification() {
     if (code === 429) setStatus("rate-limited");
     else if (code && code < 500) setStatus("not-found");
     else setStatus("unavailable");
+  }, []);
+
+  const resetToForm = useCallback(() => {
+    setStatus("idle");
+    setResult(null);
+    setCheckedAt(null);
+    setLastReference("");
+    setReferenceInput("");
+    setFormError("");
   }, []);
 
   const lookupByReference = useCallback(
@@ -137,8 +159,7 @@ export default function CertificateVerification() {
         Check a certificate reference
       </label>
       <p className="text-xs leading-relaxed text-slate-600">
-        The reference is printed on the certificate below the QR code, for example {REFERENCE_EXAMPLE}.
-        Letter case and spaces do not matter.
+        Printed below the QR code, e.g. {REFERENCE_EXAMPLE}. Letter case and spaces do not matter.
       </p>
       <input
         id="certificate-reference"
@@ -177,26 +198,18 @@ export default function CertificateVerification() {
       {status === "idle" && (
         <div className="mt-6 space-y-5">
           <p className="text-sm leading-relaxed text-slate-700">
-            Scan the QR code on an SBMS bursary award certificate, or type the certificate reference
-            printed on it. Every answer is read from the SBMS database, so a code or reference copied
-            onto an altered document is checked against the record that was actually issued.
+            Scan the QR code on an SBMS bursary award certificate, or type the reference printed on it.
           </p>
           {referenceForm}
         </div>
       )}
 
       {status === "verified" && (
-        <div className="mt-6 space-y-5">
+        <div className="mt-6 space-y-4">
           <StatusBadge tone="success" icon={BadgeCheck}>Current certificate</StatusBadge>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">
-              This certificate matches an approved bursary award
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-700">
-              SBMS issued this certificate for the award recorded below, and the award is still
-              approved. Compare every field with the document you were given.
-            </p>
-          </div>
+          <p className="text-sm leading-relaxed text-slate-700">
+            Matches an approved bursary award. Compare every field with the document in your hands.
+          </p>
           <dl className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2">
             <DetailRow label="Beneficiary" value={result?.beneficiary_name} />
             <DetailRow label="Institution" value={result?.institution} />
@@ -209,149 +222,65 @@ export default function CertificateVerification() {
             <DetailRow label="Certificate status" value="Current" />
             <DetailRow label="Checked" value={checked ? `${checked} (device time)` : null} />
           </dl>
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
-            <h3 className="text-sm font-semibold text-amber-900">Compare the document before relying on it</h3>
-            <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-amber-900">
-              <li>
-                The name, institution, academic year, amount and reference printed on the paper must
-                match this page.
-              </li>
-              <li>
-                A QR code or reference copied onto an altered document still returns this record, so a
-                match here does not make different printed details genuine.
-              </li>
-              <li>
-                Only the answer shown on this page, checked just now, is authoritative. A screenshot or
-                a copy of this page is not.
-              </li>
-            </ul>
-          </div>
-          <div className="rounded-lg border border-slate-200 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">What this result means</h3>
-            <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-slate-700">
-              <li>SBMS approved the bursary award named above and issued this certificate for it.</li>
-              <li>
-                Approval is not payment: SBMS records bursary decisions and does not confirm that any
-                money has been paid.
-              </li>
-              <li>
-                If any printed detail differs from this page, treat the document as unverified and ask
-                the awarding office to confirm it.
-              </li>
-            </ul>
-          </div>
-        </div>
-      )}
-
-      {status === "revoked" && (
-        <div className="mt-6 space-y-5">
-          <StatusBadge tone="danger" icon={ShieldAlert}>Not current</StatusBadge>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">
-              This certificate has been revoked and is no longer valid.
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-700">
-              SBMS issued this reference, but the certificate was withdrawn. A revoked certificate must
-              not be accepted, even though the printed document still exists.
-            </p>
-          </div>
-          <dl className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2">
-            <DetailRow label="Certificate reference" value={reference} mono />
-            <DetailRow label="Academic year" value={result?.award_period} />
-            <DetailRow label="Revoked on" value={formatDate(result?.revoked_at)} />
-            <DetailRow label="Certificate status" value="Revoked" />
-            <DetailRow label="Checked" value={checked ? `${checked} (device time)` : null} />
-          </dl>
-          <div className="rounded-lg border border-slate-200 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">What to do next</h3>
-            <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-slate-700">
-              <li>
-                Ask the awarding office for the current position before releasing funds or offering a
-                place.
-              </li>
-              <li>
-                Revoking a certificate does not by itself cancel the bursary award decision; only the
-                office can confirm what the award now is.
-              </li>
-            </ul>
-          </div>
+          <p className="text-xs leading-relaxed text-slate-600">
+            A copy of these details on altered paper is not genuine, and only this live check counts. Approval is
+            not payment. If any printed detail differs, treat the document as unverified.
+          </p>
+          <ResetButton onClick={resetToForm} />
         </div>
       )}
 
       {status === "not-current" && (
-        <div className="mt-6 space-y-5">
+        <div className="mt-6 space-y-4">
           <StatusBadge tone="warning" icon={AlertTriangle}>No longer current</StatusBadge>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">
-              This certificate no longer matches the award record
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-700">
-              SBMS issued this certificate, but the award it certifies has changed since then, so the
-              printed document can no longer be relied on. Ask the awarding office to confirm the
-              current award and to issue a replacement certificate if appropriate.
-            </p>
-          </div>
+          <p className="text-sm leading-relaxed text-slate-700">
+            The award this certificate names has changed since it was issued, so the printed document can
+            no longer be relied on. Ask the awarding office for a replacement.
+          </p>
           <dl className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2">
             <DetailRow label="Certificate reference" value={reference} mono />
             <DetailRow label="Certificate status" value="Superseded" />
             <DetailRow label="Checked" value={checked ? `${checked} (device time)` : null} />
           </dl>
+          <ResetButton onClick={resetToForm} />
         </div>
       )}
 
       {status === "not-found" && (
-        <div className="mt-6 space-y-5">
+        <div className="mt-6 space-y-4">
           <StatusBadge tone="danger" icon={ShieldQuestion}>Not found</StatusBadge>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Certificate not found</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-700">
-              This reference could not be verified in SBMS. A QR code that was generated by hand,
-              copied from another document or altered after printing cannot pass verification.
-            </p>
-          </div>
-          <div className="rounded-lg border border-slate-200 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">What to do next</h3>
-            <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-slate-700">
-              <li>Check the reference against the certificate character by character, with no missing groups.</li>
-              <li>Scan the QR code printed on the certificate itself, in good light.</li>
-              <li>Ask the awarding office to confirm the certificate reference directly.</li>
-            </ul>
-          </div>
+          <p className="text-sm leading-relaxed text-slate-700">
+            This reference was not issued by SBMS. A code copied, hand-made or altered after printing
+            cannot pass.
+          </p>
+          <p className="text-xs leading-relaxed text-slate-600">
+            Check the reference character by character, scan the QR code on the certificate itself, or ask
+            the awarding office to confirm.
+          </p>
           {checked && <p className="text-xs text-slate-600">Checked at {checked} (device time).</p>}
+          <ResetButton onClick={resetToForm} />
         </div>
       )}
 
       {status === "rate-limited" && (
-        <div className="mt-6 space-y-5">
+        <div className="mt-6 space-y-4">
           <StatusBadge tone="warning" icon={AlertTriangle}>Please wait</StatusBadge>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Too many checks in a short time</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-700">
-              Certificate verification is rate limited to protect the records. No result was produced
-              for this certificate. Wait a few minutes, then check again.
-            </p>
-          </div>
+          <p className="text-sm leading-relaxed text-slate-700">
+            Too many checks in a short time, so this certificate was not checked. Wait a few minutes and try again.
+          </p>
           <RetryButton onClick={retry}>Try again</RetryButton>
         </div>
       )}
 
       {status === "unavailable" && (
-        <div className="mt-6 space-y-5">
+        <div className="mt-6 space-y-4">
           <StatusBadge tone="warning" icon={WifiOff}>Connection problem</StatusBadge>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Verification is temporarily unavailable</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-700">
-              The verification service could not be reached, so this certificate was
-              <strong> not</strong> checked. This is a connection problem, not a statement that the
-              certificate is invalid.
-            </p>
-          </div>
+          <p className="text-sm leading-relaxed text-slate-700">
+            The verification service could not be reached, so this certificate was
+            <strong> not</strong> checked.
+          </p>
           <RetryButton onClick={retry} />
         </div>
-      )}
-
-      {["verified", "revoked", "not-current", "not-found"].includes(status) && (
-        <div className="mt-8 border-t border-slate-200 pt-6">{referenceForm}</div>
       )}
     </PublicVerificationLayout>
   );
