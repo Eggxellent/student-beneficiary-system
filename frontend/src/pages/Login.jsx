@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { ArrowRight, ClipboardCheck, ShieldCheck } from "lucide-react";
+import { ArrowRight, ClipboardCheck, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 export default function Login({ role }) {
@@ -13,6 +13,7 @@ export default function Login({ role }) {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const submitting = useRef(false);
@@ -143,15 +144,26 @@ export default function Login({ role }) {
           Password
         </label>
 
-        <input
-          id="sbms-login-password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="sbms-login-input w-full border rounded p-2 mb-6"
-          placeholder="Enter password"
-          required
-        />
+        <div className="sbms-login-password mb-6">
+          <input
+            id="sbms-login-password"
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="sbms-login-input w-full border rounded p-2 pr-10"
+            placeholder="Enter password"
+            required
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((visible) => !visible)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
+            className="sbms-login-password-toggle"
+          >
+            {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+          </button>
+        </div>
 
         <button
           type="submit"

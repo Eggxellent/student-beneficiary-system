@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
-import { BadgeCheck, FileText, GraduationCap, LayoutDashboard, LogOut, Settings, ShieldAlert, UserCog, UserPlus, Users, Wallet } from "lucide-react";
+import { BadgeCheck, FileText, GraduationCap, LayoutDashboard, Settings, ShieldAlert, UserCog, UserPlus, Users, Wallet } from "lucide-react";
+import HeaderActions from "./HeaderActions";
 import { useAuth } from "../context/AuthContext";
 
 const navigationByRole = {
@@ -22,7 +23,7 @@ const navigationByRole = {
 };
 
 export default function AppLayout({ children }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
   const navigation = navigationByRole[user?.role] || [];
 
@@ -34,13 +35,7 @@ export default function AppLayout({ children }) {
             <span className="flex h-6 w-6 items-center justify-center rounded bg-[#C8A45D] text-[#173D35]"><GraduationCap size={15} aria-hidden="true" /></span>
             SBMS
           </Link>
-          <div className="flex items-center gap-3 text-xs text-white/75">
-            <span className="hidden sm:inline">{user?.full_name || "Administrator"}</span>
-              <button type="button" onClick={logout} className="flex items-center gap-1.5 rounded border border-white/25 px-3 py-1.5 font-medium text-white hover:bg-white/10 hover:text-white">
-                <LogOut size={14} aria-hidden="true" />
-              Logout
-            </button>
-          </div>
+          <HeaderActions tone="dark" />
         </div>
         <nav aria-label="Main navigation" className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 pb-3 sm:px-6">
           {navigation.map((item) => {

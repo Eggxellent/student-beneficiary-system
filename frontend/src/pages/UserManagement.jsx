@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import api from '../services/api';
 
 export default function UserManagement() {
@@ -6,6 +7,7 @@ export default function UserManagement() {
   const [form, setForm] = useState({ full_name: '', email: '', password: '', role: 'field_officer' });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const loadUsers = useCallback(async () => {
     try { setUsers((await api.get('/users')).data); }
@@ -42,7 +44,7 @@ export default function UserManagement() {
     <form onSubmit={createUser} className="mt-5 grid gap-3 rounded border bg-white p-4 sm:grid-cols-2 lg:grid-cols-5">
       <label className="text-xs font-medium">Name<input required minLength={2} value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} className="mt-1 h-10 w-full border px-2 text-sm" /></label>
       <label className="text-xs font-medium">Email<input required type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="mt-1 h-10 w-full border px-2 text-sm" /></label>
-      <label className="text-xs font-medium">Temporary password<input required minLength={8} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} className="mt-1 h-10 w-full border px-2 text-sm" /></label>
+      <label className="text-xs font-medium">Temporary password<span className="relative mt-1 block"><input required minLength={8} type={showPassword ? 'text' : 'password'} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} className="h-10 w-full border px-2 pr-9 text-sm" /><button type="button" onClick={() => setShowPassword(visible => !visible)} aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-800">{showPassword ? <EyeOff size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}</button></span></label>
       <label className="text-xs font-medium">Role<select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="mt-1 h-10 w-full border px-2 text-sm"><option value="field_officer">Field Officer</option><option value="admin">Admin</option></select></label>
       <button className="self-end rounded bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white">Create account</button>
     </form>

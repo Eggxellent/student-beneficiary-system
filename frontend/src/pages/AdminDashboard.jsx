@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ArrowRight, BadgeCheck, Bell, ChevronDown, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, Plus, Search, Settings, ShieldAlert, Users } from "lucide-react";
+import { ArrowRight, BadgeCheck, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, Plus, Settings, ShieldAlert, Users } from "lucide-react";
+import HeaderActions from "../components/HeaderActions";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 
@@ -177,28 +178,7 @@ export default function AdminDashboard() {
             <h1 className="text-xs font-semibold text-slate-800">Dashboard</h1>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="relative hidden sm:block">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-              <input
-                type="text"
-                placeholder="Search students, UPI, school..."
-                className="h-7 w-48 rounded border border-slate-200 bg-slate-50 pl-7 pr-3 text-[10px] outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-
-            <button type="button" aria-label="Notifications" className="text-slate-500 hover:text-slate-800"><Bell size={15} aria-hidden="true" /></button>
-            <div className="h-5 w-px bg-slate-200" />
-
-            <div className="flex items-center gap-3">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600"><Users size={13} aria-hidden="true" /></div>
-              <div className="hidden sm:block">
-                <p className="text-[10px] font-medium text-slate-800">{user?.full_name || "Administrator"}</p>
-                <p className="text-[9px] text-slate-500">{user?.role || "Administrator"}</p>
-              </div>
-              <ChevronDown size={13} className="text-slate-400" aria-hidden="true" />
-            </div>
-          </div>
+          <HeaderActions />
         </header>
 
         <section className="mx-auto max-w-7xl p-5">

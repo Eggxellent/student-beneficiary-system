@@ -604,6 +604,43 @@
   animation-delay: 250ms;
 }
 
+.sbms-login-password {
+  position: relative;
+  animation: sbms-login-content-in 360ms 250ms both;
+}
+
+.sbms-login-password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  width: 26px;
+  border-radius: 4px;
+  color: #475569;
+  background: transparent;
+}
+
+.sbms-login-password-toggle:hover {
+  color: #0f172a;
+  background: rgb(15 23 42 / 6%);
+}
+
+.sbms-login-password-toggle:focus-visible {
+  outline: 2px solid var(--login-highlight);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sbms-login-password {
+    animation: none;
+  }
+}
+
+
 .sbms-login-error {
   border: 1px solid rgb(185 28 28 / 24%);
   background: rgb(254 226 226 / 92%);
