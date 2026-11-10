@@ -25,7 +25,7 @@ async function getSummary(req, res, next) {
       pool.query(`
         SELECT
           COUNT(*)::int AS total_students,
-          COUNT(*) FILTER (WHERE eligibility_category IN ('eligible', 'highly_eligible'))::int AS eligible_students,
+          COUNT(*) FILTER (WHERE eligibility_category IN ('moderate', 'high'))::int AS eligible_students,
           COUNT(*) FILTER (WHERE is_synthetic)::int AS synthetic_students
         FROM students
       `),

@@ -13,12 +13,37 @@ The SBMS eligibility score is calculated using five factors.
 
 ## Eligibility Categories
 
+Need level, not an approval decision:
+
 | Score | Category |
 |---|---|
-| 75-100 | Highly Eligible |
-| 50-74 | Eligible |
-| 30-49 | Partially Eligible |
-| 0-29 | Not Eligible |
+| 70-100 | High |
+| 40-69 | Moderate |
+| 0-39 | Low |
+
+## Recommended Bursary Amount Ranges
+
+Each category maps to a cash range shown next to the result. Ranges are
+configuration, not policy: the system ships no NG-CDF allocation limits of its own.
+
+- Configure approved ranges with the server environment variables
+  `ELIGIBILITY_RANGE_HIGH_MIN`/`_MAX`, `ELIGIBILITY_RANGE_MODERATE_MIN`/`_MAX`,
+  `ELIGIBILITY_RANGE_LOW_MIN`/`_MAX`.
+- When any of those six values is missing (or `max < min`), the built-in figures
+  are used and every response is flagged `recommended_range.provisional = true`,
+  so the UI labels them as a provisional proposal.
+- Built-in provisional figures: High KSh 15,000-25,000, Moderate KSh 8,000-15,000,
+  Low KSh 3,000-8,000.
+
+## Student Requirement
+
+An assessment cannot be calculated without a registered student. `student_id` is
+mandatory in `POST /api/eligibility`; the result is written to that student's
+`eligibility_score`, `eligibility_category` and `eligibility_assessed_at`, and an
+`ELIGIBILITY_CALCULATED` entry is written to the audit log.
+
+The result is a recommendation for the authorised officer. It never approves a
+bursary: approval stays a separate, explicit awards action.
 
 ## Scoring Rules
 

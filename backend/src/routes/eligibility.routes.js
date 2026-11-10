@@ -5,6 +5,7 @@ const requireRole = require('../middleware/requireRole');
 
 const router = express.Router();
 
+router.get('/', authenticateToken, requireRole('field_officer'), controller.describeFormula);
 router.post('/', authenticateToken, requireRole('field_officer'), controller.calculate);
 
 module.exports = router;
