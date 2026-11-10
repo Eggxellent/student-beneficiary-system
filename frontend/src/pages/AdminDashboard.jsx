@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ArrowRight, BadgeCheck, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, Plus, Settings, ShieldAlert, Users } from "lucide-react";
+import { ArrowRight, BadgeCheck, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, Plus, Settings, ShieldAlert, Users, Wallet } from "lucide-react";
 import HeaderActions from "../components/HeaderActions";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
@@ -8,6 +8,7 @@ import api from "../services/api";
 const navigation = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
   { name: "Duplicate Review", path: "/duplicate-review", icon: ShieldAlert },
+  { name: "Awards", path: "/awards", icon: Wallet },
   { name: "Audit Logs", path: "/audit", icon: Clock3 },
   { name: "Users", path: "/users", icon: Users },
   { name: "Reports", path: "/reports", icon: FileText },
