@@ -4,23 +4,6 @@ import api from "../services/api";
 
 const emptyForm = { first_name: "", last_name: "", date_of_birth: "", school_code: "", national_id_number: "", birth_certificate_number: "", upi: "", primary_phone: "" };
 
-function screeningSentence(screening) {
-  if (!screening) return "";
-  const considered = Number(screening.candidates_considered);
-  const qualifying = Number(screening.candidates_qualifying);
-  const suppressed = Number(screening.candidates_suppressed);
-  if (!Number.isFinite(considered)) return "";
-  if (considered === 0) return "No existing students were available to compare against.";
-  const parts = [`Checked against ${considered} existing student${considered === 1 ? "" : "s"}`];
-  if (Number.isFinite(qualifying) && qualifying > 0) {
-    parts.push(`${qualifying} candidate${qualifying === 1 ? "" : "s"} flagged for a second look`);
-  }
-  if (Number.isFinite(suppressed) && suppressed > 0) {
-    parts.push(`${suppressed} further match${suppressed === 1 ? "" : "es"} recorded in the audit log without a separate case`);
-  }
-  return `${parts.join("; ")}.`;
-}
-
 export default function StudentRegistration() {
   const [form, setForm] = useState(emptyForm);
   const [schools, setSchools] = useState([]);
@@ -62,12 +45,11 @@ export default function StudentRegistration() {
     }
   }
 
-  // The API publishes `risk_level: 'review'` for every case and never calls a record a
-  // duplicate, because both cutoffs are provisional. This screen belongs to a field
-  // officer, so it states the outcome in plain language and leaves model version, cutoffs
-  // and candidate counts to the administrator's review and audit screens.
+  // The API publishes `risk_level: 'review'` for every case and never calls a record a duplicate.
+  // This screen belongs to a field officer, so it states three facts only: saved, who, and
+  // whether an administrator will look at it. Cutoffs, candidate counts and model version are
+  // administrator detail and stay on the review, reporting and audit screens.
   const flags = result?.duplicate_flags || [];
-  const screening = result?.duplicate_screening || null;
   const duplicate = flags.length > 0;
   // Exact identifier agreement is evidence a reviewer can check in the source documents,
   // so it earns the stronger warning colour. `risk_level === 'critical'` is kept only as a
@@ -85,17 +67,16 @@ export default function StudentRegistration() {
   return (
     <main className="mx-auto max-w-[560px] px-4 py-8 sm:py-12">
       {result && (
-        <section className={`mb-5 border p-4 text-sm ${panelClass}`} role="status">
-          <h2 className="font-bold">Student registered</h2>
-          <p className="mt-1">{result.message}</p>
-          {duplicate && (
-            <p className="mt-2">Possible duplicate match found. An administrator must review this case before any bursary award is approved.</p>
-          )}
-          {flags.filter((flag) => flag.review_reason).map((flag) => (
-            <p key={flag.id} className="mt-1">{flag.review_reason}</p>
-          ))}
-          {screeningSentence(screening) && <p className="mt-2 text-xs">{screeningSentence(screening)}</p>}
-          {result.qr_code && <img src={result.qr_code} alt="Student QR code" className="mt-3 h-36 w-36 border bg-white p-2" />}
+        <section className={`mb-5 flex items-center gap-4 border p-4 text-sm ${panelClass}`} role="status">
+          {result.qr_code && <img src={result.qr_code} alt="Student QR code" className="h-20 w-20 shrink-0 border border-slate-300 bg-white p-1" />}
+          <div className="min-w-0">
+            <h2 className="font-bold">{duplicate ? "Student registered - review pending" : "Student registered"}</h2>
+            <p className="mt-0.5 truncate text-xs">
+              {result.student?.full_name || result.message}
+              {result.student?.school_code ? ` - ${result.student.school_code}` : ""}
+            </p>
+            {duplicate && <p className="mt-1">Possible duplicate. An admin must clear it before any award is approved.</p>}
+          </div>
         </section>
       )}
 
