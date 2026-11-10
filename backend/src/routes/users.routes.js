@@ -9,4 +9,5 @@ router.use(authenticateToken, requireRole('admin'));
 router.get('/', asyncHandler(controller.list));
 router.post('/', asyncHandler(controller.create));
 router.patch('/:id/role', asyncHandler(controller.updateRole));
+router.delete('/:id', asyncHandler(controller.remove));
 module.exports = router;

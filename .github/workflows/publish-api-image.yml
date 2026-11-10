@@ -8,6 +8,11 @@ name: Publish API image
 # Building here uses the runner's network and the automatic GITHUB_TOKEN, and still produces exactly the
 # image described by the repository's own Dockerfile. Trigger it manually; it is not wired to every push.
 on:
+  push:
+    paths:
+      - 'backend/**'
+      - 'Dockerfile'
+      - '.github/workflows/publish-api-image.yml'
   workflow_dispatch:
     inputs:
       reason:

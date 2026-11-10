@@ -28,6 +28,13 @@ export default function UserManagement() {
     catch (err) { setError(err.response?.data?.message || 'Could not update role.'); }
   }
 
+  async function deleteUser(user) {
+    setError(''); setNotice('');
+    if (!window.confirm(`Delete the account for ${user.full_name} (${user.email})? They will no longer be able to sign in.`)) return;
+    try { await api.delete(`/users/${user.id}`); setNotice(`Deleted ${user.full_name}'s account.`); await loadUsers(); }
+    catch (err) { setError(err.response?.data?.message || 'Could not delete account.'); }
+  }
+
   return <div className="mx-auto max-w-6xl p-5 sm:p-8">
     <h1 className="text-2xl font-bold">User management</h1>
     {error && <p role="alert" className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
@@ -39,6 +46,6 @@ export default function UserManagement() {
       <label className="text-xs font-medium">Role<select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="mt-1 h-10 w-full border px-2 text-sm"><option value="field_officer">Field Officer</option><option value="admin">Admin</option></select></label>
       <button className="self-end rounded bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white">Create account</button>
     </form>
-    <div className="mt-5 overflow-x-auto rounded border bg-white"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase"><tr><th className="px-4 py-3">Name</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Created</th></tr></thead><tbody className="divide-y">{users.map(user => <tr key={user.id}><td className="px-4 py-3 font-medium">{user.full_name}</td><td className="px-4 py-3">{user.email}</td><td className="px-4 py-3"><select aria-label={`Role for ${user.full_name}`} value={user.role} onChange={e => changeRole(user, e.target.value)} className="border px-2 py-1"><option value="field_officer">Field Officer</option><option value="admin">Admin</option></select></td><td className="px-4 py-3 text-xs">{new Date(user.created_at).toLocaleDateString()}</td></tr>)}</tbody></table>{users.length === 0 && <p className="p-5 text-sm text-slate-500">No accounts found.</p>}</div>
+    <div className="mt-5 overflow-x-auto rounded border bg-white"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase"><tr><th className="px-4 py-3">Name</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Created</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y">{users.map(user => <tr key={user.id}><td className="px-4 py-3 font-medium">{user.full_name}</td><td className="px-4 py-3">{user.email}</td><td className="px-4 py-3"><select aria-label={`Role for ${user.full_name}`} value={user.role} onChange={e => changeRole(user, e.target.value)} className="border px-2 py-1"><option value="field_officer">Field Officer</option><option value="admin">Admin</option></select></td><td className="px-4 py-3 text-xs">{new Date(user.created_at).toLocaleDateString()}</td><td className="px-4 py-3"><button type="button" onClick={() => deleteUser(user)} aria-label={`Delete ${user.full_name}`} className="rounded border border-red-300 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50">Delete</button></td></tr>)}</tbody></table>{users.length === 0 && <p className="p-5 text-sm text-slate-500">No accounts found.</p>}</div>
   </div>;
 }

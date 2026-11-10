@@ -155,4 +155,37 @@ async function updateRole(req, res, next) {
   } catch (error) { next(error); }
 }
 
-module.exports = { list, create, updateRole };
+async function remove(req, res, next) {
+  try {
+    const outcome = await runTransaction(async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock(8831, 7745)');
+      const target = await client.query('SELECT id, full_name, email, role FROM users WHERE id = $1 AND is_active = TRUE FOR UPDATE', [req.params.id]);
+      if (!target.rows.length) {
+        return respondAfterRollback(404, { message: 'User not found.' });
+      }
+      const user = target.rows[0];
+      if (user.id === req.user.id) {
+        return respondAfterRollback(409, { message: 'You cannot delete the account you are signed in with.' });
+      }
+      if (user.role === 'admin') {
+        const { rows } = await client.query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin' AND is_active = TRUE");
+        if (rows[0].count <= 1) {
+          return respondAfterRollback(409, { message: 'The last administrator account cannot be deleted.' });
+        }
+      }
+      await client.query('UPDATE users SET is_active = FALSE WHERE id = $1', [user.id]);
+      await client.query(
+        `INSERT INTO audit_logs (user_id, action, table_name, record_id, details)
+         VALUES ($1, 'ADMIN_DEACTIVATE_USER', 'users', $2, $3)`,
+        [req.user.id, user.id, { email: user.email, role: user.role }]
+      );
+      return { removed: { id: user.id, email: user.email } };
+    });
+    if (outcome && outcome[rollbackResponse]) {
+      return res.status(outcome.status).json(outcome.body);
+    }
+    return res.status(204).send();
+  } catch (error) { next(error); }
+}
+
+module.exports = { list, create, updateRole, remove };
