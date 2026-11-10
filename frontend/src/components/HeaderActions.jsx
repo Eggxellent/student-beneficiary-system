@@ -147,18 +147,17 @@ export default function HeaderActions({ tone = "light" }) {
                       onClick={() => { setOpen(null); navigate("/duplicate-review"); }}
                       className="w-full px-2 py-2 text-left transition hover:bg-slate-50"
                     >
-                      <span className="flex items-start justify-between gap-2">
-                        <span className="text-xs font-medium text-slate-800">
-                          Possible duplicate: {entry.students?.[0]?.full_name || "Unknown"} / {entry.students?.[1]?.full_name || "Unknown"}
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate text-xs font-medium text-slate-800">
+                          {entry.students?.[0]?.full_name || "Unknown"} / {entry.students?.[1]?.full_name || "Unknown"}
                         </span>
                         {!seenIds.has(entry.id) && (
-                          <span className="mt-0.5 shrink-0 rounded bg-[#C8A45D]/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#7a5c1d]">New</span>
+                          <span className="shrink-0 rounded bg-[#C8A45D]/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#7a5c1d]">New</span>
                         )}
                       </span>
                       <span className="mt-0.5 block text-[11px] text-slate-500">
-                        {entry.priority === "high" ? "High priority" : "Standard review"} · {entry.status === "needs_verification" ? "Needs verification" : "Pending review"} · {timeAgo(entry.created_at)}
+                        {entry.priority === "high" ? "High · " : ""}{timeAgo(entry.created_at)}
                       </span>
-                      {entry.reason && <span className="mt-0.5 block text-[11px] text-slate-400">{entry.reason}</span>}
                     </button>
                   </li>
                 ))}
