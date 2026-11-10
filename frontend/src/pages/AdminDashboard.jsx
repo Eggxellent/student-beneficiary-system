@@ -69,6 +69,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [lastUpdated, setLastUpdated] = useState(() => cachedDashboard?.lastUpdated ? new Date(cachedDashboard.lastUpdated) : null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   async function loadDashboard({ silent = false } = {}) {
     try {
@@ -123,7 +124,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <aside className="fixed left-0 top-0 z-30 hidden h-screen w-56 flex-col border-r border-[#245747] bg-[#173D35] text-white sm:flex">
+      <aside className={`fixed left-0 top-0 z-40 flex h-screen w-56 flex-col border-r border-[#245747] bg-[#173D35] text-white transition-transform duration-200 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} sm:translate-x-0`}>
         <div className="flex h-12 items-center gap-2 border-b border-white/15 px-4">
           <div className="flex h-5 w-5 items-center justify-center rounded bg-[#C8A45D] text-[#173D35]"><GraduationCap size={13} aria-hidden="true" /></div>
           <span className="text-sm font-bold tracking-tight text-white">SBMS</span>
@@ -137,6 +138,7 @@ export default function AdminDashboard() {
               <Link
                 key={item.name}
                 to={item.path}
+                onClick={() => setSidebarOpen(false)}
                 className={`flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-medium transition ${
                   isActive
                     ? "bg-white/15 text-white"
@@ -171,10 +173,22 @@ export default function AdminDashboard() {
         </div>
       </aside>
 
+      {sidebarOpen && (
+        <button type="button" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-30 bg-slate-950/40 sm:hidden" />
+      )}
       <main className="min-h-screen sm:ml-56">
         <header className="sticky top-0 z-20 flex h-12 items-center justify-between border-b border-slate-200 bg-white/95 px-3 backdrop-blur sm:px-4">
           <div className="flex items-center gap-2">
-            <LayoutDashboard size={15} className="text-slate-500" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => setSidebarOpen((open) => !open)}
+              aria-label="Toggle navigation"
+              aria-expanded={sidebarOpen}
+              className="flex h-7 w-7 items-center justify-center rounded text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 sm:hidden"
+            >
+              <LayoutDashboard size={15} aria-hidden="true" />
+            </button>
+            <LayoutDashboard size={15} className="hidden text-slate-500 sm:block" aria-hidden="true" />
             <h1 className="text-xs font-semibold text-slate-800">Dashboard</h1>
           </div>
 
