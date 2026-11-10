@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { Award, Download, Printer, RefreshCw, ShieldOff } from "lucide-react";
+import { Award, Download, Printer, RefreshCw } from "lucide-react";
 import api from "../services/api";
 
 // Certificates for approved awards. The panel is deliberately separate from the award decision
@@ -22,10 +22,9 @@ function CertificateChip({ record }) {
   if (!record) {
     return <span className="inline-block rounded border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">Not issued</span>;
   }
-  const revoked = record.certificate.status === "revoked";
   return (
-    <span className={`inline-block rounded border px-2 py-1 text-xs font-medium ${revoked ? "border-red-200 bg-red-50 text-red-800" : "border-green-200 bg-green-50 text-green-800"}`}>
-      {revoked ? "Revoked" : "Issued"}
+    <span className="inline-block rounded border border-green-200 bg-green-50 px-2 py-1 text-xs font-medium text-green-800">
+      Issued
       <span className="ml-1 font-mono text-[11px]">{record.certificate.certificate_reference}</span>
     </span>
   );
@@ -40,8 +39,6 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
   const [message, setMessage] = useState("");
   const [periods, setPeriods] = useState({});
   const [expanded, setExpanded] = useState("");
-  const [revoking, setRevoking] = useState("");
-  const [revokeReason, setRevokeReason] = useState("");
 
   const loadCertificates = useCallback(async () => {
     if (approvedAwards.length === 0) {
@@ -131,37 +128,13 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
     }
   }
 
-  async function revokeCertificate(award) {
-    if (revokeReason.trim().length < 5) {
-      setError("Enter a reason of at least 5 characters before revoking a certificate.");
-      return;
-    }
-    setBusy(award.id);
-    setError("");
-    setMessage("");
-    try {
-      await api.post(`/awards/${award.id}/certificate/revoke`, { reason: revokeReason.trim() });
-      setMessage("Certificate revoked. It no longer verifies and cannot be reissued for this award.");
-      setRevoking("");
-      setRevokeReason("");
-      await loadCertificates();
-      if (onChanged) await onChanged();
-    } catch (err) {
-      setError(err.response?.data?.message || "Unable to revoke the certificate.");
-    } finally {
-      setBusy("");
-    }
-  }
-
   return (
     <section className="overflow-x-auto rounded border border-slate-200 bg-white">
       <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="font-semibold text-slate-900">Bursary certificates</h2>
-          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
-            A certificate can only be issued for an approved award. Each certificate carries its own
-            QR code, which opens a public page confirming authenticity. Approval is not payment: the
-            certificate never claims that funds were disbursed.
+          <p className="mt-1 text-xs text-slate-600">
+            Approved awards only. Each certificate has a QR code that confirms it is genuine. Approval is not payment.
           </p>
         </div>
         <button
@@ -266,19 +239,6 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
                               <Printer size={13} aria-hidden="true" />
                               Print
                             </button>
-                            {isAdmin && certificate.status === "active" && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setRevoking(revoking === award.id ? "" : award.id);
-                                  setRevokeReason("");
-                                }}
-                                className="flex items-center gap-1 rounded border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
-                              >
-                                <ShieldOff size={13} aria-hidden="true" />
-                                Revoke
-                              </button>
-                            )}
                           </>
                         )}
                       </div>
@@ -315,12 +275,6 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
                               <dt className="text-slate-600">Approved amount</dt>
                               <dd className="text-slate-900">{money(certificate.approved_amount)}</dd>
                             </div>
-                            <div className="flex flex-wrap justify-between gap-2">
-                              <dt className="text-slate-600">Status</dt>
-                              <dd className={certificate.status === "revoked" ? "font-semibold text-red-700" : "font-semibold text-green-700"}>
-                                {certificate.status === "revoked" ? "Revoked - no longer verifies" : "Active"}
-                              </dd>
-                            </div>
                             <div className="pt-2">
                               <dt className="text-slate-600">Verification link encoded in the QR code</dt>
                               <dd className="mt-1 break-all font-mono text-[11px] text-slate-700">{certificate.verification_url}</dd>
@@ -331,59 +285,11 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
                                 {certificate.verification_page_url}
                               </dd>
                             </div>
-                            {certificate.status === "revoked" && certificate.revocation_reason && (
-                              <div className="pt-2">
-                                <dt className="text-slate-600">Revocation reason</dt>
-                                <dd className="mt-1 text-slate-900">{certificate.revocation_reason}</dd>
-                              </div>
-                            )}
                           </dl>
                         </div>
                       </td>
                     </tr>
                   )}
-                  {revoking === award.id && (
-                    <tr>
-                      <td colSpan={5} className="bg-red-50 p-4">
-                        <form
-                          onSubmit={(event) => { event.preventDefault(); revokeCertificate(award); }}
-                          className="flex flex-col gap-3 sm:flex-row sm:items-end"
-                        >
-                          <label className="flex-1 text-xs font-medium text-slate-800">
-                            Reason for revoking {certificate.certificate_reference}
-                            <input
-                              required
-                              minLength={5}
-                              maxLength={1000}
-                              value={revokeReason}
-                              onChange={(event) => setRevokeReason(event.target.value)}
-                              className="mt-1 h-9 w-full border border-slate-300 bg-white px-2 text-sm"
-                            />
-                          </label>
-                          <div className="flex gap-2">
-                            <button
-                              disabled={working}
-                              className="rounded bg-red-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                            >
-                              {working ? "Revoking..." : "Confirm revocation"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setRevoking(""); setRevokeReason(""); }}
-                              className="rounded border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                        <p className="mt-2 text-xs text-red-800">
-                          Revoking is recorded in the audit log. The award decision itself is not changed,
-                          and a second certificate cannot be issued for this award.
-                        </p>
-                      </td>
-                    </tr>
-                  )}
-
                 </Fragment>
               );
             })}
