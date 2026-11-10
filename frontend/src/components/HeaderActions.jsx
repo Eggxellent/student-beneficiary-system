@@ -10,11 +10,6 @@ function initials(fullName) {
   return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
 
-function humanize(action) {
-  const text = String(action || "").replace(/_/g, " ").toLowerCase();
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
 function timeAgo(value) {
   const then = new Date(value).getTime();
   if (Number.isNaN(then)) return "";
@@ -26,24 +21,66 @@ function timeAgo(value) {
   return new Date(value).toLocaleDateString();
 }
 
+const NOTIFICATION_LIMIT = 8;
+
+function seenStorageKey(user) {
+  return `sbms:duplicate-notifications:seen:${user?.id || user?.email || "anonymous"}`;
+}
+
+function readSeenIds(user) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(seenStorageKey(user)));
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistSeenIds(user, ids) {
+  try {
+    localStorage.setItem(seenStorageKey(user), JSON.stringify([...ids].slice(-200)));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 export default function HeaderActions({ tone = "light" }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [notificationsError, setNotificationsError] = useState("");
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [seenIds, setSeenIds] = useState(() => readSeenIds(user));
   const containerRef = useRef(null);
 
   const isAdmin = user?.role === "admin";
+  const unreadCount = notifications.filter((item) => !seenIds.has(item.id)).length;
 
   useEffect(() => {
     if (!isAdmin) return undefined;
     let active = true;
-    api.get("/audit-logs")
-      .then(({ data }) => { if (active) setNotifications(Array.isArray(data) ? data.slice(0, 6) : []); })
-      .catch(() => { if (active) setNotificationsError("Could not load notifications."); });
+    setLoadingNotifications(true);
+    api.get("/duplicate-flags", { params: { status: "open", page: 1, page_size: NOTIFICATION_LIMIT } })
+      .then(({ data }) => {
+        if (!active) return;
+        setNotifications(Array.isArray(data?.cases) ? data.cases : []);
+        setNotificationsError("");
+      })
+      .catch(() => { if (active) setNotificationsError("Could not load duplicate notifications."); })
+      .finally(() => { if (active) setLoadingNotifications(false); });
     return () => { active = false; };
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (open !== "alerts" || !isAdmin || notifications.length === 0) return;
+    const unseen = notifications.filter((item) => !seenIds.has(item.id));
+    if (unseen.length === 0) return;
+    const next = new Set(seenIds);
+    unseen.forEach((item) => next.add(item.id));
+    setSeenIds(next);
+    persistSeenIds(user, next);
+  }, [open, isAdmin, notifications, seenIds, user]);
 
   useEffect(() => {
     function close(event) {
@@ -81,40 +118,57 @@ export default function HeaderActions({ tone = "light" }) {
         <div className="relative">
           <button
             type="button"
-            aria-label={notifications.length ? `Notifications (${notifications.length})` : "Notifications"}
+            aria-label={unreadCount ? `Duplicate notifications (${unreadCount} new)` : "Duplicate notifications"}
             aria-haspopup="true"
             aria-expanded={open === "alerts"}
             onClick={() => setOpen(open === "alerts" ? null : "alerts")}
             className={`relative flex h-8 w-8 items-center justify-center rounded-full transition ${triggerClass}`}
           >
             <Bell size={16} aria-hidden="true" />
-            {notifications.length > 0 && (
+            {unreadCount > 0 && (
               <span className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[#C8A45D] px-1 text-[9px] font-bold text-[#173D35]">
-                {notifications.length}
+                {unreadCount}
               </span>
             )}
           </button>
           {open === "alerts" && (
-            <div className={panelClass} role="dialog" aria-label="Notifications">
-              <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Recent activity</p>
+            <div className={panelClass} role="dialog" aria-label="Duplicate notifications">
+              <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Duplicate detection</p>
               {notificationsError && <p className="px-2 py-2 text-xs text-red-600">{notificationsError}</p>}
-              {!notificationsError && notifications.length === 0 && <p className="px-2 py-2 text-xs text-slate-500">No notifications yet.</p>}
+              {!notificationsError && loadingNotifications && notifications.length === 0 && <p className="px-2 py-2 text-xs text-slate-500">Loading flags…</p>}
+              {!notificationsError && !loadingNotifications && notifications.length === 0 && (
+                <p className="px-2 py-2 text-xs text-slate-500">No duplicate flags awaiting review.</p>
+              )}
               <ul className="max-h-72 divide-y divide-slate-100 overflow-y-auto">
                 {notifications.map((entry) => (
-                  <li key={entry.id} className="px-2 py-2">
-                    <p className="text-xs font-medium text-slate-800">{humanize(entry.action)}</p>
-                    <p className="mt-0.5 text-[11px] text-slate-500">
-                      {(entry.user_name || entry.user_email || "System")} · {timeAgo(entry.created_at)}
-                    </p>
+                  <li key={entry.id}>
+                    <button
+                      type="button"
+                      onClick={() => { setOpen(null); navigate("/duplicate-review"); }}
+                      className="w-full px-2 py-2 text-left transition hover:bg-slate-50"
+                    >
+                      <span className="flex items-start justify-between gap-2">
+                        <span className="text-xs font-medium text-slate-800">
+                          Possible duplicate: {entry.students?.[0]?.full_name || "Unknown"} / {entry.students?.[1]?.full_name || "Unknown"}
+                        </span>
+                        {!seenIds.has(entry.id) && (
+                          <span className="mt-0.5 shrink-0 rounded bg-[#C8A45D]/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#7a5c1d]">New</span>
+                        )}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-slate-500">
+                        {entry.priority === "high" ? "High priority" : "Standard review"} · {entry.status === "needs_verification" ? "Needs verification" : "Pending review"} · {timeAgo(entry.created_at)}
+                      </span>
+                      {entry.reason && <span className="mt-0.5 block text-[11px] text-slate-400">{entry.reason}</span>}
+                    </button>
                   </li>
                 ))}
               </ul>
               <button
                 type="button"
-                onClick={() => { setOpen(null); navigate("/audit"); }}
+                onClick={() => { setOpen(null); navigate("/duplicate-review"); }}
                 className="mt-1 w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-[#245747] hover:bg-slate-50"
               >
-                View all audit logs
+                Open Duplicate Review
               </button>
             </div>
           )}
