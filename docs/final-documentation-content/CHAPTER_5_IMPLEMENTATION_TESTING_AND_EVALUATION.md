@@ -413,14 +413,14 @@ timestamp. The snapshot exists so that a later change to the award cannot rewrit
 says. The response returns the certificate facts, the verification URL and a QR data URL; the printable PDF
 is rendered per request with `pdfkit` and `qrcode` on A4 landscape and served with `Cache-Control: no-store`.
 
-Public verification answers in one of four states, computed by comparing the snapshot with the live award
-(`certificates.controller.js:53-89`): `verified` when the certificate is active and the award is still
+Public verification answers in one of three states, computed by comparing the snapshot with the live award
+(`certificates.controller.js:52-88`): `verified` when the certificate is active and the award is still
 `approved` at the same amount; `not_current` when the award is no longer approved or its approved amount has
-changed; `revoked`; and `not_recognised` for any malformed, unknown or manipulated token. A `verified`
-response discloses the certificate reference, award period, issue date, approval date, award status and the
-issuing authority, and **not** the student's name, UPI, school or the amount. Revocation is a status change
-with actor, timestamp and a reason of at least five characters, enforced by a table `CHECK` as well as by the
-API, and it never alters the award or any payment.
+changed; and `not_recognised` for any malformed, unknown or manipulated token. **There is no revocation
+state or endpoint**: revocation is outside the SBMS scope, so an issued certificate can only stop verifying
+when the award it certifies changes, and the award and every payment record stay untouched either way. The
+public answer and its deliberate disclosure policy are described in `docs/bursary-certificates-2026-11-01.md`
+§10.5.
 
 The distinction between the two verification functions is enforced technically, not only conceptually: the
 endpoints have separate paths, separate token namespaces, separate rate-limit budgets and separate pages, and
@@ -447,7 +447,8 @@ its business change or vice versa. The action vocabulary includes `CREATE`, `REV
 `DUPLICATE_CONFIRMED_DUPLICATE`, `DUPLICATE_NOT_DUPLICATE`, `DUPLICATE_NEEDS_VERIFICATION`,
 `AWARD_VERIFICATION_RECORDED`, `AWARD_APPROVED`, `AWARD_REJECTED`, `PAYMENT_ISSUED`, `PAYMENT_CLEARED`,
 `RECEIPT_ACKNOWLEDGED_OFFICER_ASSISTED`, `LEGACY_PAYMENT_LINKED_TO_AWARD`, `AWARD_CERTIFICATE_ISSUED`,
-`AWARD_CERTIFICATE_REVOKED`, `ADMIN_UPDATE_DUPLICATE_THRESHOLDS` and `GENERATE_REPORT`.
+`ADMIN_UPDATE_DUPLICATE_THRESHOLDS` and `GENERATE_REPORT`. There is no `AWARD_CERTIFICATE_REVOKED`
+action because revocation is not implemented.
 
 ### 5.3.11 Configuration, start-up guards and migration control
 
@@ -568,7 +569,7 @@ is cited and the older is identified.
 | # | Suite | Tests | What it establishes |
 | --- | --- | --- | --- |
 | 13 | `bursaryRules.test.js` | 4 | Payment transition legality, cent arithmetic, exception derivation, overdue computation |
-| 14 | `bursaryCertificates.test.js` | 12 | Approval as precondition; admin-only issue and revoke; malformed period refused; QR payload is the verification URL; no second certificate; staff read and PDF download; public authenticity without beneficiary data; identical refusal for unknown, malformed and manipulated tokens; token namespaces kept apart; `not_current` after an amount change; revocation leaves the award untouched; audit rows |
+| 14 | `bursaryCertificates.test.js` | 14 | Approval as precondition (pending and rejected both `409`, no row written); admin-only issue; malformed period refused; QR payload is the verification URL; no second certificate; staff read and PDF download; public facts a printed copy can be compared with; the printed reference verifies the same certificate as the QR code; unknown and manipulated tokens refused identically; token namespaces kept apart; `not_current` after an amount change; no revocation route exists and the certificate still verifies afterwards; audit rows |
 | 15 | `certificateVerificationRoute.test.js` | 5 | Handler reached only through the limiter; limiter before the parser; size limit still enforced; only POST routed; separate student and certificate budgets |
 | 16 | `verification.test.js` | 10 | 64-hex token; QR encodes the fragment URL; token never returned; valid token yields only `found:true`; unknown and malformed tokens indistinguishable; extra fields and empty body refused; budget stops the eleventh request; forged `X-Forwarded-For` does not reset the budget |
 | 17 | `verificationRoute.test.js` | 4 | Single registration with the limiter before the parser; size limit enforced; only POST routed; response exposes nothing but `found` |
@@ -707,7 +708,7 @@ a pass anywhere in this chapter.
 | O-09 | Threshold validation against adjudicated pairs | Requires reviewer-labelled ground truth (§5.5.5) | Whether 0.50 is an appropriate operating point for real records |
 | O-10 | Disaster-recovery drill against the **hosted** database | The rehearsal used a local disposable database | That the production recovery procedure works against the managed service |
 | O-11 | Behavioural test of the legacy `beneficiaries` module | The router is mounted and readiness depends on it, but no behavioural test exists | Whether the legacy module still does anything useful |
-| O-12 | Certificate verification page in a real browser | No script exists for it; covered by API tests only | That the page renders its four states correctly |
+| O-12 | Certificate verification page in a real browser | No script exists for it; covered by API tests only | That the page renders its three states correctly |
 
 ---
 

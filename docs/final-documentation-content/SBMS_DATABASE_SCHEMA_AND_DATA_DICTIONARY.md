@@ -232,14 +232,14 @@ Two table CHECK constraints make the states self-consistent: `disbursements_clea
 | `school_code` | VARCHAR(100) | no | — | Snapshot of the school |
 | `approved_amount` | NUMERIC(12,2) | no | CHECK `> 0` | Snapshot of the amount; verification compares it with the live award |
 | `award_approved_at` | TIMESTAMPTZ | no | — | Snapshot of the approval time |
-| `status` | VARCHAR(20) | no | CHECK IN (`active`, `revoked`) | Certificate state |
+| `status` | VARCHAR(20) | no | CHECK IN (`active`, `revoked`) | Certificate state; the application only writes `active` |
 | `issued_by` | UUID | no | FK `users(id)` ON DELETE RESTRICT | Issuing administrator |
 | `issued_at` | TIMESTAMPTZ | no | — | Issue time |
-| `revoked_by` | UUID | yes | FK `users(id)` ON DELETE RESTRICT | Revoking administrator |
-| `revoked_at` | TIMESTAMPTZ | yes | — | Revocation time |
-| `revocation_reason` | TEXT | yes | CHECK >= 5 trimmed characters when revoked | Why revoked |
+| `revoked_by` | UUID | yes | FK `users(id)` ON DELETE RESTRICT | Legacy column, never written |
+| `revoked_at` | TIMESTAMPTZ | yes | — | Legacy column, never written |
+| `revocation_reason` | TEXT | yes | CHECK >= 5 trimmed characters when revoked | Legacy column, never written |
 
-`bursary_certificates_revocation_check` enforces that an active row has no revocation fields and a revoked row has all three. The table exists so that a later edit to the award cannot silently rewrite what a printed document says; the verification endpoint compares the snapshot with the live award and answers `not_current` on a mismatch.
+`bursary_certificates_revocation_check` still enforces that a row carries either none or all three revocation fields, but SBMS has no revocation route, so every row is inserted `active` with those fields null. The table exists so that a later edit to the award cannot silently rewrite what a printed document says; the verification endpoint compares the snapshot with the live award and answers `not_current` on a mismatch.
 
 ### 4.10 `audit_logs`, `reports`, `beneficiaries`, `sbms_schema_migrations`
 
@@ -297,7 +297,7 @@ The asymmetry is deliberate: review data cascades because it is derived from the
 | `bursary_award_verification_events_award_idx` | `(award_id, created_at DESC)` | Verification history per award |
 | `disbursements_award_status_idx` | `disbursements(award_id, payment_status, receipt_status)` | Reconciliation views and exception queries |
 | `disbursement_reconciliation_events_disbursement_idx` | `(disbursement_id, created_at DESC)` | Payment event trail |
-| `bursary_certificates_status_issued_idx` | `(status, issued_at DESC)` | Active versus revoked certificate listing |
+| `bursary_certificates_status_issued_idx` | `(status, issued_at DESC)` | Certificate listing by issue date (`status` is always `active`) |
 
 No index exists on `students.full_name`, `students.school_code` or `students.date_of_birth`. That is consistent with FR-34: screening reads the whole table, so no index would be used. It is also why a blocking strategy (D4 in the ML decision sheet) would require new indexes.
 
@@ -310,7 +310,7 @@ No index exists on `students.full_name`, `students.school_code` or `students.dat
 | Verification | `not_checked` to `verified` / `not_found` / `needs_investigation` | `bursary_awards_verification_fields_check`; the controller closes verification after a decision | A `verified` outcome without evidence, actor and time |
 | Payment | `issued` to `cleared` / `failed` / `cancelled`, with no further change | `bursaryRules.canTransitionPayment`; `disbursements_clearance_fields_check` | Clearing twice; failing a payment that already has a receipt status |
 | Receipt | NULL to `awaiting_acknowledgement` to `acknowledged` or `discrepancy` | `bursaryRules.receiptStatus` compares cents; `disbursements_acknowledgement_fields_check` | An acknowledged receipt without amount, actor, time and evidence; any method other than `officer_assisted` |
-| Certificate | `active` to `revoked` | `bursary_certificates_revocation_check` | Revoking twice; reissuing for the same award (`award_id` UNIQUE) |
+| Certificate | No transition after issue: `status` stays `active` | `award_id` UNIQUE; the issue path refuses an award that already has a certificate | A second certificate for the same award |
 
 Amount comparison is performed in integer cents (`bursaryRules.cents`), so a floating-point difference cannot turn an exact receipt into a discrepancy, or the reverse.
 

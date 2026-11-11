@@ -281,7 +281,8 @@ are kept because they describe the commands as they were run on 2026-10-31.
 | Azure/production certificate behaviour | **NOT RUN** | nothing is provisioned |
 
 Two suites are new for this feature: `backend/tests/bursaryCertificates.test.js` (issue, read,
-PDF, revoke, public verification, `not_current` after an amount change, audit rows) and
+PDF, public verification by token and by printed reference, `not_current` after an amount change,
+audit rows, and the absence of any revocation route) and
 `backend/tests/certificateVerificationRoute.test.js` (public route contract and its own rate
 limit). `backend/tests/schemaReadiness.test.js` now asserts that `bursary_certificates` is part of
 the readiness contract, so `GET /api/ready` fails closed if the migration is missing.

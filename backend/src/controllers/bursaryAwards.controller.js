@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
+const { issueForApprovedAward } = require('../services/certificateIssue');
 
 const createSchema = z.object({
   student_id: z.string().uuid(),
@@ -29,10 +30,16 @@ async function list(req, res, next) {
   try {
     const { rows } = await pool.query(
       `SELECT a.*, s.full_name AS student_name, s.upi,
+              proposer.full_name AS submitted_by_name,
+              decider.full_name AS decided_by_name,
+              cert.certificate_reference,
               COALESCE(duplicates.open_count, 0)::int AS open_duplicate_count,
               COALESCE(history.events, '[]'::jsonb) AS verification_history
        FROM bursary_awards a
        JOIN students s ON s.id = a.student_id
+       LEFT JOIN users proposer ON proposer.id = a.submitted_by
+       LEFT JOIN users decider ON decider.id = a.decided_by
+       LEFT JOIN bursary_certificates cert ON cert.award_id = a.id
        LEFT JOIN LATERAL (
          SELECT COUNT(*) AS open_count FROM duplicate_flags f
          WHERE (f.student_id = a.student_id OR f.matched_student_id = a.student_id)
@@ -197,12 +204,37 @@ async function decide(req, res, next) {
        WHERE id = $5 RETURNING *`,
       [decision, decision === 'approved' ? approved_amount : null, reason, actorId, req.params.id]
     );
+    // Approval produces the certificate in the same transaction: an approved award without one
+    // would mean the proposing officer has nothing to print for the student. Rejection produces
+    // nothing, and a later decision cannot be made because `status` is no longer 'submitted'.
+    let certificate = null;
+    if (decision === 'approved') {
+      const { rows: students } = await client.query(
+        'SELECT full_name, upi, school_code FROM students WHERE id = $1',
+        [award.student_id]
+      );
+      if (!students.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ message: 'The student record for this award is missing.' });
+      }
+      certificate = await issueForApprovedAward(client, {
+        award: updated.rows[0],
+        student: students[0],
+        actorId,
+      });
+    }
     await logAudit(actorId, `AWARD_${decision.toUpperCase()}`, 'bursary_awards', req.params.id, {
       approved_amount: decision === 'approved' ? approved_amount : null,
       reason,
     }, client);
     await client.query('COMMIT');
-    res.json({ message: decision === 'approved' ? 'Award approved. A certificate can now be issued.' : 'Award rejected.', award: updated.rows[0] });
+    res.json({
+      message: decision === 'approved'
+        ? `Award approved. Certificate ${certificate.certificate_reference} was generated for the proposing field officer to print and issue.`
+        : 'Award rejected.',
+      award: updated.rows[0],
+      certificate_reference: certificate ? certificate.certificate_reference : null,
+    });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);

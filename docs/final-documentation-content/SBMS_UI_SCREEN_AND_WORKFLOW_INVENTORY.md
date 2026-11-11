@@ -41,7 +41,7 @@ The frontend is a single-page React application built with Vite and routed with 
 | Layout | `components/AppLayout.jsx` | Sidebar navigation with role-specific entries, header with the signed-in user and a sign-out action |
 | Public layout | `components/PublicVerificationLayout.jsx` | Minimal centred shell used by both public verification pages, with no navigation and no authenticated data |
 | Hash-token hook | `hooks/useHashToken.js` | Reads `window.location.hash`, captures the token during render (so React StrictMode's double effect cannot strip it before the second pass), removes it with `history.replaceState`, and re-runs on `hashchange` |
-| Certificate panel | `components/AwardCertificatePanel.jsx` | Issue, read, print and revoke controls for an award certificate; used inside the disbursement screen |
+| Certificate panel | `components/AwardCertificatePanel.jsx` | Issue, read, print and download controls for an award certificate; used inside the disbursement screen |
 
 The hash-token hook exists because of a real defect: verifying once on mount left a stale result when a second QR code was opened in the same tab. That defect, its fix and the StrictMode regression it exposed are recorded in `docs/qr-verification-2026-10-30.md` §4.
 
@@ -62,10 +62,10 @@ The hash-token hook exists because of a real defect: verifying once on mount lef
 
 | Property | Detail |
 | --- | --- |
-| Data loaded | Token from the fragment POSTed to `/api/certificates/verify` |
-| Success state | Authenticity facts: certificate reference, award period, issue date, approval date, issuing authority |
-| Refusal states | `not_recognised`, `revoked`, `not_current`, or a temporary-unavailability line |
-| Data shown | No student name, UPI, school or amount |
+| Data loaded | Token from the fragment, or a typed printed reference, POSTed to `/api/certificates/verify` |
+| Success state | Authenticity facts: certificate reference, beneficiary name, institution, programme, constituency, award period, approved amount, issue date, approval date, issuing authority |
+| Refusal states | `not_recognised`, `not_current`, or a temporary-unavailability line |
+| Data shown | No UPI or other identifier, date of birth, national ID, guardian or phone details, address, or the verification token |
 | Evidence | API contracts covered by `certificateVerificationRoute.test.js` (5) and `bursaryCertificates.test.js` (12); **no browser harness exists for this page** |
 
 ### 3.3 Sign-in screens
@@ -129,7 +129,7 @@ The UPI and birth-certificate inputs were added on 2026-11-01 because the critic
 | Data loaded | `GET /awards`, `GET /students` |
 | Award actions | Submit application (`POST /awards`), record verification (`POST /awards/:id/verification`), approve or reject (`PATCH /awards/:id/decision`) |
 | Payment actions | Record payment (`POST /disbursements`), change payment status (`PATCH /disbursements/:id/payment-status`), record acknowledgement (`PATCH /disbursements/:id/acknowledgement`), link a legacy payment (`PATCH /disbursements/:id/award`) |
-| Certificate panel | `AwardCertificatePanel` issues, reads, prints and revokes certificates through `/awards/:id/certificate*` |
+| Certificate panel | `AwardCertificatePanel` issues, reads and prints certificates through `/awards/:id/certificate*` |
 | Role behaviour | The page renders for both roles; controls are permitted by the API, so an officer attempting an administrator-only action receives 403 |
 | Known asymmetry | The student picker calls `GET /students`, which is officer-only; for an administrator that call returns 403 and the picker has no data (inspection finding, `SBMS_API_ENDPOINT_CATALOGUE.md` §7.2) |
 | Evidence | Payment and award rules are covered by 20 API tests; **no browser harness drives this screen** |
@@ -189,7 +189,7 @@ The UPI and birth-certificate inputs were added on 2026-11-01 because the critic
 | Adjudicate a duplicate | `/admin/login` → `/duplicate-review` → case detail → decision form | Queue with priority → masked identifiers, score, cut-offs → reason prompt → confirmation that the decision was recorded |
 | Award and pay | `/students/register` → `/disbursements` (submit, verify, approve) → record payment → clear → acknowledge | Each step either succeeds or returns a named reason (not verified, duplicate open, amount exceeded, evidence missing) |
 | Identify a student | Printed QR → phone camera → `/verify` | One line: record found or not, and nothing else |
-| Verify a certificate | Printed certificate → `/verify-certificate` | Authenticity facts, or revoked / not current / not recognised |
+| Verify a certificate | Printed certificate → `/verify-certificate` | Authenticity facts for a verified certificate, or not current / not recognised |
 | Administrative review | `/dashboard`, `/reports`, `/audit`, `/users`, `/settings` | Totals, exported PDF, history, accounts, cut-offs |
 
 ## 7. Interface states

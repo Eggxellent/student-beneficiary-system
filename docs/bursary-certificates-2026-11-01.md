@@ -16,11 +16,15 @@ production check is claimed: those were not run in this session and are listed i
 
 1. An administrator approves a bursary award (`PATCH /api/awards/:id/decision`). Approval is the
    only precondition for a certificate; a pending or rejected award cannot produce one.
-2. The administrator issues the certificate from the **Disbursements → Bursary certificates**
-   panel (`POST /api/awards/:id/certificate`, optional `{ "award_period": "2026" | "2025/2026" }`).
-   The award period defaults to the UTC year of the approval date.
-3. Issuing stores a **snapshot row** in `bursary_certificates` and returns the certificate facts,
-   the verification URL and a QR data URL. The reference has the form
+2. Approval issues the certificate in the same transaction: the decision handler writes the
+   **snapshot row** to `bursary_certificates` and an `AWARD_CERTIFICATE_ISSUED` audit event, then
+   returns `certificate_reference` in the decision response. The award period defaults to the UTC
+   year of the approval date and can be overridden with `{ "award_period": "2026" | "2025/2026" }`.
+   A rejection produces no certificate. `POST /api/awards/:id/certificate` remains as an
+   administrator-only retry/backfill path for an approved award that has no row yet (`409` when a
+   certificate already exists).
+3. `GET /api/awards/:id/certificate` returns the stored certificate facts, the verification URL and
+   a QR data URL. The reference has the form
    `SBMS-CERT-<year>-<8 uppercase hex>` (for example `SBMS-CERT-2026-1A2B3C4D`), where the hex
    part is `randomBytes(4)`, not a sequence number.
 4. The QR code encodes `PUBLIC_APP_URL + '/verify-certificate#token=<64 hex>'`. The token is
@@ -42,34 +46,34 @@ copies the facts it prints (`student_name`, `student_upi`, `school_code`, `appro
 - a later edit to the award cannot silently rewrite what a printed certificate says;
 - verification compares the snapshot with the live award, and reports `not_current` instead of
   `verified` when the award is no longer approved or its approved amount has changed;
-- a certificate can be revoked without touching the decision it certifies;
+- revocation is out of scope: the printed document keeps verifying as long as the award it certifies
+  stands, and stops verifying when the award is no longer approved at the same amount;
 - `award_id` is `UNIQUE`, so a second certificate for the same award is refused with `409` — a
   lost or spoiled printout is reprinted from the stored row, not reissued with a new identity.
 
-Revocation is a status change (`active` → `revoked`) plus `revoked_by`, `revoked_at` and a reason
-of at least 5 characters, enforced by a table `CHECK` constraint as well as by the API. A revoked
-certificate cannot be reissued for that award.
+There is no revocation status, endpoint or screen. The `status` column still exists and still reads
+`active` for every issued certificate; nothing in the application can change it (see §10.13).
 
 ## 3. Endpoints and roles
 
 | Method and path | Roles | Behaviour |
 | --- | --- | --- |
-| `POST /api/awards/:id/certificate` | admin | Issues the certificate. `409` when the award is not approved, already has a certificate, or its student record is missing; `400` for a malformed award period. |
-| `GET /api/awards/:id/certificate` | admin, field officer | Staff view plus QR data URL and verification URL; `404` when no certificate exists. |
-| `GET /api/awards/:id/certificate.pdf` | admin, field officer | The printable document, `Content-Disposition: attachment`, `Cache-Control: no-store`. |
-| `POST /api/awards/:id/certificate/revoke` | admin | `{ reason }`; `404` when no certificate exists, `409` when already revoked. |
+| `POST /api/awards/:id/certificate` | admin | Retry/backfill for an approved award that has no certificate. `409` when the award is not approved, already has a certificate, or its student record is missing; `400` for a malformed award period. Normal issuance happens during approval. |
+| `GET /api/awards/:id/certificate` | admin; field officer who proposed the award | Staff view plus QR data URL and verification URL; `404` when no certificate exists; `403` for any other field officer; `409` when the award is no longer approved. |
+| `GET /api/awards/:id/certificate.pdf` | admin; field officer who proposed the award | The printable document, `Content-Disposition: attachment`, `Cache-Control: no-store`; same `403`/`409` refusals as the staff view. |
 | `POST /api/certificates/verify` | public | `{ token }` only. Rate limited to 20 requests per client IP per 15 minutes, before the JSON body parser. |
 
-Issuing and revoking are administrator actions because only an administrator can approve the award
-being certified. Field officers read and print, because they hand the document to the student or
-the school.
+Issuance is an administrator action because only an administrator can approve the award being
+certified. Field officers read and print, but only for awards they proposed themselves: the staff
+view and the PDF both compare the certificate's award `submitted_by` with the caller and answer
+`403` for any other officer, so one officer cannot read or print a colleague's beneficiary
+certificate. Administrators can read and print every certificate.
 
 ## 4. What the public endpoint answers
 
 | Situation | Response |
 | --- | --- |
 | Active certificate, award still approved at the same amount | `{ valid: true, status: "verified", certificate_reference, award_period, issued_at, award_approved_at, award_status: "approved", issuing_authority }` |
-| Revoked certificate | `{ valid: false, status: "revoked", certificate_reference, award_period, revoked_at, issuing_authority }` |
 | Award no longer approved, or approved amount changed after issue | `{ valid: false, status: "not_current", certificate_reference, issuing_authority }` |
 | Malformed, unknown or manipulated token | `{ valid: false, status: "not_recognised" }` — identical in every case |
 
@@ -108,10 +112,10 @@ rather than a truncated file.
 | 32 random bytes, `^[a-f0-9]{64}$`, no reuse across the two verification endpoints | Guessing is infeasible; a student QR token can never be replayed against the certificate endpoint. |
 | Identical `not_recognised` answer for malformed and unknown tokens | Prevents the endpoint from confirming that a guessed token exists. |
 | No student data in the public answer, and no award amount | Anyone who scans the paper can call the endpoint; authenticity does not require personal data. |
-| Field officers read and print, only admins issue and revoke | A certificate must be traceable to the role that owns the decision. |
+| Field officers read and print, only admins issue | A certificate must be traceable to the role that owns the decision. |
 | Separate 20/15-minute rate-limit budget (`certificateRateLimit`) | A school checking a batch of certificates cannot exhaust the student-record budget (10/15 min), and a certificate scanner cannot lock either one out. |
 | Rate limiting mounted before the JSON parser | An abusive client is rejected before the body is parsed. |
-| `AWARD_CERTIFICATE_ISSUED` and `AWARD_CERTIFICATE_REVOKED` in `audit_logs` with `table_name = 'bursary_certificates'` | Issue and revocation are accountable events, not silent edits. |
+| `AWARD_CERTIFICATE_ISSUED` in `audit_logs` with `table_name = 'bursary_certificates'` | Issuing is an accountable event, not a silent insert. |
 | `PUBLIC_APP_URL` validated before the row is written | A misconfigured origin fails the request instead of leaving a certificate whose QR code cannot be reached. |
 
 ## 7. Automated coverage
@@ -126,8 +130,8 @@ Suites that exist because of this feature:
 - `backend/tests/bursaryCertificates.test.js` — approval as precondition (`409` before approval,
   for rejected awards, and for an award whose student record is missing), the QR payload being
   `/verify-certificate#token=…`, the public answer shape for a valid certificate, `not_current`
-  after the approved amount changes, revocation (officer `403`, short reason `400`, unknown award
-  `404`, second revocation `409`), the award itself staying approved at the same amount, and the
+  after the approved amount changes, the absence of any revocation route (`404`, and the certificate
+  still verifying afterwards), the award itself staying approved at the same amount, and the
   audit rows.
 - `backend/tests/certificateVerificationRoute.test.js` — the public route's contract: exact body
   shape, malformed and unknown tokens, the limiter answering `429` with a generic message, and no
@@ -162,8 +166,9 @@ looking at them.
   `GET /api/ready` reports not ready and issuing fails.
 - The PDF is generated per request and is not stored on disk: nothing to back up or leak, at the
   cost of a few milliseconds per download.
-- Revocation is visible only to the certificate verification endpoint and the staff view. It never
-  changes the award decision or any payment record.
+- There is no revocation path. The only way a certificate stops verifying is a change to the award it
+  certifies (a withdrawal of approval or a different approved amount), and even then the original
+  decision and every payment record stay untouched.
 
 ## 10. Redesign — 5 November 2026
 
@@ -251,9 +256,7 @@ public answer therefore now includes the facts printed on the paper:
 | --- | --- |
 | `certificate_reference`, `beneficiary_name`, `institution`, `programme`, `constituency` (null unless configured), `award_period`, `approved_amount`, `issued_at`, `award_approved_at`, `status`, `valid`, `issuing_authority` | UPI or any other student identifier, national ID, birth certificate number, date of birth, guardian or phone details, home address, supporting-document references, duplicate-detection scores or flags, administrative notes, `award_id`, certificate `id`, `verification_token` |
 
-A **revoked** certificate answers with the minimum needed to identify it (`certificate_reference`,
-`award_period`, `revoked_at`, `status`, `valid: false`, `issuing_authority`); a certificate whose
-award changed after issue answers `not_current` with the reference only.
+A certificate whose award changed after issue answers `not_current` with the reference only.
 
 This replaces the earlier "no name, school or amount" policy. It is one decision in one place —
 `publicView()` in `backend/src/controllers/certificates.controller.js` — and the exact key set is
@@ -269,8 +272,6 @@ test-visible change rather than an archaeology exercise.
   differ.
 - The page says that only the answer it shows, checked just now, is authoritative — not a
   screenshot of it.
-- A revoked certificate cannot appear current: `status = 'revoked'` short-circuits the answer
-  before any current-certificate facts are composed.
 - A certificate whose award is no longer approved, or whose approved amount changed after issue,
   answers `not_current` instead of `verified`.
 - **No cryptographic PDF signature is implemented.** The PDF is authenticatable through the
@@ -280,10 +281,14 @@ test-visible change rather than an archaeology exercise.
 ### 10.7 Lifecycle and permissions
 
 Unchanged: an approved award is the only precondition for a certificate, `award_id` is `UNIQUE` so
-one award yields one certificate, only an administrator issues or revokes, field officers read and
-print, and revocation sets `status = 'revoked'` with a reason without touching the award decision.
-The suite re-checks the officer `403`, the second-issue `409`, the second-revocation `409` and that
-the award stays approved at the same amount after revocation.
+one award yields one certificate, and only an administrator approves. The approval transaction now
+writes the certificate itself, so the administrator no longer issues it from a panel; the
+`POST /api/awards/:id/certificate` route is a retry/backfill for an approved award that somehow has
+no row. Field officers read and print only the certificates of awards they proposed (every other
+officer gets `403`), and administrators read and print all of them. There is no revocation step, no
+reinstatement and no second certificate type. The suite re-checks the other-officer `403`, the
+pending/rejected `404`, the second-issue `409`, and that no revocation route answers anything but
+`404`.
 
 ### 10.8 Configuration
 
@@ -343,7 +348,7 @@ shape) keep working.
 | `backend/src/controllers/certificates.controller.js` | New reference generation with savepoint retry, expanded `publicView`, token-or-reference verification |
 | `backend/src/models/bursaryCertificate.model.js` | `findByReference` |
 | `backend/src/config/publicAppUrl.js` | `buildCertificateVerificationPageUrl` (the URL printed under the QR) |
-| `frontend/src/pages/CertificateVerification.jsx` | Manual reference entry, current / revoked / not-current / not-found states, compare-the-paper warning |
+| `frontend/src/pages/CertificateVerification.jsx` | Manual reference entry, verified / not-current / not-found states, compare-the-paper warning |
 | `frontend/src/components/PublicVerificationLayout.jsx` | Privacy sentence corrected to what the pages actually withhold |
 | `frontend/src/components/AwardCertificatePanel.jsx` | Shows the manual verification page, not just the QR link |
 | `backend/tests/certificateReference.test.js`, `backend/tests/certificateDocument.test.js` | New suites |
@@ -363,7 +368,7 @@ shape) keep working.
 | `POST /api/certificates/verify` `{"token":"aaa…"}` | **200** `{"valid":false,"status":"not_recognised"}` |
 | `GET /api/awards/:id/certificate.pdf` without a token | **401** |
 | `GET /api/disbursements` | **404** — no payment or disbursement surface was reintroduced |
-| Frontend | zip deployed to `sbms-web` (rg-sbms); `/verify-certificate` returns **200** serving `assets/index-CwXnarJe.js`, and the deployed bundle contains the new strings ("Check a certificate reference", "Compare the document before relying on it", "has been revoked and is no longer valid", "Certificate not found") |
+| Frontend | zip deployed to `sbms-web` (rg-sbms); `/verify-certificate` returns **200** serving `assets/index-CwXnarJe.js`, and the deployed bundle contains the new strings ("Check a certificate reference", "Compare the document before relying on it", "Certificate not found"). That image also still contains the revoked-certificate wording later removed in §10.13. |
 
 ### 10.12 Still not verified
 
@@ -373,6 +378,42 @@ shape) keep working.
 | Physical print on A4 landscape paper | **NOT RUN** — only the generated PDF bytes and a rendered raster were inspected |
 | Cryptographic signature on the PDF (PAdES/CMS) | **NOT IMPLEMENTED** — deliberately not claimed anywhere in the document, the interface or this report |
 | Visual regression of the frontend page in a browser | **NOT RUN** — covered by the production build and the deployed bundle strings only |
+
+### 10.13 Revocation removed — 5 November 2026
+
+Revocation is out of the SBMS scope, so the functionality was removed rather than documented. One
+approved award produces one certificate; that certificate is downloaded, issued and verified, and
+nothing in the application can withdraw it.
+
+| Removed | Where |
+| --- | --- |
+| `POST /api/awards/:id/certificate/revoke` route and handler | `backend/src/routes/bursaryAwards.routes.js`, `backend/src/controllers/certificates.controller.js` |
+| `revoke()` model function | `backend/src/models/bursaryCertificate.model.js` |
+| `revoked` branch in `publicView()`, `revoked_at` / `revocation_reason` in `staffView()` | `backend/src/controllers/certificates.controller.js` |
+| `AWARD_CERTIFICATE_REVOKED` audit action | controller |
+| Revoke button, reason form, "Revoked" chip, revocation-reason row | `frontend/src/components/AwardCertificatePanel.jsx` |
+| Revoked result block on the public page | `frontend/src/pages/CertificateVerification.jsx` |
+| Revoked-certificate screenshot requirement | `docs/screenshot-capture-runbook-2026-11-05.md`, `academic-report-evidence/final-revalidation/SBMS_SCREENSHOT_INSERTION_CHECKLIST.md` |
+
+Preserved: the `status`, `revoked_by`, `revoked_at` and `revocation_reason` columns (no migration,
+no record deleted), `AWARD_CERTIFICATE_ISSUED`, the one-certificate-per-award rule, the approval
+precondition, the role permissions, PDF generation and download, and the whole verification surface
+including the student-record QR feature.
+
+Chapter 5 evidence is now three figures: 5.1 a certificate issued for an approved award, 5.2 the
+generated PDF, 5.3 public verification showing a **successfully verified** certificate. No
+revoked-certificate screenshot is required.
+
+Verification of this change, 5 November 2026:
+
+| Command | Result |
+| --- | --- |
+| `npx jest --runInBand tests/bursaryCertificates.test.js tests/certificateVerificationRoute.test.js` (`NODE_ENV=test`, `backend/.env.test` loaded) | **2 suites, 20 tests passed** |
+| `npm run build` (frontend) | **exit 0**, 2 006 modules, built in 10.1 s |
+
+Not verified: the Azure deployment. It was not redeployed for this change, so the running API still
+exposes the revoke route until a new image is published and the frontend bundle is replaced. Nothing
+in this document claims the removal is live.
 
 
 

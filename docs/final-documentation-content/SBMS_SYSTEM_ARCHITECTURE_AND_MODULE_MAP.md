@@ -117,7 +117,7 @@ Several controllers also issue SQL directly (awards, duplicate flags, eligibilit
 | Context | `context/AuthContext.jsx` | Session bootstrap from `GET /auth/me`, sign-in, sign-out |
 | Hooks | `hooks/useHashToken.js` | Fragment token capture, URL sanitisation, re-verification on `hashchange` |
 | Transport | `services/api.js` | Axios instance, base URL, bearer interceptor |
-| Feature panel | `components/AwardCertificatePanel.jsx` | Certificate issue, read, print, revoke |
+| Feature panel | `components/AwardCertificatePanel.jsx` | Certificate issue, read, print and PDF download |
 | Pages | 14 files in `pages/` | One screen per route in the UI inventory |
 
 ## 5. End-to-end flows across modules

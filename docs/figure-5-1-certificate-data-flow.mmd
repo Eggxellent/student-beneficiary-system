@@ -1,0 +1,42 @@
+%% Figure 5.16 - SBMS certificate workflow and data flow
+%% (supplementary diagram; NOT Figure 5.1 - 5.1 is the certificate-issued screenshot, S-21/checklist)
+%% Numbering note: 5.16 assumes Chapter 5 figures 5.1-5.15 for the 15 evidence captures.
+%% If GitHub/Azure captures are appendix figures, renumber this to 5.11.
+%% Source: bursaryCertificates + certificateVerification controllers, publicAppUrl.js:174,
+%%         tests/bursaryCertificates.test.js, docs/bursary-certificates-2026-11-01.md, README:164-168
+%% Repo: Eggxellent/student-beneficiary-system @ cca0625 (certificate feature NOT in deployed image a3714f8)
+%%
+%% Render: diagrams.net -> Arrange > Insert > Advanced > Mermaid, paste, export PNG 1440 wide.
+%% Caption: "Figure 5.1: Certificate workflow and data flow. Source: bursaryCertificates.controller.js
+%%           and publicAppUrl.js:174 at commit cca0625, captured <YYYY-MM-DD>."
+
+flowchart TD
+    A["Field officer: award submitted<br/>(POST /api/bursary-awards)"] --> B["Admin: verification event recorded"]
+    B --> C{"Approval gate<br/>verified? duplicate case open or confirmed?<br/>approved amount unchanged?"}
+    C -- "gate fails" --> C1["Approval refused<br/>named reason returned"]
+    C -- "gate passes" --> D["Admin approves award<br/>status = approved"]
+
+    D --> E["Field officer records payment<br/>status = issued"]
+    E --> F["Clearance recorded"]
+    F --> G["Acknowledgement recorded<br/>shortfall => discrepancy"]
+    G --> H{"Issue certificate<br/>admin only; award approved; period valid<br/>POST /api/certificates"}
+
+    H -- "not approved / malformed period / non-admin" --> H1["Refused before any write"]
+    H -- "accepted" --> I[("bursary_certificates<br/>reference SBMS-CERT-YYYY-XXXXXXXX<br/>status current<br/>QR token 32 bytes = 64 hex")]
+
+    I --> J["Certificate PDF generated<br/>asserted: %PDF magic, more than 5000 bytes"]
+    I --> K["QR payload<br/>PUBLIC_APP_URL/verify-certificate#token=64hex<br/>token in fragment, never in query string"]
+
+    K --> L["Public verifier scans with phone"]
+    L --> M["POST /api/certificates/verify<br/>rate limited; token stripped from visible URL"]
+    M --> N[("Lookup by token")]
+    N --> O{"Certificate state"}
+    O -- "valid, award still approved" --> P["Answer: valid = true, status = current<br/>reference, award period, issue and approval dates,<br/>issuing authority ONLY<br/>never name, UPI, school or amount"]
+    O -- "revoked by admin" --> Q["Answer: status = revoked"]
+    O -- "award no longer approved, or<br/>approved amount changed since issue" --> R["Answer: status = not_current"]
+
+    S["Admin revokes (POST /api/certificates/:id/revoke)"] --> I
+
+    subgraph DEPLOY["Deployed image a3714f8 - gap, not a defect"]
+        Z["/verify-certificate route and /api/certificates/verify<br/>return HTTP 404<br/>certificate feature exists at HEAD cca0625 only"]
+    end

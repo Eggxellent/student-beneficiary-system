@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import AwardCertificatePanel from "../components/AwardCertificatePanel";
@@ -61,8 +62,8 @@ export default function Awards() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [awardsOpen, setAwardsOpen] = useState(true);
 
   async function loadData() {
     setLoading(true);
@@ -89,13 +90,11 @@ export default function Awards() {
     approved: awards.filter((award) => award.status === "approved").length,
     rejected: awards.filter((award) => award.status === "rejected").length,
   };
-  const tabs = isAdmin
-    ? (pendingAwards.length ? [{ id: "decide", label: "Decide" }] : [])
-    : [
-      { id: "propose", label: "Propose" },
-      ...(pendingAwards.length ? [{ id: "verify", label: "Verify" }] : []),
-    ];
-  const currentTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : tabs[0]?.id;
+  // Each role only ever had one reachable tab, so the strip was a no-op click target. The form is
+  // rendered directly instead: administrators decide, field officers propose and then verify.
+  const showDecision = isAdmin && pendingAwards.length > 0;
+  const showProposal = !isAdmin;
+  const showVerification = !isAdmin && pendingAwards.length > 0;
   const visibleAwards = statusFilter === "all" ? awards : awards.filter((award) => award.status === statusFilter);
 
   async function submitAward(event) {
@@ -143,7 +142,6 @@ export default function Awards() {
   const field = "mt-1 h-10 w-full rounded border border-slate-300 px-2 text-sm";
   const label = "text-sm font-medium text-slate-800";
   const primary = "rounded bg-[#173D35] px-4 py-2 font-semibold text-white disabled:opacity-50";
-  const tabClass = (id) => `rounded px-3 py-1.5 text-sm font-medium ${currentTab === id ? "bg-[#173D35] text-white" : "text-slate-600 hover:bg-slate-100"}`;
   const filterClass = (id) => `rounded-full border px-2.5 py-1 text-xs font-medium ${statusFilter === id ? "border-[#173D35] bg-[#173D35] text-white" : "border-slate-300 text-slate-700 hover:bg-slate-50"}`;
 
   return (
@@ -163,15 +161,10 @@ export default function Awards() {
         <Stat label="Rejected" value={counts.rejected} />
       </div>
 
-      {tabs.length > 0 && (
+      {(showProposal || showVerification || showDecision) && (
         <section className="rounded border border-slate-200 bg-white">
-          <div className="flex items-center gap-1 border-b border-slate-200 p-2">
-            {tabs.map((tab) => (
-              <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={tabClass(tab.id)}>{tab.label}</button>
-            ))}
-          </div>
           <div className="p-4">
-            {currentTab === "propose" && (
+            {showProposal && (
               <>
                 <p className="mb-3 text-xs text-slate-500">A proposal is not an award; an administrator must approve it.</p>
                 <form onSubmit={submitAward} className="grid gap-3 sm:grid-cols-3">
@@ -189,7 +182,7 @@ export default function Awards() {
               </>
             )}
 
-            {currentTab === "verify" && (
+            {showVerification && (
               <form onSubmit={submitVerification} className="grid gap-3 sm:grid-cols-2">
                 <label className={label}>Proposed award
                   <select required value={verificationForm.award_id} onChange={(e) => setVerificationForm({ ...verificationForm, award_id: e.target.value })} className={field}>
@@ -214,7 +207,7 @@ export default function Awards() {
               </form>
             )}
 
-            {currentTab === "decide" && (
+            {showDecision && (
               <form onSubmit={submitDecision} className="grid gap-3 sm:grid-cols-2">
                 <label className={label}>Proposed award
                   <select required value={decisionForm.award_id} onChange={(e) => setDecisionForm({ ...decisionForm, award_id: e.target.value })} className={field}>
@@ -248,15 +241,24 @@ export default function Awards() {
       )}
 
       <section className="rounded border border-slate-200 bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 p-3">
-          <h2 className="text-sm font-semibold text-slate-900">Awards ({visibleAwards.length})</h2>
+        <div className={`flex flex-wrap items-center justify-between gap-2 p-3 ${awardsOpen ? "border-b border-slate-200" : ""}`}>
+          <button
+            type="button"
+            onClick={() => setAwardsOpen((value) => !value)}
+            aria-expanded={awardsOpen}
+            className="flex items-center gap-1.5 text-sm font-semibold text-slate-900"
+          >
+            <ChevronDown size={16} aria-hidden="true" className={`transition-transform ${awardsOpen ? "" : "-rotate-90"}`} />
+            Awards ({visibleAwards.length})
+          </button>
           <div className="flex flex-wrap gap-1.5">
             {FILTERS.map((option) => (
               <button key={option.id} type="button" onClick={() => setStatusFilter(option.id)} className={filterClass(option.id)}>{option.label}</button>
             ))}
           </div>
         </div>
-        <div className="overflow-x-auto">
+        {awardsOpen && (
+        <div id="awards-table" className="overflow-x-auto">
           <table className="w-full min-w-[620px] text-left text-sm">
             <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-600">
               <tr>
@@ -287,9 +289,10 @@ export default function Awards() {
             </tbody>
           </table>
         </div>
+        )}
       </section>
 
-      <AwardCertificatePanel awards={awards} isAdmin={isAdmin} onChanged={loadData} />
+      <AwardCertificatePanel awards={awards} isAdmin={isAdmin} currentUserId={user?.id} />
     </main>
   );
 }

@@ -29,7 +29,7 @@ Routes were extracted mechanically from the twelve router files and cross-checke
 | 1 | `GET /api/health` | none | 200 liveness object | — | inline, `index.js:69-72` |
 | 2 | `GET /api/ready` | none | 200 `{status: ready}` | 503 generic body when a required table or the expected database identity is absent | inline + `services/databaseReadiness.js` |
 | 3 | `POST /api/verify` | `verificationRateLimit` (10 / IP / 15 min), JSON parser | 200 `{found: true or false}` and nothing else | 400 for a body that is not exactly `{token}` of 64 lowercase hex; 429 when the budget is exhausted; 503 `{error: temporarily_unavailable}` on lookup failure | `verification.controller.js` |
-| 4 | `POST /api/certificates/verify` | `certificateRateLimit` (20 / IP / 15 min), JSON parser | 200 authenticity facts only: status, certificate reference, award period, issue and approval dates, issuing authority | 400 malformed body; 429; 503 | `certificates.controller.js:251-290` |
+| 4 | `POST /api/certificates/verify` | `certificateRateLimit` (20 / IP / 15 min), JSON parser | 200 authenticity facts only: status, certificate reference, beneficiary name, institution, programme, constituency, award period, approved amount, issue and approval dates, issuing authority. Body carries `{token}` from the QR or `{reference}` typed from the paper | 400 malformed body; 429; 503 | `certificates.controller.js:251-291` |
 
 Endpoints 3 and 4 are mounted before the shared JSON body parser, so an abusive client is refused before its body is parsed (`index.js:65-67`). Neither returns a student name, school, UPI or national identifier; the certificate endpoint additionally never returns the award amount.
 
@@ -86,7 +86,6 @@ The 201 body is the richest contract in the system. It returns the created stude
 | `POST /api/awards/:id/certificate` | admin | `{award_period}` optional, `2026` or `2025/2026` | 201 `Certificate issued.` with reference, verification URL and QR data URL | 400 malformed period; 404 `Award not found.`; 409 not approved, already issued, or student record missing |
 | `GET /api/awards/:id/certificate` | admin, field_officer | — | 200 staff view with QR and verification URL | 404 `No certificate has been issued for this award.` |
 | `GET /api/awards/:id/certificate.pdf` | admin, field_officer | — | 200 `application/pdf`, A4 landscape, `Content-Disposition: attachment` | 404 |
-| `POST /api/awards/:id/certificate/revoke` | admin | `{reason (>=5)}` | 200 `Certificate revoked.` | 400 `Enter a reason of at least 5 characters for revoking the certificate.`; 404; 409 `This certificate has already been revoked.` |
 
 ### 3.6 Disbursements — `/api/disbursements`
 
@@ -143,7 +142,7 @@ The `auth` public count includes the 410 registration stub and the two sign-in r
 | 401 | Missing, malformed or expired token; account deleted or deactivated | `Authentication token required`, `Invalid or expired token`, `User account no longer exists` | `middleware/auth.js` |
 | 403 | Authenticated but not permitted, or account presented at the wrong sign-in endpoint | `You do not have permission to access this resource` | `middleware/requireRole.js`; `auth.controller.js:52` |
 | 404 | Referenced record does not exist, or a terminal case is re-decided | entity-specific message | controllers |
-| 409 | State transition refused: award not verified, duplicate open, already decided, already issued or revoked, amount exceeded | state-specific message | controllers, backed by database CHECK constraints |
+| 409 | State transition refused: award not verified, duplicate open, already decided, already issued, amount exceeded | state-specific message | controllers, backed by database CHECK constraints |
 | 410 | Public registration disabled | `Public registration is disabled.` | `auth.routes.js:9-11` |
 | 429 | Rate-limit budget exhausted for this client IP | generic message unique per limiter | `middleware/rateLimitWindow.js:29,38` |
 | 503 | Screening unavailable, database not ready, or public lookup failed | registration error sentence; `{status: not-ready}`; `{error: temporarily_unavailable}` | `students.controller.js:78`; `index.js:73-87`; `verification.controller.js:22` |

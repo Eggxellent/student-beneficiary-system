@@ -438,6 +438,10 @@ describe('Duplicate flags and award API', () => {
     expect(stored.rows[0].status).toBe('approved');
     expect(Number(stored.rows[0].approved_amount)).toBe(4500);
 
+    // Approval generated the certificate in the same transaction, so it must be removed first.
+    const certificates = await pool.query('SELECT COUNT(*)::int AS n FROM bursary_certificates WHERE award_id = $1', [awardId]);
+    expect(certificates.rows[0].n).toBe(1);
+    await pool.query('DELETE FROM bursary_certificates WHERE award_id = $1', [awardId]);
     await pool.query('DELETE FROM bursary_awards WHERE id = $1', [awardId]);
     await pool.query('DELETE FROM students WHERE id = $1', [student.id]);
   });

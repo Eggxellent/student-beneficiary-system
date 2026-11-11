@@ -27,12 +27,18 @@ function setupDecisionClient({ verificationStatus = 'verified', duplicateRows = 
     verification_status: verificationStatus,
     submitted_by: submittedBy,
   };
+  const certificate = {
+    id: '0b0b0b0b-1111-4222-8333-444444444444',
+    certificate_reference: 'SBMS-2026-K8M4-X7PQ-2RZ',
+  };
   const client = {
     release: jest.fn(),
     query: jest.fn(async (sql) => {
       if (/SELECT \* FROM bursary_awards/.test(sql)) return { rows: [award] };
       if (/FROM duplicate_flags/.test(sql)) return { rows: duplicateRows };
-      if (/UPDATE bursary_awards/.test(sql)) return { rows: [{ ...award, status: 'approved' }] };
+      if (/FROM students/.test(sql)) return { rows: [{ full_name: 'Test Learner', upi: 'TEST-UPI', school_code: 'Nairobi School' }] };
+      if (/INSERT INTO bursary_certificates/.test(sql)) return { rows: [certificate] };
+      if (/UPDATE bursary_awards/.test(sql)) return { rows: [{ ...award, status: 'approved', approved_amount: 25000, decided_by: actorId }] };
       return { rows: [] };
     }),
   };
@@ -61,10 +67,17 @@ describe('bursary award decisions (isolated; no database)', () => {
       expect.stringContaining('pg_advisory_xact_lock'),
     );
     expect(logAudit).toHaveBeenCalledWith(actorId, 'AWARD_APPROVED', 'bursary_awards', awardId, expect.any(Object), client);
+    // Approval writes the certificate in the same transaction; no separate issue step is required.
+    expect(res.body.certificate_reference).toBe('SBMS-2026-K8M4-X7PQ-2RZ');
+    expect(res.body.message).toMatch(/certificate SBMS-2026-K8M4-X7PQ-2RZ/i);
+    expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_certificates/.test(sql))).toBe(true);
+    expect(logAudit).toHaveBeenCalledWith(
+      actorId, 'AWARD_CERTIFICATE_ISSUED', 'bursary_certificates', expect.any(String), expect.any(Object), client,
+    );
   });
 
   test('rejects an award with a reason and records the audit event without requiring verification', async () => {
-    setupDecisionClient({ verificationStatus: 'not_found' });
+    const client = setupDecisionClient({ verificationStatus: 'not_found' });
     const res = makeResponse();
 
     await controller.decide({
@@ -75,6 +88,9 @@ describe('bursary award decisions (isolated; no database)', () => {
 
     expect(res.statusCode).toBe(200);
     expect(logAudit).toHaveBeenCalledWith(actorId, 'AWARD_REJECTED', 'bursary_awards', awardId, expect.any(Object), expect.any(Object));
+    // No certificate is generated for a rejected award.
+    expect(res.body.certificate_reference).toBeNull();
+    expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_certificates/.test(sql))).toBe(false);
   });
 
   test('blocks approval before verification or duplicate review is resolved', async () => {

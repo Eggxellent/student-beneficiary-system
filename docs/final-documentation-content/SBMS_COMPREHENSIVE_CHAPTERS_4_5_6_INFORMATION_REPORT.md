@@ -130,7 +130,7 @@ Three design decisions deserve explicit treatment because they are what the chap
 | Verification | `not_checked` → `verified` / `not_found` / `needs_investigation` | Schema CHECK on evidence | `Provide an outcome, notes, and evidence for verified cases.` |
 | Payment | `issued` → `cleared` / `failed` / `cancelled` | `canTransitionPayment` plus CHECK | `This payment status cannot be changed.` |
 | Receipt | `null` → `awaiting_acknowledgement` → `acknowledged` / `discrepancy` | `receiptStatus` in cents | `Enter the received amount and evidence reference.` |
-| Certificate | `active` → `revoked` | CHECK plus UNIQUE award | `This certificate has already been revoked.` |
+| Certificate | one certificate per award, issued as `active`; no revocation state | UNIQUE `award_id` plus CHECK on token format | `This award already has a certificate.` |
 
 A confirmed duplicate is deliberately **terminal**: it leaves the beneficiary unpayable and cannot be reversed through the API. That is correct policy, and it also means a mistaken confirmation can be corrected only in the database. The chapter should say so rather than describe the design as forgiving.
 

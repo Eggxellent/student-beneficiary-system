@@ -5,8 +5,9 @@ const pool = require("../src/config/db");
 const certificateRateLimit = require("../src/middleware/certificateRateLimit");
 
 // End-to-end coverage of the certificate lifecycle against the guarded local sbms_test database:
-// approval is a precondition, the QR payload is a verification URL, the public endpoint answers
-// with authenticity only, and revocation supersedes a printed copy.
+// approval is a precondition, approval generates the certificate in the same transaction, only the
+// proposing officer may print it, the QR payload is a verification URL, and the public endpoint
+// answers with authenticity only.
 const created = { users: [], students: [], awards: [] };
 
 async function createUser(role, label) {
@@ -27,12 +28,15 @@ async function createUser(role, label) {
 const auth = (actor) => ({ Authorization: `Bearer ${actor.token}` });
 
 let officer;
+let otherOfficer;
 let admin;
 let student;
 let approvedAward;
 let approvedAwardWithChangedAmount;
 let pendingAward;
 let rejectedAward;
+let rejectedApproval;
+let certificateRecord;
 let certificate;
 let secondCertificate;
 
@@ -85,6 +89,7 @@ async function decideAward(awardId, decision, approvedAmount) {
   if (response.statusCode !== 200) {
     throw new Error(`decision failed: ${response.statusCode} ${JSON.stringify(response.body)}`);
   }
+  return response.body;
 }
 
 async function tokenFromVerificationUrl(url) {
@@ -96,21 +101,32 @@ describe("Bursary award certificates", () => {
 
   beforeAll(async () => {
     officer = await createUser("field_officer", "CertificateOfficer");
+    otherOfficer = await createUser("field_officer", "OtherCertificateOfficer");
     admin = await createUser("admin", "CertificateAdmin");
     student = await registerStudent("Certificate Probe");
 
     approvedAward = await submitAward(student.id, 50000);
     await verifyAward(approvedAward);
-    await decideAward(approvedAward, "approved", 45000);
+    const approval = await decideAward(approvedAward, "approved", 45000);
+    expect(approval.certificate_reference).toMatch(/^SBMS-\d{4}-/);
 
     approvedAwardWithChangedAmount = await submitAward(student.id, 40000);
     await verifyAward(approvedAwardWithChangedAmount);
     await decideAward(approvedAwardWithChangedAmount, "approved", 35000);
 
+    // Read back, never issued: the approval wrote the certificate.
+    const read = await request(app).get(`/api/awards/${approvedAward}/certificate`).set(auth(admin));
+    if (read.statusCode !== 200) {
+      throw new Error(`certificate read failed: ${read.statusCode} ${JSON.stringify(read.body)}`);
+    }
+    certificateRecord = read.body;
+    certificate = read.body.certificate;
+    expect(certificate.certificate_reference).toBe(approval.certificate_reference);
+
     pendingAward = await submitAward(student.id, 20000);
 
     rejectedAward = await submitAward(student.id, 15000);
-    await decideAward(rejectedAward, "rejected");
+    rejectedApproval = await decideAward(rejectedAward, "rejected");
   });
 
   afterAll(async () => {
@@ -153,9 +169,17 @@ describe("Bursary award certificates", () => {
       [[pendingAward, rejectedAward]]
     );
     expect(rows[0].total).toBe(0);
+    // Rejection produces no certificate at all, and neither state can be read or downloaded.
+    expect(rejectedApproval.certificate_reference).toBeNull();
+    for (const awardId of [pendingAward, rejectedAward]) {
+      const read = await request(app).get(`/api/awards/${awardId}/certificate`).set(auth(officer));
+      expect(read.statusCode).toBe(404);
+      const pdf = await request(app).get(`/api/awards/${awardId}/certificate.pdf`).set(auth(admin));
+      expect(pdf.statusCode).toBe(404);
+    }
   });
 
-  test("only an administrator may issue or revoke a certificate", async () => {
+  test("only an administrator may issue a certificate", async () => {
     const issued = await request(app)
       .post(`/api/awards/${approvedAward}/certificate`)
       .set(auth(officer))
@@ -166,7 +190,7 @@ describe("Bursary award certificates", () => {
     expect(anonymous.statusCode).toBe(401);
   });
 
-  test("a malformed award period is refused before a certificate is written", async () => {
+  test("a malformed award period is refused before a second certificate is written", async () => {
     const response = await request(app)
       .post(`/api/awards/${approvedAward}/certificate`)
       .set(auth(admin))
@@ -176,34 +200,33 @@ describe("Bursary award certificates", () => {
       "SELECT COUNT(*)::int AS total FROM bursary_certificates WHERE award_id = $1",
       [approvedAward]
     );
-    expect(rows[0].total).toBe(0);
+    expect(rows[0].total).toBe(1);
   });
 
   test("an approved award produces a certificate whose QR payload is a verification URL", async () => {
-    const response = await request(app)
-      .post(`/api/awards/${approvedAward}/certificate`)
-      .set(auth(admin))
-      .send({ award_period: "2025/2026" });
-    expect(response.statusCode).toBe(201);
-
-    certificate = response.body.certificate;
+    const response = certificateRecord;
+    expect(response.certificate.certificate_reference).toBe(certificate.certificate_reference);
     expect(certificate.certificate_reference).toMatch(
       /^SBMS-\d{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{3}$/
     );
-    expect(certificate.award_period).toBe("2025/2026");
+    // Approval stamps the award period; no one types it.
+    expect(certificate.award_period).toBe(String(new Date().getUTCFullYear()));
     expect(certificate.approved_amount).toBe(45000);
     expect(certificate.student_name).toBe(student.full_name);
     expect(certificate.school_code).toBe("Nairobi School");
+    // The approving administrator is recorded as the issuer, and the proposer is named beside it.
     expect(certificate.issued_by_name).toBe("CertificateAdmin");
+    expect(certificate.approved_by_name).toBe("CertificateAdmin");
+    expect(certificate.proposed_by_name).toBe("CertificateOfficer");
     expect(certificate.status).toBe("active");
     expect(certificate.verification_page_url).toBe("https://sbms-test-fixture.ac.ke/verify-certificate");
 
-    expect(response.body.verification_url).toMatch(
+    expect(response.verification_url).toMatch(
       /^https:\/\/sbms-test-fixture\.ac\.ke\/verify-certificate#token=[a-f0-9]{64}$/
     );
-    expect(response.body.qr_code.startsWith("data:image/png;base64,")).toBe(true);
+    expect(response.qr_code.startsWith("data:image/png;base64,")).toBe(true);
 
-    const token = await tokenFromVerificationUrl(response.body.verification_url);
+    const token = await tokenFromVerificationUrl(response.verification_url);
     const stored = await pool.query(
       "SELECT verification_token, approved_amount FROM bursary_certificates WHERE award_id = $1",
       [approvedAward]
@@ -213,7 +236,7 @@ describe("Bursary award certificates", () => {
 
     // The QR payload carries the opaque token and the printed reference carries neither the token
     // nor any database identifier.
-    expect(response.body.verification_url).not.toContain(certificate.certificate_reference);
+    expect(response.verification_url).not.toContain(certificate.certificate_reference);
     expect(certificate.certificate_reference).not.toContain(token);
   });
 
@@ -259,6 +282,28 @@ describe("Bursary award certificates", () => {
     expect(missingPdf.statusCode).toBe(404);
   });
 
+  test("only the officer who proposed the award may read or print its certificate", async () => {
+    const read = await request(app).get(`/api/awards/${approvedAward}/certificate`).set(auth(otherOfficer));
+    expect(read.statusCode).toBe(403);
+    expect(read.body.message).toMatch(/awards you proposed/i);
+    expect(read.body.certificate).toBeUndefined();
+
+    const pdf = await request(app)
+      .get(`/api/awards/${approvedAward}/certificate.pdf`)
+      .set(auth(otherOfficer));
+    expect(pdf.statusCode).toBe(403);
+    expect(pdf.headers["content-type"]).toMatch(/^application\/json/);
+
+    // The administrator who approved it may read it; the proposing officer may too.
+    const adminRead = await request(app).get(`/api/awards/${approvedAward}/certificate`).set(auth(admin));
+    expect(adminRead.statusCode).toBe(200);
+    const proposerRead = await request(app).get(`/api/awards/${approvedAward}/certificate`).set(auth(officer));
+    expect(proposerRead.statusCode).toBe(200);
+
+    const anonymous = await request(app).get(`/api/awards/${approvedAward}/certificate.pdf`);
+    expect(anonymous.statusCode).toBe(401);
+  });
+
   test("the public endpoint shows the certificate facts a printed copy can be compared with", async () => {
     const token = await tokenFromVerificationUrl(certificate.verification_url);
     const response = await request(app).post("/api/certificates/verify").send({ token });
@@ -287,7 +332,7 @@ describe("Bursary award certificates", () => {
     expect(response.body.programme).toBe("NG-CDF bursary programme");
     expect(response.body.constituency).toBeNull();
     expect(response.body.approved_amount).toBe(45000);
-    expect(response.body.award_period).toBe("2025/2026");
+    expect(response.body.award_period).toBe(String(new Date().getUTCFullYear()));
     expect(response.body.issuing_authority).toBe("Student Beneficiary Management System (SBMS)");
     expect(Number.isNaN(Date.parse(response.body.issued_at))).toBe(false);
     expect(Number.isNaN(Date.parse(response.body.award_approved_at))).toBe(false);
@@ -390,10 +435,9 @@ describe("Bursary award certificates", () => {
 
   test("a certificate stops verifying when the approved amount changes after issue", async () => {
     const issued = await request(app)
-      .post(`/api/awards/${approvedAwardWithChangedAmount}/certificate`)
-      .set(auth(admin))
-      .send({});
-    expect(issued.statusCode).toBe(201);
+      .get(`/api/awards/${approvedAwardWithChangedAmount}/certificate`)
+      .set(auth(admin));
+    expect(issued.statusCode).toBe(200);
     secondCertificate = issued.body.certificate;
     const token = await tokenFromVerificationUrl(issued.body.verification_url);
 
@@ -419,66 +463,45 @@ describe("Bursary award certificates", () => {
     expect(after.body.award_period).toBeUndefined();
   });
 
-  test("a revoked certificate is reported as revoked and the award itself is untouched", async () => {
-    const officerAttempt = await request(app)
-      .post(`/api/awards/${approvedAward}/certificate/revoke`)
-      .set(auth(officer))
-      .send({ reason: "Officer trying to revoke" });
-    expect(officerAttempt.statusCode).toBe(403);
-
-    const tooShort = await request(app)
+  test("there is no revocation path: the route is gone and the certificate keeps verifying", async () => {
+    const attempt = await request(app)
       .post(`/api/awards/${approvedAward}/certificate/revoke`)
       .set(auth(admin))
-      .send({ reason: "no" });
-    expect(tooShort.statusCode).toBe(400);
+      .send({ reason: "Revocation is outside the SBMS scope" });
+    expect(attempt.statusCode).toBe(404);
 
-    const unknownAward = await request(app)
-      .post(`/api/awards/${pendingAward}/certificate/revoke`)
-      .set(auth(admin))
-      .send({ reason: "No certificate exists here" });
-    expect(unknownAward.statusCode).toBe(404);
-
-    const revoked = await request(app)
+    const anonymous = await request(app)
       .post(`/api/awards/${approvedAward}/certificate/revoke`)
-      .set(auth(admin))
-      .send({ reason: "Award withdrawn after a records correction" });
-    expect(revoked.statusCode).toBe(200);
+      .send({ reason: "Revocation is outside the SBMS scope" });
+    expect(anonymous.statusCode).toBe(401);
 
-    const twice = await request(app)
-      .post(`/api/awards/${approvedAward}/certificate/revoke`)
-      .set(auth(admin))
-      .send({ reason: "Trying again after revocation" });
-    expect(twice.statusCode).toBe(409);
-
-    const token = await tokenFromVerificationUrl(certificate.verification_url);
-    const verification = await request(app).post("/api/certificates/verify").send({ token });
-    expect(verification.statusCode).toBe(200);
-    expect(verification.body).toEqual({
-      valid: false,
-      status: "revoked",
-      certificate_reference: certificate.certificate_reference,
-      award_period: "2025/2026",
-      revoked_at: expect.any(String),
-      issuing_authority: "Student Beneficiary Management System (SBMS)",
-    });
-
+    // The award and its certificate are untouched by the attempt.
     const award = await pool.query("SELECT status, approved_amount FROM bursary_awards WHERE id = $1", [approvedAward]);
     expect(award.rows[0].status).toBe("approved");
     expect(Number(award.rows[0].approved_amount)).toBe(45000);
 
+    const token = await tokenFromVerificationUrl(certificate.verification_url);
+    const verification = await request(app).post("/api/certificates/verify").send({ token });
+    expect(verification.statusCode).toBe(200);
+    expect(verification.body.valid).toBe(true);
+    expect(verification.body.status).toBe("verified");
+
     const read = await request(app).get(`/api/awards/${approvedAward}/certificate`).set(auth(admin));
-    expect(read.body.certificate.status).toBe("revoked");
-    expect(read.body.certificate.revocation_reason).toBe("Award withdrawn after a records correction");
+    expect(read.statusCode).toBe(200);
+    expect(read.body.certificate.status).toBe("active");
+    expect(read.body.certificate.revocation_reason).toBeUndefined();
+    expect(read.body.certificate.revoked_at).toBeUndefined();
   });
 
-  test("issuing and revoking are recorded in the audit trail", async () => {
+  test("issuing a certificate is recorded in the audit trail", async () => {
     const { rows } = await pool.query(
       "SELECT action, table_name, record_id FROM audit_logs WHERE user_id = $1",
       [admin.id]
     );
     const actions = rows.map((row) => row.action);
     expect(actions).toContain("AWARD_CERTIFICATE_ISSUED");
-    expect(actions).toContain("AWARD_CERTIFICATE_REVOKED");
+    // Revocation is not part of SBMS, so no revocation entry may ever be written.
+    expect(actions).not.toContain("AWARD_CERTIFICATE_REVOKED");
     const certificateEntries = rows.filter((row) => row.action.startsWith("AWARD_CERTIFICATE"));
     expect(certificateEntries.every((row) => row.table_name === "bursary_certificates")).toBe(true);
     expect(certificateEntries.every((row) => Boolean(row.record_id))).toBe(true);

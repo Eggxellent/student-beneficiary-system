@@ -142,7 +142,7 @@ exists, the row says so explicitly.
 | ID | Requirement statement | Actor(s) | Priority | Rationale / source | Verification |
 | --- | --- | --- | --- | --- | --- |
 | FR-22 | The system shall allow an administrator to issue a QR-verifiable certificate for an approved award, and refuse a second certificate for the same award. | Administrator | C | Added deliverable; verifiability of an approval | `tests/bursaryCertificates.test.js` |
-| FR-23 | The system shall allow an administrator to revoke a certificate with a reason; public verification shall then report `revoked`. | Administrator | C | Correctness of a document once handed to a holder | `tests/bursaryCertificates.test.js` |
+| FR-23 | The system shall let anyone verify a certificate by QR token or by typing its printed reference; an unknown reference shall report `not_recognised`. | Administrator | C | Authenticity of a document once handed to a holder | `tests/bursaryCertificates.test.js`, `tests/certificateVerificationRoute.test.js` |
 | FR-24 | The system shall report a certificate as `not_current` when the underlying award is no longer approved or its approved amount changed since issue. | System | C | Prevents a document outliving the decision it certifies | `tests/bursaryCertificates.test.js` |
 | FR-25 | The system shall present an administrative dashboard with beneficiary, duplicate, award and payment totals, a six-month registration and payment trend, and recent audit activity. | Administrator | S | Proposal §1.5.1 (real-time dashboard) | `tests/roleAuthorization.test.js` (authorisation and synthetic counts); **each counter's arithmetic is not individually tested** |
 | FR-26 | The system shall export a date-range PDF report containing registration, disbursement, duplicate and accountability summaries. | Administrator | S | Proposal §1.5.1 (reporting with PDF export) | `tests/roleAuthorization.test.js` (range validation); PDF content verified only by code inspection |
@@ -353,7 +353,7 @@ stated.
 | I-2 API to PostgreSQL | Express → `pg` pool | TCP with TLS to the managed server; parameterised SQL only | Database credentials from the environment | Errors logged without SQL text or parameters; generic 500 returned |
 | I-3 API to ML predictor | Node child process → `predict.py --server` | Line-delimited JSON over process standard input/output; request `{pairs:[{first,second}]}`, response `{model_version, results:[{score, features}]}` | Local process boundary only; never exposed on a network socket | Predictor exit, 30 000 ms timeout or malformed payload raises `DUPLICATE_PREDICTOR_FAILED`, which registration converts to HTTP 503 |
 | I-4 Student QR verification | QR → public page → API | QR encodes `…/verify#token=<64 hex>`; the page posts `{token}` to `POST /api/verify` | Public; rate limited to 10 requests per IP per 15 minutes | Malformed, unknown and refused tokens all return `{found:false}`; lookup failure returns 503 `{error:'temporarily_unavailable'}`; rate refusal returns 429 |
-| I-5 Certificate QR verification | QR → public page → API | QR encodes `…/verify-certificate#token=<64 hex>`; the page posts `{token}` to `POST /api/certificates/verify` | Public; separate budget of 20 requests per IP per 15 minutes | `not_recognised` for any malformed, unknown or manipulated token; `revoked`; `not_current`; `verified`; 503 on lookup failure |
+| I-5 Certificate QR verification | QR → public page → API | QR encodes `…/verify-certificate#token=<64 hex>`; the page posts `{token}` to `POST /api/certificates/verify`, and accepts a typed certificate reference | Public; separate budget of 20 requests per IP per 15 minutes | `not_recognised` for any malformed, unknown or manipulated token; `not_current`; `verified`; 503 on lookup failure |
 
 Two further integration points are **absent**, recorded so that the report does not imply more than
 was built. PDF rendering is internal — `pdfkit` writes the report to a `reports/` directory and
@@ -405,7 +405,7 @@ the external entities and the direction of each flow:
 | --- | --- | --- |
 | Field Officer | sign-in credentials; beneficiary registration data; award applications; verification outcome and evidence reference; payment and clearance entries; receipt acknowledgement | JWT session; student lists; QR image for the registered student; screening outcome in plain language; eligibility assessment; award and payment status |
 | Administrator | sign-in credentials; award decisions; duplicate-case decisions; identifier-reveal requests; threshold changes; certificate issue and revocation instructions | duplicate queue with masked identifiers; dashboard aggregates; audit log; PDF reports; certificate PDF and QR |
-| Public verifier (school, guardian, awarding office) | student QR token or certificate token scanned from a printed document | `found` / `not found`; certificate status (`verified`, `revoked`, `not_current`, `not_recognised`) |
+| Public verifier (school, guardian, awarding office) | student QR token, or a certificate token or printed reference scanned from a document | `found` / `not found`; certificate status (`verified`, `not_current`, `not_recognised`) |
 | Duplicate predictor (shown as an external collaborator because it is a separate process) | six ordered feature values per candidate pair | model score and model version per pair |
 | Hosting platform (Container Apps, App Service, PostgreSQL Flexible Server) | runtime, TLS termination, database service | container image, static frontend bundle, database state |
 
@@ -441,7 +441,7 @@ associations, are:
 | UC-15 Acknowledge receipt | ✔ | ✔ | — | «extend» flag amount discrepancy |
 | UC-16 Review reconciliation exceptions | ✔ | ✔ | — | — |
 | UC-17 Issue award certificate | — | ✔ | — | «include» require approved award |
-| UC-18 Revoke award certificate | — | ✔ | — | «include» require reason |
+| UC-18 Verify award certificate | Public verifier | ✔ | — | «include» QR token or printed reference |
 | UC-19 Read or print certificate | ✔ | ✔ | — | — |
 | UC-20 View dashboard | — | ✔ | — | — |
 | UC-21 Export PDF report | — | ✔ | — | — |
@@ -559,7 +559,7 @@ The class model describes the application-level domain and its behaviour, not th
 | `DuplicateReviewEvent` | id, duplicate_flag_id, reviewer_id, decision, reason, notes, created_at | append-only | belongs to 1 DuplicateFlag and 1 User |
 | `BursaryAward` | id, student_id, school_code, requested_amount, approved_amount, status, verification_status, verification_evidence_ref, verified_by, verified_at, decision_reason, decided_by, decided_at | `list`, `create`, `recordVerification`, `decide` | 1 Student holds 0..* BursaryAward; 1 BursaryAward has 0..* Disbursement and 0..1 Certificate |
 | `Disbursement` (payment) | id, student_id, award_id, amount, payment_method, payment_reference, payment_status, clearance_evidence_ref, receipt_status, acknowledged_amount, acknowledgement_method | `list`, `listExceptions`, `create`, `updatePaymentStatus`, `acknowledgeReceipt`, `linkLegacyPayment` | belongs to 1 Student and 0..1 BursaryAward; has 0..* ReconciliationEvent |
-| `BursaryCertificate` | id, award_id (unique), certificate_reference, verification_token, award_period, student_name, student_upi, school_code, approved_amount, award_approved_at, status, issued_by, issued_at, revoked_by, revoked_at, revocation_reason | `insert`, `findByAwardId`, `findByVerificationToken`, `revoke`, `issue`, `downloadPdf`, `verifyPublic` | belongs to exactly 1 BursaryAward |
+| `BursaryCertificate` | id, award_id (unique), certificate_reference, verification_token, award_period, student_name, student_upi, school_code, approved_amount, award_approved_at, status, issued_by, issued_at (legacy `revoked_by` / `revoked_at` / `revocation_reason` columns are retained but unused — SBMS has no revocation path) | `insert`, `findByAwardId`, `findByVerificationToken`, `issue`, `downloadPdf`, `verifyPublic` | belongs to exactly 1 BursaryAward |
 | `AuditEntry` | id, user_id, action, table_name, record_id, details, created_at | `logAudit` | belongs to 0..1 User |
 | `DuplicatePredictor` (service) | model file, SHA-256 version, feature order | `scoreStudentPairs`, `predict_pairs`, `model_version` | called by `Student` registration and by `DuplicateFlag` rescan |
 | `AggregationPolicy` (service) | policy name (`top-1`, `top-1-corroborated`, `all`), threshold | `selectFlaggedCandidates`, `summarizeAggregation` | used by `Student.create` |
@@ -654,8 +654,12 @@ decision is that disclosure is an event, not a field permission.
    `SBMS-CERT-<year>-<8 hex>` reference; `AWARD_CERTIFICATE_ISSUED` audit row.
 8. `GET /api/awards/:id/certificate.pdf` (either role) → PDF rendered per request carrying the same QR
    code; `Cache-Control: no-store`.
-9. `POST /api/awards/:id/certificate/revoke {reason}` (administrator) → status `active` → `revoked`
-   with actor, timestamp and reason; `AWARD_CERTIFICATE_REVOKED` audit row; the award is unchanged.
+9. `POST /api/certificates/verify {token}` or `{reference}` (public) → answers with the authenticity
+   facts printed on the paper only — reference, name, institution, programme, constituency, award
+   period, approved amount, issue and approval dates, issuing authority — and never the UPI, date of
+   birth, guardian or phone details, address or the verification token. SBMS has no revocation step:
+   an issued certificate stays issuable and verifiable for the life of its award, and the only thing
+   that stops it verifying is the award itself changing, which answers `not_current`.
 
 Two distinctions must be visually explicit: **approval is not payment** (steps 3 and 4 are separate
 lifelines with separate audit actions), and **certificate verification is not student verification**
@@ -677,11 +681,13 @@ lifelines with separate audit actions), and **certificate verification is not st
 4. Response `{found:true}` or `{found:false}`, and nothing else; malformed and unknown tokens are
    indistinguishable; a lookup failure returns `503 {error:'temporarily_unavailable'}`; the eleventh
    request in the window returns `429`.
-5. `POST /api/certificates/verify {token}` → same shape discipline with its own 20-per-15-minute
-   budget; the controller loads the certificate together with the live award and returns one of four
-   states: `verified`, `revoked`, `not_current`, `not_recognised`.
-6. The page renders a status-only view: no student name, UPI, school, date of birth, identifier, phone
-   or amount appears in any response or on any page.
+5. `POST /api/certificates/verify {token}` or `{reference}` → same shape discipline with its own
+   20-per-15-minute budget; the controller loads the certificate together with the live award and
+   returns one of three states: `verified`, `not_current`, `not_recognised`.
+6. The page renders the authenticity facts printed on the paper for a verified certificate (reference,
+   name, institution, programme, constituency, award period, approved amount, issue and approval dates,
+   issuing authority) and nothing else: no UPI or other identifier, date of birth, national ID,
+   guardian or phone details, address, or the verification token appears in any response or on any page.
 
 The figure must show the rate limiter as the **first** participant after the page, because the
 implementation registers the limiter in the same route chain ahead of the body parser, and must show
@@ -710,7 +716,7 @@ relationships:
 | `bursary_awards` | is paid by | `disbursements` | 1 : N (nullable) | Partial: legacy payments have no `award_id` |
 | `disbursements` | has | `disbursement_reconciliation_events` | 1 : N | Total |
 | `bursary_awards` | is certified by | `bursary_certificates` | 1 : 0..1 | `award_id UNIQUE` |
-| `users` | issues / revokes | `bursary_certificates` | 1 : N (nullable for revoke) | Partial |
+| `users` | issues | `bursary_certificates` | 1 : N | Partial |
 | `users` | performs | `audit_logs` | 1 : N (nullable) | Partial: system actions may have no user |
 | `users` | generates | `reports` | 1 : N (nullable) | Partial |
 
@@ -860,7 +866,6 @@ otherwise introduce.
 | `/api/awards/:id/decision` | PATCH | ✔ | 403 | Approval is administrative |
 | `/api/awards/:id/certificate` | POST | ✔ | 403 | Issue |
 | `/api/awards/:id/certificate`, `…/certificate.pdf` | GET | ✔ | ✔ | Read and print |
-| `/api/awards/:id/certificate/revoke` | POST | ✔ | 403 | |
 | `/api/disbursements`, `/exceptions`, `/:id/payment-status`, `/:id/acknowledgement` | GET, POST, PATCH | ✔ | ✔ | Both roles may record and clear a payment |
 | `/api/disbursements/:id/award` | PATCH | ✔ | 403 | Linking a legacy payment is administrative |
 | `/api/eligibility` | POST | 403 | ✔ | |
@@ -979,11 +984,11 @@ status is not `verified` (`bursary_awards_approval_verification_check`).
 | State | Entered by | Public verification answer |
 | --- | --- | --- |
 | *(no certificate)* | — | `not_recognised` |
-| `active` | Administrator issue | `verified` when the award is still `approved` at the same amount; `not_current` otherwise |
-| `revoked` | Administrator revoke with a reason | `revoked` |
+| `active` | Administrator issue (one per approved award) | `verified` when the award is still `approved` at the same amount; `not_current` otherwise |
 
-The certificate transition is one-way: a revoked certificate cannot be reissued for the same award,
-because `award_id` is unique and the issue path refuses an award that already has a certificate row.
+The certificate has exactly one issued state and no revocation step: an issued certificate remains
+issuable, printable, downloadable and verifiable for the life of its award, and `award_id` being unique
+means a second certificate can never be issued for the same award.
 
 ### 4.4.6 Security and privacy design
 
@@ -1152,8 +1157,8 @@ duplicate count, verification history), the payment record form (amount, method,
 payment status actions (clear with evidence, fail or cancel with a reason), the acknowledgement action
 (amount received and evidence reference) and the exceptions panel with its reason tags. It must also
 show the collapsed and expanded **Bursary certificates** panel: issue with an optional award period,
-the printed certificate view with its QR code, the PDF download action, and the revoke action with a
-mandatory reason, plus the explicit statement that "approval is not payment".
+the printed A4 certificate view with its QR code and reference, the PDF download and print actions,
+plus the explicit statement that "approval is not payment".
 
 ### 4.5.7 Administrative support screens: reports, audit, users and settings
 
@@ -1182,11 +1187,14 @@ appear in any state.
 
 **[Insert Figure 4.23: Public certificate verification page here]**
 
-**Figure 4.23: Certificate verification page.** The figure must show the four outcome states — verified,
-revoked, not current, not recognised — and, for a verified certificate, the fields the endpoint actually
-returns: certificate reference (`SBMS-CERT-<year>-<8 hex>`), award period, issue date, approval date,
-award status and issuing authority ("Student Beneficiary Management System (SBMS)"). It must **not** show
-the student's name, UPI, school or the approved amount, because the public response omits them.
+**Figure 4.23: Certificate verification page.** The figure must show the three outcome states — verified,
+not current, not recognised — reached either by scanning the QR token or by typing the printed
+certificate reference, and, for a verified certificate, the fields the endpoint actually
+returns: certificate reference (`SBMS-CERT-<year>-<8 hex>`), beneficiary name, institution, programme,
+constituency, award period, approved amount, issue date, approval date, award status and issuing
+authority ("Student Beneficiary Management System (SBMS)"). It must **not** show the UPI or any other
+identifier, date of birth, national ID, guardian or phone details, address, or the verification token,
+because the public response omits them.
 
 ---
 
@@ -1321,9 +1329,9 @@ indexes, 2 extensions and 12 applied migrations** (`docs/FINAL_TEST_REPORT.md` �
 | `student_name`, `student_upi`, `school_code` | — | Snapshot of the facts printed on the document |
 | `approved_amount` | `NUMERIC(12,2)` | Not null, `> 0` |
 | `award_approved_at` | `TIMESTAMPTZ` | Not null |
-| `status` | `VARCHAR(20)` | `CHECK IN ('active','revoked')` |
+| `status` | `VARCHAR(20)` | `CHECK IN ('active','revoked')` — the application only ever writes `active` |
 | `issued_by`, `issued_at` | `UUID` / `TIMESTAMPTZ` | Not null |
-| `revoked_by`, `revoked_at`, `revocation_reason` | — | `bursary_certificates_revocation_check` requires all three together with a reason of ≥ 5 characters, and all three null while `active`; `bursary_certificates_period_check` and `bursary_certificates_token_check` guard the formats |
+| `revoked_by`, `revoked_at`, `revocation_reason` | — | Legacy columns: `bursary_certificates_revocation_check` still requires the three to agree, but no route writes them, because SBMS issues certificates and never revokes them; `bursary_certificates_period_check` and `bursary_certificates_token_check` guard the formats |
 | *(index)* | index | `(status, issued_at DESC)` |
 
 **Table 4.19: `audit_logs`, `reports` and the legacy `beneficiaries`**

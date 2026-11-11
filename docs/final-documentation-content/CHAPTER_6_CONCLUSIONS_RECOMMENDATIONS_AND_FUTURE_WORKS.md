@@ -119,10 +119,10 @@ that can be concluded without qualification.
 Beyond the objectives, the testing supports four conclusions about the system's engineering quality.
 
 First, the system's integrity does not rest on application code alone. The rules that matter most — an approval
-requires a verified beneficiary, a cleared payment requires evidence, a revoked certificate requires a reason, a
-certificate token must be 64 hexadecimal characters, a school must be one of the five approved — are enforced by
-database constraints as well as by controllers, and the tests exercise the constraints. That redundancy is why a
-mistake in one controller does not become a financial irregularity.
+requires a verified beneficiary, a cleared payment requires evidence, a certificate reference must match a recognised
+pattern, a certificate token must be 64 hexadecimal characters, a school must be one of the five approved — are
+enforced by database constraints as well as by controllers, and the tests exercise the constraints. That redundancy is
+why a mistake in one controller does not become a financial irregularity.
 
 Second, the access-control model is sound in a specific and testable way: the role used for authorisation is re-read
 from the database on every request, so a forged token claim confers nothing and a deactivation takes effect

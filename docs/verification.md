@@ -52,11 +52,11 @@ A bursary certificate is a different artefact from a student record, so it has i
 | --- | --- | --- |
 | QR payload | `/verify#token=…` | `/verify-certificate#token=…` |
 | Endpoint | `POST /api/verify` | `POST /api/certificates/verify` |
-| Answer | `{ found: true }` or `{ found: false }` | `valid`, `status`, certificate reference, award period, issue and approval dates, issuing authority — never the student's name, UPI, school or the amount |
+| Answer | `{ found: true }` or `{ found: false }` | `valid`, `status`, certificate reference, beneficiary name, institution, programme, constituency, award period, approved amount, issue and approval dates, issuing authority — never UPI, national ID, birth certificate number, guardian details, address or the verification token |
 | Budget | 10 requests per IP per 15 minutes | 20 requests per IP per 15 minutes |
 | Created by | Student registration | An administrator, after award approval |
 
-Verification results: `verified` (active certificate, award still approved at the same amount), `revoked`, `not_current` (the award is no longer approved or its approved amount changed after issue), and `not_recognised` (malformed, unknown or manipulated token, always the same answer). Issuing and revoking write `AWARD_CERTIFICATE_ISSUED` and `AWARD_CERTIFICATE_REVOKED` to the audit log.
+Verification results: `verified` (issued certificate, award still approved at the same amount), `not_current` (the award is no longer approved or its approved amount changed after issue), and `not_recognised` (malformed, unknown or manipulated token, always the same answer). There is no revocation state: revocation is outside the SBMS scope, so nothing in the application can withdraw an issued certificate. Issuing writes `AWARD_CERTIFICATE_ISSUED` to the audit log.
 
 What a certificate does not claim: it confirms an approval, not a payment, an identity or an endorsement. See [bursary-certificates-2026-11-01.md](bursary-certificates-2026-11-01.md) for the full contract, the PDF contents and the checks that were not run.
 

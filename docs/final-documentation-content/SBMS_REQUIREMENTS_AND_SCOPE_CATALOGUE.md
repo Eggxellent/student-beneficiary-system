@@ -41,7 +41,7 @@ A requirement is called *implemented* only where a route, a service, a database 
 | Actor | Description | Where they act |
 | --- | --- | --- |
 | Field Officer | Registers beneficiaries at a school, screens them, records verification evidence, submits award applications, records payments | `/students`, `/students/register`, `/eligibility`, `/disbursements`, `/field-officer` |
-| Administrator | Adjudicates duplicate cases, approves or rejects awards, issues and revokes certificates, manages users and cut-offs, reads the audit log and reports | `/dashboard`, `/duplicate-review`, `/disbursements`, `/reports`, `/settings`, `/audit`, `/users` |
+| Administrator | Adjudicates duplicate cases, approves or rejects awards, issues certificates, manages users and cut-offs, reads the audit log and reports | `/dashboard`, `/duplicate-review`, `/disbursements`, `/reports`, `/settings`, `/audit`, `/users` |
 | Public verifier | Student, guardian, school or employer holding a printed QR code | `/verify`, `/verify-certificate` (unauthenticated) |
 | Operator / deployer | Applies migrations, sets secrets, starts and stops the deployment, restores a backup | `backend/scripts/migrate.js`, `docs/deployment.md`, `deploy/azure/**` |
 | Programme owner | Owns the open policy decisions (cut-off choice, adjudication protocol, acknowledgement deadline) | Not represented in the interface; see `SBMS_EVIDENCE_PROVENANCE_AND_CLAIM_LIMITS.md` §6 |
@@ -82,7 +82,7 @@ Priority: **M** must have, **S** should have, **C** could have. Verification nam
 | FR-20 | Generate a cryptographically random QR token per student and return a QR image | System, Officer | M | `students.controller.js:58-60`; `config/publicAppUrl.js` | `verification.test.js` (10) | V |
 | FR-21 | Public endpoint reports only whether a matching record exists | Public | M | `verification.controller.js`; `index.js:65` | `verification.test.js`; `verificationRoute.test.js` (4) | V |
 | FR-22 | Issue a QR-verifiable certificate for an approved award; refuse a second certificate | Admin | C | `certificates.controller.js:95-181`; `bursary_certificates` UNIQUE `award_id` | `bursaryCertificates.test.js` (12) | V |
-| FR-23 | Revoke a certificate with a reason; public verification then reports `revoked` | Admin | C | `certificates.controller.js:213-249` | `bursaryCertificates.test.js` | V |
+| FR-23 | Verify a certificate publicly by QR token or by its printed reference; an unknown reference answers "not found" | Admin | C | `certificates.controller.js` verification path | `bursaryCertificates.test.js`, `certificateVerificationRoute.test.js` | V |
 | FR-24 | Report `not_current` when the award is no longer approved or its amount changed since issue | System | C | `certificates.controller.js:251-290` | `bursaryCertificates.test.js` | V |
 | FR-25 | Dashboard: registry, duplicate, award and payment totals, six-month trend, recent audit activity | Admin | S | `adminDashboard.controller.js`; `pages/AdminDashboard.jsx` | Authorisation and synthetic counts in `roleAuthorization.test.js`; counter arithmetic not individually tested | P |
 | FR-26 | Date-range PDF export of registration, disbursement, duplicate and accountability summaries | Admin | S | `reports.controller.js`; `routes/reports.routes.js:8-13` | Range validation tested; PDF content verified by inspection only | P |

@@ -54,7 +54,7 @@ memory and none contradicts the implementation. It adds no new requirements to C
 | 4.20 | §4.5.6 | Awards and disbursements with the certificate panel | `/disbursements` | Awards table; payment record; clearance, fail and cancel actions; acknowledgement; exceptions; certificate panel collapsed and expanded | ☐ |
 | 4.21 | §4.5.7 | Administrative support screens | `/reports`, `/audit`, `/users`, `/settings` | The four panels and the controls listed in the table under the Figure 4.21 caption; never a password hash | ☐ |
 | 4.22 | §4.5.8 | Public student-record verification page | `/verify` (the student QR target) | Minimal layout; the five states; the three explanatory bullets; **no** student data | ☐ |
-| 4.23 | §4.5.8 | Public certificate verification page | `/verify-certificate` | The four outcome states; the certificate fields the endpoint returns; **no** name, UPI, school or amount | ☐ |
+| 4.23 | §4.5.8 | Public certificate verification page | `/verify-certificate` | The three outcome states; the certificate fields the endpoint returns; **no** UPI, date of birth, national ID, guardian or phone details, address or token | ☐ |
 
 ---
 

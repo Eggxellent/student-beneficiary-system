@@ -101,6 +101,12 @@ describe("Beneficiary workflow end to end", () => {
       const awards = await pool.query("SELECT id FROM bursary_awards WHERE student_id = ANY($1::uuid[])", [studentIds]);
       const awardIds = awards.rows.map((row) => row.id);
       if (awardIds.length) {
+        // Approval now writes the certificate in the same transaction, so the certificate rows
+        // must go before the awards they reference.
+        await pool.query(
+          "DELETE FROM bursary_certificates WHERE award_id = ANY($1::uuid[])",
+          [awardIds]
+        );
         await pool.query(
           "DELETE FROM bursary_award_verification_events WHERE award_id = ANY($1::uuid[])",
           [awardIds]

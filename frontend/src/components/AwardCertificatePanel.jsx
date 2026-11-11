@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { Award, Download, Printer, RefreshCw } from "lucide-react";
+import { Award, ChevronDown, Download, Printer, RefreshCw } from "lucide-react";
 import api from "../services/api";
 
 // Certificates for approved awards. The panel is deliberately separate from the award decision
@@ -30,15 +30,19 @@ function CertificateChip({ record }) {
   );
 }
 
-export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
-  const approvedAwards = useMemo(() => awards.filter((award) => award.status === "approved"), [awards]);
+export default function AwardCertificatePanel({ awards, isAdmin, currentUserId }) {
+  // A field officer prints the certificates for the awards they proposed. The API enforces the same
+  // rule; filtering here keeps another officer's awards out of the list in the first place.
+  const approvedAwards = useMemo(
+    () => awards.filter((award) => award.status === "approved" && (isAdmin || award.submitted_by === currentUserId)),
+    [awards, isAdmin, currentUserId]
+  );
   const [records, setRecords] = useState({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [periods, setPeriods] = useState({});
   const [expanded, setExpanded] = useState("");
+  const [sectionOpen, setSectionOpen] = useState(true);
 
   const loadCertificates = useCallback(async () => {
     if (approvedAwards.length === 0) {
@@ -68,27 +72,6 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
   }, [approvedAwards]);
 
   useEffect(() => { loadCertificates(); }, [loadCertificates]);
-
-  async function issueCertificate(award) {
-    setBusy(award.id);
-    setError("");
-    setMessage("");
-    try {
-      const awardPeriod = (periods[award.id] || "").trim();
-      const response = await api.post(
-        `/awards/${award.id}/certificate`,
-        awardPeriod ? { award_period: awardPeriod } : {}
-      );
-      setRecords((current) => ({ ...current, [award.id]: response.data }));
-      setMessage(response.data.message || "Certificate issued.");
-      setExpanded(award.id);
-      if (onChanged) await onChanged();
-    } catch (err) {
-      setError(err.response?.data?.message || "Unable to issue the certificate.");
-    } finally {
-      setBusy("");
-    }
-  }
 
   async function certificatePdfUrl(awardId) {
     const response = await api.get(`/awards/${awardId}/certificate.pdf`, { responseType: "blob" });
@@ -130,12 +113,22 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
 
   return (
     <section className="overflow-x-auto rounded border border-slate-200 bg-white">
-      <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between ${sectionOpen ? "border-b" : ""}`}>
         <div>
-          <h2 className="font-semibold text-slate-900">Bursary certificates</h2>
-          <p className="mt-1 text-xs text-slate-600">
-            Approved awards only. Each certificate has a QR code that confirms it is genuine. Approval is not payment.
-          </p>
+          <button
+            type="button"
+            onClick={() => setSectionOpen((value) => !value)}
+            aria-expanded={sectionOpen}
+            className="flex items-center gap-1.5 font-semibold text-slate-900"
+          >
+            <ChevronDown size={16} aria-hidden="true" className={`transition-transform ${sectionOpen ? "" : "-rotate-90"}`} />
+            Bursary certificates
+          </button>
+          {sectionOpen && (
+            <p className="mt-1 text-xs text-slate-600">
+              Generated automatically when an administrator approves an award. The field officer who proposed it prints it for the student or school. Approval is not payment.
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -148,8 +141,9 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
         </button>
       </div>
 
+      {sectionOpen && (
+      <div id="certificate-list">
       {error && <p className="border-b border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p>}
-      {message && <p className="border-b border-green-200 bg-green-50 p-3 text-sm text-green-800" role="status">{message}</p>}
 
       {loading ? (
         <p className="p-6 text-sm text-slate-600">Loading certificates...</p>
@@ -173,7 +167,6 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
             {approvedAwards.map((award) => {
               const record = records[award.id];
               const certificate = record?.certificate;
-              const working = busy === award.id;
               return (
                 <Fragment key={award.id}>
                   <tr>
@@ -186,31 +179,8 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
                     <td className="p-3"><CertificateChip record={record} /></td>
                     <td className="p-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        {!record && isAdmin && (
-                          <form
-                            onSubmit={(event) => { event.preventDefault(); issueCertificate(award); }}
-                            className="flex flex-wrap items-end gap-2"
-                          >
-                            <label className="text-xs font-medium text-slate-700">
-                              Award period
-                              <input
-                                value={periods[award.id] || ""}
-                                onChange={(event) => setPeriods({ ...periods, [award.id]: event.target.value })}
-                                placeholder="2026"
-                                aria-label={`Award period for ${award.student_name}`}
-                                className="ml-1 h-8 w-24 border border-slate-300 px-2 text-xs"
-                              />
-                            </label>
-                            <button
-                              disabled={working}
-                              className="rounded bg-[#173D35] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                            >
-                              {working ? "Issuing..." : "Issue certificate"}
-                            </button>
-                          </form>
-                        )}
-                        {!record && !isAdmin && (
-                          <span className="text-xs text-slate-500">Awaiting issue by an administrator</span>
+                        {!record && (
+                          <span className="text-xs text-slate-500">Not available for printing</span>
                         )}
                         {record && (
                           <>
@@ -272,6 +242,18 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
                               <dd className="text-slate-900">{formatDate(certificate.issued_at)} by {certificate.issued_by_name}</dd>
                             </div>
                             <div className="flex flex-wrap justify-between gap-2">
+                              <dt className="text-slate-600">Proposed by</dt>
+                              <dd className="text-slate-900">{certificate.proposed_by_name || "-"}</dd>
+                            </div>
+                            <div className="flex flex-wrap justify-between gap-2">
+                              <dt className="text-slate-600">Approved by</dt>
+                              <dd className="text-slate-900">{certificate.approved_by_name || certificate.issued_by_name}</dd>
+                            </div>
+                            <div className="flex flex-wrap justify-between gap-2">
+                              <dt className="text-slate-600">Approved on</dt>
+                              <dd className="text-slate-900">{formatDate(certificate.award_approved_at)}</dd>
+                            </div>
+                            <div className="flex flex-wrap justify-between gap-2">
                               <dt className="text-slate-600">Approved amount</dt>
                               <dd className="text-slate-900">{money(certificate.approved_amount)}</dd>
                             </div>
@@ -296,6 +278,8 @@ export default function AwardCertificatePanel({ awards, isAdmin, onChanged }) {
 
           </tbody>
         </table>
+      )}
+      </div>
       )}
     </section>
   );

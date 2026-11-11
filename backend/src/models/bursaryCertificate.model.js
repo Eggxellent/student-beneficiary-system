@@ -5,10 +5,14 @@ const pool = require('../config/db');
 // certificate from one whose underlying award has since changed.
 const WITH_LIVE_AWARD = `
   SELECT c.*, a.status AS award_status, a.approved_amount AS award_live_amount,
-         a.decided_at AS award_decided_at, issuer.full_name AS issued_by_name
+         a.decided_at AS award_decided_at, a.submitted_by AS award_submitted_by,
+         a.decided_by AS award_decided_by, issuer.full_name AS issued_by_name,
+         proposer.full_name AS proposed_by_name, decider.full_name AS approved_by_name
   FROM bursary_certificates c
   JOIN bursary_awards a ON a.id = c.award_id
   JOIN users issuer ON issuer.id = c.issued_by
+  LEFT JOIN users proposer ON proposer.id = a.submitted_by
+  LEFT JOIN users decider ON decider.id = a.decided_by
 `;
 
 async function findByAwardId(awardId, executor = pool) {
@@ -51,15 +55,4 @@ async function insert({
   return rows[0] || null;
 }
 
-async function revoke(id, { actorId, reason }, executor = pool) {
-  const { rows } = await executor.query(
-    `UPDATE bursary_certificates
-     SET status = 'revoked', revoked_by = $2, revoked_at = NOW(), revocation_reason = $3
-     WHERE id = $1 AND status = 'active'
-     RETURNING *`,
-    [id, actorId, reason]
-  );
-  return rows[0] || null;
-}
-
-module.exports = { findByAwardId, findById, findByVerificationToken, findByReference, insert, revoke };
+module.exports = { findByAwardId, findById, findByVerificationToken, findByReference, insert };

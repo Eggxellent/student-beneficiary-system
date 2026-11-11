@@ -57,13 +57,14 @@ list), and the API messages in `bursaryAwards.controller.js`.
 |---|---|
 | Identifies a student record | Identifies a bursary certificate |
 | `POST /api/verify` → `{ found }` | `POST /api/certificates/verify` → validity of the certificate |
-| Cannot prove an award exists | Proves an approved award, until revoked or superseded |
-| Never changes with award status | Can be revoked, and stops verifying if the approved amount changes |
+| Cannot prove an award exists | Proves an approved award, until the award is superseded |
+| Never changes with award status | Stops verifying as current if the approved amount changes |
 
 The certificate row is a snapshot: `approved_amount` and `student_name` are frozen at issue time, and
 `publicView()` compares that snapshot with the live award (`award_status`, `award_live_amount`). A
-certificate whose award was changed or is no longer `approved` answers `not_current`; a revoked
-certificate answers `revoked`.
+certificate whose award was changed or is no longer `approved` answers `not_current`; an unknown
+token or reference answers `not_recognised`. There is no revocation state: an issued certificate
+keeps verifying for the life of its award.
 
 ## What the public verification page does not show
 

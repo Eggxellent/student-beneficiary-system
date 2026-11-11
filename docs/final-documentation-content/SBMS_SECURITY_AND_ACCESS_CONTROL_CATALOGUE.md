@@ -49,7 +49,7 @@
 | Submit award application | yes | no | no |
 | Record beneficiary verification | yes | no | no |
 | Approve or reject award | no (403) | yes | no |
-| Issue, read, print, revoke certificate | read and print only | yes (issue and revoke) | no |
+| Issue, read, print and download a certificate | read and print only | yes (issue only; no revocation) | no |
 | Record, clear, acknowledge payment | yes | yes | no |
 | Link a legacy payment to an award | no | yes | no |
 | Read duplicate queue, reveal identifiers, decide case | no (403) | yes | no |
@@ -118,8 +118,8 @@ The start-up failure message deliberately appends the cause (`index.js:117-124`)
 | QR token placement | Token in the URL **fragment** (`/verify#token=...`), removed from the visible URL with `history.replaceState`, then POSTed | The token never reaches a web server in a URL, never appears in access logs and is not sent as a `Referer` |
 | Token format | Exactly 64 lowercase hex characters; exactly one body key accepted | Malformed, unknown and well-formed-but-unknown tokens all answer `{found: false}`, so the endpoint is not a validity oracle |
 | Student endpoints | No name, school, date of birth, identifier or phone in any response | Verification confirms existence only, never identity, eligibility, approval or payment |
-| Certificate endpoint | Authenticity facts only; no student name, UPI, school or amount | A holder of the QR learns that a certificate exists and is current, not whose it is |
-| Certificate storage | Snapshot row, `award_id` UNIQUE, revocation separate from the award | A printed document cannot be rewritten by a later award edit |
+| Certificate endpoint | Authenticity facts only — the facts printed on the paper; no UPI or other identifier, date of birth, national ID, guardian or phone details, address, or verification token | A holder of the paper can have its facts checked, but SBMS never becomes a source for identity fields it does not print |
+| Certificate storage | Snapshot row, `award_id` UNIQUE, no revocation path | A printed document cannot be rewritten by a later award edit, and two certificates can never describe the same award |
 | Review queue | Identifiers masked to the last three characters | Disclosure requires an explicit, audited request |
 | Evidence references | Free-text pointers, not uploads | No document is stored by SBMS, so there is no document store to breach, and no document integrity guarantee either |
 | Transport | HTTPS in deployment | Local development runs over HTTP by design |
@@ -133,7 +133,7 @@ The start-up failure message deliberately appends the cause (`index.js:117-124`)
 | --- | --- |
 | Writer | `services/auditLog.js`, called inside the same transaction as the change |
 | Fields | `user_id`, `action`, `table_name`, `record_id`, `details` (JSONB), `created_at` |
-| Actions recorded | `CREATE` on registration and award submission; `AWARD_VERIFICATION_RECORDED`; duplicate confirm and reject actions; `AWARD_APPROVED` / `AWARD_REJECTED`; `PAYMENT_ISSUED`, `PAYMENT_CLEARED`, `PAYMENT_FAILED`, `PAYMENT_CANCELLED`; `RECEIPT_ACKNOWLEDGED_OFFICER_ASSISTED`; `AWARD_CERTIFICATE_ISSUED`, `AWARD_CERTIFICATE_REVOKED`; threshold updates; identifier reveals |
+| Actions recorded | `CREATE` on registration and award submission; `AWARD_VERIFICATION_RECORDED`; duplicate confirm and reject actions; `AWARD_APPROVED` / `AWARD_REJECTED`; `PAYMENT_ISSUED`, `PAYMENT_CLEARED`, `PAYMENT_FAILED`, `PAYMENT_CANCELLED`; `RECEIPT_ACKNOWLEDGED_OFFICER_ASSISTED`; `AWARD_CERTIFICATE_ISSUED`; threshold updates; identifier reveals |
 | Screening provenance | `duplicate_model_version`, `duplicate_review_threshold`, `duplicate_aggregation_policy`, candidate counts, flags created |
 | Ten-action sequence proven | `tests/workflow.test.js` #10 |
 | Read access | Administrator only (`GET /api/audit-logs`), rendered readably rather than as raw JSON |

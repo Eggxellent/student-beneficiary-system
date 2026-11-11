@@ -68,7 +68,7 @@ A certificate can be issued once an award has been approved. Open **Awards** and
 
 The QR code is what makes the paper checkable: scanning it opens the public verification page, which answers from the live database. The certificate states that the award was approved and that **approval is not payment** — the system records decisions only, so the certificate never claims that money was released.
 
-Only an administrator can issue or revoke a certificate; field officers can view and print it. **Revoke** requires a reason, is recorded in the audit log, and stops the certificate from verifying. A revoked certificate cannot be issued again for the same award, and a certificate that was already printed keeps its reference, so a revoked copy is reported as revoked rather than as unknown.
+Only an administrator can issue a certificate; field officers can view, print and download it. One approved award carries exactly one certificate, and it cannot be reissued for the same award. A certificate that was already printed keeps its reference, so the document stays checkable for as long as the award exists. SBMS has no revocation step: a certificate cannot be withdrawn through the system, and if the award itself is later changed the public page reports the certificate as not current rather than as valid.
 
 ## Audit logs
 

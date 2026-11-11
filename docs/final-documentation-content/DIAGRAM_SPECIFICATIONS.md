@@ -39,8 +39,8 @@ produced from specifications at all; they are marked SCREENSHOT REQUIRED and tra
 | Fig 4.5 Class | UML class | 13 classes incl. `Student`, `DuplicateFlag`, `BursaryAward`, `Disbursement`, `BursaryCertificate`, `AuditLog` | Associations with multiplicities; state enums as attributes | — | — | `backend/src/db/schema.sql`, `backend/src/db/migrations/` | §4.3.5 |
 | Fig 4.6 Sequence: registration | UML sequence | Officer browser, API, validator, ML client, Python model, DB | Synchronous calls; ML call inside the request | API as mediator | ML timeout path | `students.controller.js`, `mlDuplicateReview.js` | §4.3.6 |
 | Fig 4.7 Sequence: duplicate decision | UML sequence | Administrator, API, DB, audit | Fetch queue → reveal (audited) → decide → write terminal state | — | Confirm / dismiss | `duplicateFlags.controller.js` | §4.3.7 |
-| Fig 4.8 Sequence: approval to certificate | UML sequence | Field Officer, Administrator, API, PDF generator, storage | Approve → verify → pay → issue certificate → revoke path | — | `not_current` outcome | `certificates.controller.js` | §4.3.8 |
-| Fig 4.9 Sequence: public verification | UML sequence | Phone browser, API, limiter, DB | Token in fragment → API lookup → existence-only response | No authenticated session | Token invalid; rate limited; revoked | `verification.controller.js` | §4.3.9 |
+| Fig 4.8 Sequence: approval to certificate | UML sequence | Field Officer, Administrator, API, PDF generator, storage | Approve → verify → pay → issue certificate → printable/downloadable certificate (no revocation step) | — | `not_current` outcome | `certificates.controller.js` | §4.3.8 |
+| Fig 4.9 Sequence: public verification | UML sequence | Phone browser, API, limiter, DB | Token in fragment → API lookup → existence-only response | No authenticated session | Token invalid; rate limited; not current | `verification.controller.js` | §4.3.9 |
 | Fig 4.10 Entity-relationship | Chen | 13 entities; key attributes; relationships | 1:N, 1:1, M:N resolutions; FK actions | — | — | migrations; schema doc §2–§9 | §4.3.10 |
 | Fig 4.11 ML pipeline | Two-lane flow | Offline: data → features → split → train → artifact. Online: request → features → score → flag → human | Left-to-right per lane; artifact bridging the lanes | Model boundary vs application | Cut-off 0.50; ML unavailable | `ml-service/`, `train_*.py` | §4.3.11 |
 | Fig 4.12 System architecture | Tiered block diagram | Browser SPA; App Service API; PostgreSQL; ML service; file storage | HTTPS between tiers; subprocess or HTTP to model | Trust boundaries drawn | — | `docker-compose.yml`, deployment guide §3 | §4.4.1 |
@@ -64,7 +64,7 @@ route, audience, data requested, controls and states, so the capture can be chec
 | Fig 4.20 Awards and disbursements | `/disbursements` | Awards table, verification state, payment state, exception panel, certificate action | `Disbursements.jsx` | §4.5.6 |
 | Fig 4.21 Administrative support screens | `/reports`, `/audit`, `/users`, `/settings` | Four panels: date-range export, audit rows, user administration, three cut-offs | `Reports.jsx`, `AuditLogs.jsx`, `UserManagement.jsx`, `Settings.jsx` | §4.5.7 |
 | Fig 4.22 Student-record verification | `/verify` | Minimal layout, single input, existence-only result | `Verification.jsx` | §4.5.8 |
-| Fig 4.23 Certificate verification | `/verify-certificate` | Four outcome states: verified, revoked, not current, unknown | `CertificateVerification.jsx` | §4.5.8 |
+| Fig 4.23 Certificate verification | `/verify-certificate` | Three outcome states: verified, not current, not recognised (token or typed reference) | `CertificateVerification.jsx` | §4.5.8 |
 | Fig 4.24 Physical deployment architecture | — | Azure resources, network path, TLS, database, storage, ML runtime | `SBMS_DEPLOYMENT_AND_OPERATIONS_GUIDE.md` §3–§7 | §4.7 |
 
 ---
@@ -77,7 +77,7 @@ route, audience, data requested, controls and states, so the capture can be chec
    and as a boundary. A diagram that runs model output straight into a state change misrepresents the design.
 3. **Keep identifiers as they are.** `field_officer`, `duplicate_flags`, `bursary_certificates` — the diagram must
    use the code's names, or the figure will not match Chapters Four and Five.
-4. **Show failure paths.** ML unavailable, validation failure, rate limit and revoked token are part of the design;
+4. **Show failure paths.** ML unavailable, validation failure, rate limit and an unrecognised token are part of the design;
    omitting them makes the system look more certain than it is.
 5. **Captions state provenance.** Screenshots carry the instance (Azure or local), the date and the fact that the
    data is synthetic. A caption that omits this invites the reader to assume production data.
