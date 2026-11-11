@@ -69,6 +69,12 @@ export default function NotificationBell({ tone = "light" }) {
     };
   }, [load, user]);
 
+  // Opening the panel is the moment the user looks, so it re-reads the list instead of showing
+  // whatever the last poll returned.
+  useEffect(() => {
+    if (open) load();
+  }, [load, open]);
+
   useEffect(() => {
     if (!open) return undefined;
     function onPointerDown(event) {
