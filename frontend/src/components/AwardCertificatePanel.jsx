@@ -123,6 +123,7 @@ export default function AwardCertificatePanel({ awards, isAdmin, currentUserId }
           >
             <ChevronDown size={16} aria-hidden="true" className={`transition-transform ${sectionOpen ? "" : "-rotate-90"}`} />
             Bursary certificates
+            <span className="text-xs font-normal text-slate-500">{sectionOpen ? "Minimize" : "Expand"}</span>
           </button>
           {sectionOpen && (
             <p className="mt-1 text-xs text-slate-600">

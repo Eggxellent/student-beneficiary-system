@@ -250,6 +250,7 @@ export default function Awards() {
           >
             <ChevronDown size={16} aria-hidden="true" className={`transition-transform ${awardsOpen ? "" : "-rotate-90"}`} />
             Awards ({visibleAwards.length})
+            <span className="text-xs font-normal text-slate-500">{awardsOpen ? "Minimize" : "Expand"}</span>
           </button>
           <div className="flex flex-wrap gap-1.5">
             {FILTERS.map((option) => (
