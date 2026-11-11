@@ -21,6 +21,7 @@ const reportsRouter = require('./routes/reports.routes');
 const eligibilityRouter = require('./routes/eligibility.routes');
 const adminDashboardRouter = require('./routes/adminDashboard.routes');
 const usersRouter = require('./routes/users.routes');
+const notificationsRouter = require('./routes/notifications.routes');
 const errorHandler = require('./middleware/errorHandler');
 const { getAllowedOrigins } = require('./config/cors');
 
@@ -95,6 +96,7 @@ app.use('/api/reports', reportsRouter);
 app.use('/api/eligibility', eligibilityRouter);
 app.use('/api/admin/dashboard', adminDashboardRouter);
 app.use('/api/users', usersRouter);
+app.use('/api/notifications', notificationsRouter);
 app.use(errorHandler);
 
 if (require.main === module) {

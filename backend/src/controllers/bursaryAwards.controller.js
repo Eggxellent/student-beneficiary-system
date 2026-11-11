@@ -2,6 +2,7 @@ const { z } = require('zod');
 const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
 const { issueForApprovedAward } = require('../services/certificateIssue');
+const { notifyAwardSubmitted, notifyAwardDecision } = require('../services/notifications');
 
 const createSchema = z.object({
   student_id: z.string().uuid(),
@@ -70,7 +71,7 @@ async function create(req, res, next) {
   try {
     await client.query('BEGIN');
     const student = await client.query(
-      'SELECT id, school_code FROM students WHERE id = $1 FOR UPDATE',
+      'SELECT id, full_name, school_code FROM students WHERE id = $1 FOR UPDATE',
       [parsed.data.student_id]
     );
     if (!student.rows.length) {
@@ -91,6 +92,9 @@ async function create(req, res, next) {
       requested_amount: rows[0].requested_amount,
       school_code: rows[0].school_code,
     }, client);
+    // The reviewers are the only people who can act on a proposal, so they are the only ones
+    // notified. The proposing officer already knows: they just submitted it.
+    await notifyAwardSubmitted(client, { award: rows[0], studentName: student.rows[0].full_name });
     await client.query('COMMIT');
     // The stored status stays 'submitted', but the officer has only *proposed* an amount. Nothing
     // is awarded until an administrator approves it, and the wording says so.
@@ -197,6 +201,13 @@ async function decide(req, res, next) {
         return res.status(409).json({ message: 'Resolve duplicate review cases before approving this award.' });
       }
     }
+    // The student row is read once for both outcomes: the approver needs the full record for the
+    // certificate, and the rejection notification still has to name who it concerns.
+    const { rows: students } = await client.query(
+      'SELECT full_name, upi, school_code FROM students WHERE id = $1',
+      [award.student_id]
+    );
+    const studentName = students[0]?.full_name || 'Beneficiary record';
     const updated = await client.query(
       `UPDATE bursary_awards
        SET status = $1, approved_amount = $2, decision_reason = $3,
@@ -209,10 +220,6 @@ async function decide(req, res, next) {
     // nothing, and a later decision cannot be made because `status` is no longer 'submitted'.
     let certificate = null;
     if (decision === 'approved') {
-      const { rows: students } = await client.query(
-        'SELECT full_name, upi, school_code FROM students WHERE id = $1',
-        [award.student_id]
-      );
       if (!students.length) {
         await client.query('ROLLBACK');
         return res.status(409).json({ message: 'The student record for this award is missing.' });
@@ -227,6 +234,15 @@ async function decide(req, res, next) {
       approved_amount: decision === 'approved' ? approved_amount : null,
       reason,
     }, client);
+    // The proposing officer learns the outcome; the administrator who decided does not need a
+    // notification for the action they just took. Certificate issuance notifies separately, from
+    // the service that writes the certificate, so both issuance paths behave the same.
+    await notifyAwardDecision(client, {
+      award: updated.rows[0],
+      studentName,
+      decision,
+      approvedAmount: decision === 'approved' ? approved_amount : null,
+    });
     await client.query('COMMIT');
     res.json({
       message: decision === 'approved'

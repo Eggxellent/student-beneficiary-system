@@ -2,6 +2,7 @@ const { randomBytes } = require('crypto');
 const logAudit = require('./auditLog');
 const certificateModel = require('../models/bursaryCertificate.model');
 const { generateCertificateReference } = require('./certificateReference');
+const { notifyCertificateReady } = require('./notifications');
 const {
   buildCertificateVerificationUrl,
   buildCertificateVerificationPageUrl,
@@ -65,6 +66,15 @@ async function issueForApprovedAward(client, { award, student, actorId, awardPer
       certificate_reference: created.certificate_reference,
       award_period: period,
     }, client);
+    // Issuance is the event the proposing officer was waiting for: the certificate is only useful
+    // once they know it exists. Placed here rather than in the approval controller so the
+    // administrator's retry path notifies the same way, and deduped on the certificate id so a
+    // retry cannot produce a second "ready" notification.
+    await notifyCertificateReady(client, {
+      award,
+      studentName: student.full_name,
+      certificate: created,
+    });
   }
 
   return created;
