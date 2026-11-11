@@ -5,7 +5,8 @@ const requireRole = require('../middleware/requireRole');
 
 const router = express.Router();
 
-router.get('/', authenticateToken, requireRole('field_officer'), controller.describeFormula);
+// The scoring formula is internal: only an administrator may read the weights.
+router.get('/', authenticateToken, requireRole('admin'), controller.describeFormula);
 router.post('/', authenticateToken, requireRole('field_officer'), controller.calculate);
 
 module.exports = router;

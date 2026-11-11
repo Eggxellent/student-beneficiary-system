@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
 
 const EMPTY_FORM = {
   student_id: "",
@@ -31,6 +32,8 @@ const fieldClass =
 const labelClass = "block text-[10px] font-bold uppercase tracking-wide text-slate-800";
 
 export default function Eligibility() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [form, setForm] = useState(EMPTY_FORM);
   const [students, setStudents] = useState([]);
   const [formula, setFormula] = useState({ factors: FALLBACK_FORMULA });
@@ -42,10 +45,12 @@ export default function Eligibility() {
     api.get("/students")
       .then((response) => setStudents(Array.isArray(response.data) ? response.data : response.data?.value || []))
       .catch(() => setStudents([]));
-    api.get("/eligibility")
-      .then((response) => setFormula(response.data || { factors: FALLBACK_FORMULA }))
-      .catch(() => setFormula({ factors: FALLBACK_FORMULA }));
-  }, []);
+    if (isAdmin) {
+      api.get("/eligibility")
+        .then((response) => setFormula(response.data || { factors: FALLBACK_FORMULA }))
+        .catch(() => setFormula({ factors: FALLBACK_FORMULA }));
+    }
+  }, [isAdmin]);
 
   const selectedStudent = useMemo(
     () => students.find((student) => student.id === form.student_id) || null,
@@ -154,6 +159,7 @@ export default function Eligibility() {
           </div>
         </section>
 
+        {isAdmin && (
         <section className="border border-slate-200 bg-white">
           <div className="border-b border-slate-200 px-4 py-3">
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Scoring formula</h2>
@@ -190,6 +196,7 @@ export default function Eligibility() {
             )}
           </div>
         </section>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="border border-slate-200 bg-white">
