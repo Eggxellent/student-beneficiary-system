@@ -1,9 +1,9 @@
 const fs = require("fs");
 const path = require("path");
-const PDFDocument = require("pdfkit");
 const { randomUUID } = require("crypto");
 const pool = require("../config/db");
 const logAudit = require("../services/auditLog");
+const { createReportDocument } = require("../services/reportDocument");
 
 async function exportReport(req, res, next) {
   try {
@@ -22,7 +22,8 @@ async function exportReport(req, res, next) {
     }
 
     const studentsResult = await pool.query(
-      `SELECT COUNT(*)::int AS total_students
+      `SELECT COUNT(*)::int AS total_students,
+              COUNT(*) FILTER (WHERE eligibility_score IS NOT NULL)::int AS assessed_students
        FROM students
        WHERE created_at::date BETWEEN $1 AND $2`,
       [start_date, end_date]
@@ -38,10 +39,13 @@ async function exportReport(req, res, next) {
 
     const awardsResult = await pool.query(
       `SELECT
+         COUNT(*)::int AS total_awards,
          COUNT(*) FILTER (WHERE status = 'approved')::int AS approved_awards,
          COALESCE(SUM(approved_amount) FILTER (WHERE status = 'approved'), 0)::numeric AS approved_amount,
          COUNT(*) FILTER (WHERE status = 'rejected')::int AS rejected_awards,
          COUNT(*) FILTER (WHERE status = 'submitted')::int AS submitted_awards,
+         COALESCE(SUM(requested_amount) FILTER (WHERE status = 'submitted'), 0)::numeric AS pending_amount,
+         COALESCE(SUM(requested_amount), 0)::numeric AS requested_amount,
          COUNT(*) FILTER (WHERE status = 'submitted' AND verification_status <> 'verified')::int AS awaiting_verification
        FROM bursary_awards
        WHERE created_at::date BETWEEN $1 AND $2`,
@@ -49,7 +53,8 @@ async function exportReport(req, res, next) {
     );
 
     const detailsResult = await pool.query(
-      `SELECT a.decided_at, s.full_name, a.status, a.approved_amount
+      `SELECT a.decided_at, s.full_name, s.school_code, s.eligibility_category,
+              a.status, a.approved_amount
        FROM bursary_awards a
        JOIN students s ON s.id = a.student_id
        WHERE a.decided_at IS NOT NULL
@@ -59,7 +64,13 @@ async function exportReport(req, res, next) {
       [start_date, end_date]
     );
 
+    const actorResult = await pool.query(
+      `SELECT full_name FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+
     const totalStudents = studentsResult.rows[0].total_students;
+    const assessedStudents = studentsResult.rows[0].assessed_students;
     const pendingFlags = flagsResult.rows[0].pending_flags;
     const awards = awardsResult.rows[0];
     const reportId = randomUUID();
@@ -68,47 +79,30 @@ async function exportReport(req, res, next) {
     fs.mkdirSync(reportsDir, { recursive: true });
     const filePath = path.join(reportsDir, fileName);
     const relativeFilePath = `reports/${fileName}`;
-    const doc = new PDFDocument({ margin: 50 });
+
+    const doc = createReportDocument({
+      reportId,
+      period: { start_date, end_date },
+      generatedAt: new Date(),
+      preparedBy: actorResult.rows[0]?.full_name || "an authorised system user",
+      summary: {
+        studentsRegistered: totalStudents,
+        studentsAssessed: assessedStudents,
+        duplicateFlags: pendingFlags,
+        totalAwards: awards.total_awards,
+        approvedAwards: awards.approved_awards,
+        approvedAmount: awards.approved_amount,
+        rejectedAwards: awards.rejected_awards,
+        awaitingDecision: awards.submitted_awards,
+        awaitingVerification: awards.awaiting_verification,
+        requestedAmount: awards.requested_amount,
+        pendingAmount: awards.pending_amount,
+      },
+      decisions: detailsResult.rows,
+    });
+
     const stream = fs.createWriteStream(filePath);
-
     doc.pipe(stream);
-    doc.fontSize(20).text("Student Beneficiary Management System", { align: "center" });
-    doc.moveDown();
-    doc.fontSize(16).text("Beneficiary and Bursary Award Report", { align: "center" });
-    doc.moveDown();
-    doc.fontSize(11).text(`Report Period: ${start_date} to ${end_date}`);
-    doc.text(`Generated: ${new Date().toLocaleString()}`);
-    doc.moveDown();
-    doc.fontSize(14).text("Summary");
-    doc.moveDown(0.5);
-    doc.fontSize(11).text(`Students Registered: ${totalStudents}`);
-    doc.text(`Potential Duplicate Flags Awaiting Review: ${pendingFlags}`);
-    doc.moveDown();
-    doc.fontSize(14).text("Bursary Awards Submitted In Period");
-    doc.moveDown(0.5);
-    doc.fontSize(11).text(`Approved Awards: ${awards.approved_awards}`);
-    doc.text(`Approved Amount: KES ${Number(awards.approved_amount).toLocaleString()}`);
-    doc.text(`Rejected Awards: ${awards.rejected_awards}`);
-    doc.text(`Awards Awaiting A Decision: ${awards.submitted_awards}`);
-    doc.text(`Awards Awaiting Beneficiary Verification: ${awards.awaiting_verification}`);
-    doc.moveDown();
-    doc.fontSize(14).text("Award Decisions");
-    doc.moveDown(0.5);
-
-    if (detailsResult.rows.length === 0) {
-      doc.fontSize(11).text("No award decisions were recorded for this period.");
-    } else {
-      detailsResult.rows.forEach((item, index) => {
-        doc.fontSize(10).text(
-          `${index + 1}. ${item.full_name} | ${new Date(item.decided_at).toISOString().slice(0, 10)} | ${item.status} | KES ${item.approved_amount == null ? "0" : Number(item.approved_amount).toLocaleString()}`
-        );
-        doc.moveDown(0.3);
-      });
-    }
-
-    doc.moveDown();
-    doc.fontSize(9).text("An approved award is not a payment. This report does not record or confirm disbursement.");
-    doc.fontSize(9).text("Generated by the Student Beneficiary Management System.");
     doc.end();
 
     stream.on("finish", async () => {
