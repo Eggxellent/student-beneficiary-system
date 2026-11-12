@@ -236,6 +236,52 @@ do not read `/api/students`) is unchanged: a live admin token still gets 403 the
 | `npm --prefix frontend run build` + `az webapp deploy` | redeployed; the live `index.html` serves the new bundle hash |
 | `node scripts/admin-reveal-smoke.mjs` against production | **9/9** — sign-in, queue, the case dialog stays open, 60 masked characters, the `Guardian no:` row present, reveal confirmation, 0 masked characters after the reveal, no page errors |
 
+## 10. Repeat bursary proposals need confirmation (12 November 2026)
+
+**Problem.** One bursary per student was enforced by refusing every second proposal with `409`, which
+meant an officer could not record a legitimate second bursary at all.
+
+**Change.** The refusal is now a confirmation gate. `POST /api/awards` answers `409` with
+`code: "EXISTING_ALLOCATION"` while a non-rejected award exists; `Awards.jsx` warns first from the
+awards it has loaded and retries with `confirm_duplicate_allocation: true` after the officer accepts the
+dialog, and repeats the dialog if the server still refuses (stale list). The server re-checks inside a
+per-student `pg_advisory_xact_lock` transaction and records `duplicate_allocation_confirmed`,
+`existing_award_id` and `existing_award_status` in the `AWARD_SUBMITTED` audit payload. A same-officer,
+same-amount repeat click under 60 seconds old answers `200 { already_submitted: true }`.
+
+**Also in this deployment:** the beneficiary verification stage is gone end to end (officer proposes,
+administrator approves, certificate issued inside the approval transaction).
+
+### What was deployed
+
+| Piece | Value |
+| --- | --- |
+| Commit | `a5c4ef4746144d83db15ee75731a83655b4a2c0e` on `fix/sbms-completion-work` |
+| CI | `Publish API image` run for that SHA: **completed / success** (duplicate-model gate, no-GPU/no-secrets gate, size report) |
+| API image | `ghcr.io/eggxellent/sbms-api:a5c4ef4746144d83db15ee75731a83655b4a2c0e` |
+| Container App | `ca-sbms-api` revision `ca-sbms-api--latest`, active, `Healthy` |
+| Frontend | `npm --prefix frontend run build` with `VITE_API_ORIGIN=https://ca-sbms-api.ambitiousstone-f2de8f67.uaenorth.azurecontainerapps.io`, `az webapp deploy` (zip) to `sbms-web`; live bundle `assets/index-ef8Xjum2.js` |
+| Database | `20261111_remove_award_verification_gate.sql` applied with `psql` as `sbmsadmin` on `sbms`: `bursary_awards_approval_verification_check` dropped (`ALTER TABLE` returned; constraint count now `0`). A temporary single-IP firewall rule was created for the workstation and deleted immediately afterwards |
+
+### Evidence
+
+| Check | Result |
+| --- | --- |
+| `https://ca-sbms-api.ambitiousstone-f2de8f67.uaenorth.azurecontainerapps.io/api/health` | `200 {"status":"ok"}` |
+| `…/api/ready` | `200 {"status":"ready"}` |
+| `https://sbms-web.azurewebsites.net` | `200`, serves `index-ef8Xjum2.js` |
+| `az postgres flexible-server firewall-rule list` | only `AllowAzureServices` and the pre-existing Azure-services rule; the temporary rule is gone |
+
+### Carry-forward
+
+- The `Publish API image` run for `9fbf701` (11 November) failed and was never re-run; only `4c9606e`
+  and `a5c4ef4` produced images. Anything built from `9fbf701` alone is not in the registry.
+- PostgreSQL Flexible Server is **Ready** and billing from this deployment (about $0.02/h). Run
+  `deploy/azure/stop.ps1` when the environment is not needed.
+- The live API has no automated end-to-end check of the new confirmation gate; the behaviour is covered
+  by `backend/tests/bursaryAwards.controller.test.js` (10 tests) and the DB-backed workflow test locally.
+
+
 ### Carry-forward
 
 - The live student records hold **no `primary_phone` and no `national_id_number`**, so those two rows
