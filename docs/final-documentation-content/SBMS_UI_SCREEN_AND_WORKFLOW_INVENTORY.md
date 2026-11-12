@@ -127,7 +127,7 @@ The UPI and birth-certificate inputs were added on 2026-11-01 because the critic
 | Property | Detail |
 | --- | --- |
 | Data loaded | `GET /awards`, `GET /students` |
-| Award actions | Submit application (`POST /awards`), record verification (`POST /awards/:id/verification`), approve or reject (`PATCH /awards/:id/decision`) |
+| Award actions | Propose an award (`POST /awards`), then approve or reject it (`PATCH /awards/:id/decision`) |
 | Payment actions | Record payment (`POST /disbursements`), change payment status (`PATCH /disbursements/:id/payment-status`), record acknowledgement (`PATCH /disbursements/:id/acknowledgement`), link a legacy payment (`PATCH /disbursements/:id/award`) |
 | Certificate panel | `AwardCertificatePanel` issues, reads and prints certificates through `/awards/:id/certificate*` |
 | Role behaviour | The page renders for both roles; controls are permitted by the API, so an officer attempting an administrator-only action receives 403 |
@@ -199,7 +199,7 @@ The UPI and birth-certificate inputs were added on 2026-11-01 because the critic
 | Loading | `ProtectedRoute` renders nothing while `authLoading` is true, so a protected page cannot flash before authentication resolves |
 | Empty | Lists render with no rows rather than a placeholder message |
 | Error | Panels show the server's `message`; a 5xx shows `Internal server error`, never a stack |
-| Refused action | The sentence names the missing precondition, e.g. `Verify the beneficiary before approving this award.` |
+| Refused action | The sentence names the missing precondition, e.g. `Resolve duplicate review cases before approving this award.` |
 | Role mismatch | Redirect to `/dashboard`, or a 403 sentence naming the correct sign-in page |
 
 ## 8. Accessibility and responsiveness: what is and is not established

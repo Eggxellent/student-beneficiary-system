@@ -40,18 +40,19 @@ let certificateRecord;
 let certificate;
 let secondCertificate;
 
-async function registerStudent(label) {
+async function registerStudent(label, school = "Nairobi School") {
   const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const token = () => Math.random().toString(36).slice(2, 11).toUpperCase();
   const response = await request(app)
     .post("/api/students")
     .set(auth(officer))
     .send({
-      full_name: `${label} Learner`,
-      date_of_birth: "2009-05-04",
-      school_code: "Nairobi School",
-      primary_phone: "+254700555111",
-      upi: `CERT-UPI-${stamp}`,
-      birth_certificate_number: `CERT-BC-${stamp}`,
+      full_name: `${label} ${stamp} Learner`,
+      date_of_birth: `20${10 + (Number(stamp.slice(-2)) % 4)}-${String((Number(stamp.slice(-4, -2)) % 12) + 1).padStart(2, "0")}-${String((Number(stamp.slice(-6, -4)) % 28) + 1).padStart(2, "0")}`,
+      school_code: school,
+      primary_phone: `+2547${Math.floor(10000000 + Math.random() * 89999999)}`,
+      upi: `UPI${token()}`,
+      birth_certificate_number: `BC${token()}`,
     });
   if (response.statusCode !== 201) {
     throw new Error(`registration failed: ${response.statusCode} ${JSON.stringify(response.body)}`);
@@ -72,18 +73,8 @@ async function submitAward(studentId, amount) {
   return response.body.award.id;
 }
 
-async function verifyAward(awardId) {
-  const response = await request(app)
-    .post(`/api/awards/${awardId}/verification`)
-    .set(auth(officer))
-    .send({ outcome: "verified", notes: "School register checked in person", evidence_ref: "CERT-EVIDENCE-1" });
-  if (response.statusCode !== 200) {
-    throw new Error(`verification failed: ${response.statusCode} ${JSON.stringify(response.body)}`);
-  }
-}
-
 async function decideAward(awardId, decision, approvedAmount) {
-  const payload = { decision, reason: decision === "approved" ? "Eligible after verification" : "Records did not match" };
+  const payload = { decision, reason: decision === "approved" ? "Eligibility and amount reviewed" : "Records did not match" };
   if (approvedAmount) payload.approved_amount = approvedAmount;
   const response = await request(app).patch(`/api/awards/${awardId}/decision`).set(auth(admin)).send(payload);
   if (response.statusCode !== 200) {
@@ -106,12 +97,10 @@ describe("Bursary award certificates", () => {
     student = await registerStudent("Certificate Probe");
 
     approvedAward = await submitAward(student.id, 50000);
-    await verifyAward(approvedAward);
     const approval = await decideAward(approvedAward, "approved", 45000);
     expect(approval.certificate_reference).toMatch(/^SBMS-\d{4}-/);
 
-    approvedAwardWithChangedAmount = await submitAward(student.id, 40000);
-    await verifyAward(approvedAwardWithChangedAmount);
+    approvedAwardWithChangedAmount = await submitAward((await registerStudent("Zawadi Mwangi", "Alliance High")).id, 40000);
     await decideAward(approvedAwardWithChangedAmount, "approved", 35000);
 
     // Read back, never issued: the approval wrote the certificate.
@@ -123,9 +112,9 @@ describe("Bursary award certificates", () => {
     certificate = read.body.certificate;
     expect(certificate.certificate_reference).toBe(approval.certificate_reference);
 
-    pendingAward = await submitAward(student.id, 20000);
+    pendingAward = await submitAward((await registerStudent("Baraka Otieno", "Maranda")).id, 20000);
 
-    rejectedAward = await submitAward(student.id, 15000);
+    rejectedAward = await submitAward((await registerStudent("Neema Chebet", "Bishop Gatimu")).id, 15000);
     rejectedApproval = await decideAward(rejectedAward, "rejected");
   });
 

@@ -114,7 +114,6 @@ export default function AdminDashboard() {
   const awardCards = [
     { label: "Approved awards", value: Number(awards.approved_awards || 0).toLocaleString() },
     { label: "Proposed, awaiting approval", value: Number(awards.submitted_awards || 0).toLocaleString() },
-    { label: "Awaiting beneficiary verification", value: Number(awards.awards_awaiting_verification || 0).toLocaleString() },
   ];
   const statistics = [
     { label: "Students", value: totalStudents.toLocaleString(), detail: "Registered", icon: Users, color: "bg-blue-50 text-blue-600" },

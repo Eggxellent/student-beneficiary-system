@@ -209,7 +209,7 @@ function summaryParagraphs(data) {
     + ` and received ${summary.totalAwards} bursary award submission(s) totalling ${money(summary.requestedAmount)} in requested support.`;
   const second = `The approving committee recorded ${summary.approvedAwards} approval(s) worth ${money(summary.approvedAmount)},`
     + ` which is ${share}% of the submissions received in the period, and ${summary.rejectedAwards} rejection(s).`
-    + ` ${summary.awaitingDecision} award(s) still await a decision and ${summary.awaitingVerification} await beneficiary verification.`;
+    + ` ${summary.awaitingDecision} award(s) still await an administrator decision.`;
   const third = `Duplicate screening left ${summary.duplicateFlags} flag(s) pending review, and ${summary.studentsAssessed} of the ${summary.studentsRegistered} newly registered beneficiary record(s)`
     + ' carry a recorded eligibility assessment. Approved amounts are commitments; they are not disbursements.';
   return [first, second, third];
@@ -274,7 +274,6 @@ function drawPipeline(doc, data, state, cursor) {
     ['Approved', String(data.summary.approvedAwards), money(data.summary.approvedAmount), `${pipelineShare(data.summary.approvedAwards, total)}%`],
     ['Rejected', String(data.summary.rejectedAwards), money(0), `${pipelineShare(data.summary.rejectedAwards, total)}%`],
     ['Awaiting decision', String(data.summary.awaitingDecision), money(data.summary.pendingAmount), `${pipelineShare(data.summary.awaitingDecision, total)}%`],
-    ['Awaiting beneficiary verification', String(data.summary.awaitingVerification), '-', `${pipelineShare(data.summary.awaitingVerification, total)}%`],
     ['Total submissions', String(total), money(data.summary.requestedAmount), '100%'],
   ], { state });
 }
@@ -334,7 +333,7 @@ function createReportDocument(data) {
     { label: 'Students', value: String(data.summary.studentsRegistered), note: 'registered in period', accent: NAVY },
     { label: 'Approved awards', value: String(data.summary.approvedAwards), note: 'committee decisions', accent: GREEN },
     { label: 'Approved value', value: money(data.summary.approvedAmount), note: 'commitment, not paid', accent: GOLD, size: 11.6 },
-    { label: 'Awaiting decision', value: String(data.summary.awaitingDecision), note: `${data.summary.awaitingVerification} need verification`, accent: AMBER },
+    { label: 'Awaiting decision', value: String(data.summary.awaitingDecision), note: 'administrator review', accent: AMBER },
   ];
   kpis.forEach((card, index) => kpiCard(doc, MARGIN + index * (cardW + gap), BAND_H + 22, cardW, card));
 

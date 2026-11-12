@@ -211,7 +211,7 @@ operational use) and **P3** (improves the system but is not blocking).
 | --- | --- | --- | --- | --- |
 | R-13 | Record UPI and birth-certificate number whenever the guardian presents the documents | These are the identifiers whose exact agreement raises a case regardless of the model score; leaving them blank removes the strongest human-checkable signal | `docs/azure-deployment-log-2026-10-31.md` §9; FR-05 | **P1** |
 | R-14 | Treat a "possible duplicate match" message as a normal outcome, not a rejection, and tell the guardian an administrator will review it | Registration is never blocked and the student is registered; the case concerns a later payment decision | FR-08; `docs/business-workflow-verification-2026-10-30.md` §4 | **P2** |
-| R-15 | Record beneficiary verification with a real evidence reference rather than a placeholder | Approval is impossible without it, and a placeholder defeats the traceability the system exists to provide | FR-14; `bursary_awards_verification_fields_check` | **P2** |
+| R-15 | Record the administrator's approval reason with enough detail that an auditor can see why the amount was awarded | The reason is the only narrative record of the decision, and the certificate snapshot carries no rationale of its own | FR-15; `bursary_awards_decision_fields_check` | **P2** |
 | R-16 | Print or display the student QR at registration and confirm the student can present it later | The token is returned only in that response, and there is no re-issue path in the current API | Chapter Five §5.3.8; FR-35 | **P2** |
 
 ### 6.3.4 Recommendations for technical maintainers

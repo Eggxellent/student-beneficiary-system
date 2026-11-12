@@ -35,8 +35,7 @@ async function getSummary(req, res, next) {
       pool.query(
         `SELECT
            (SELECT COUNT(*)::int FROM bursary_awards WHERE status = 'approved') AS approved_awards,
-           (SELECT COUNT(*)::int FROM bursary_awards WHERE status = 'submitted') AS submitted_awards,
-           (SELECT COUNT(*)::int FROM bursary_awards WHERE status = 'submitted' AND verification_status <> 'verified') AS awards_awaiting_verification`
+           (SELECT COUNT(*)::int FROM bursary_awards WHERE status = 'submitted') AS submitted_awards`
       ),
     ]);
 

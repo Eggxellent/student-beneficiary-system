@@ -142,11 +142,11 @@ Index `duplicate_review_events_flag_created_idx` on `(duplicate_flag_id, created
 | `requested_amount` | NUMERIC(12,2) | no | — | CHECK `> 0` | Amount applied for |
 | `approved_amount` | NUMERIC(12,2) | yes | — | CHECK NULL or `> 0` | Amount approved; also the ceiling for total disbursement |
 | `status` | VARCHAR(20) | no | `submitted` | CHECK IN (`submitted`, `approved`, `rejected`) | Decision state |
-| `verification_status` | VARCHAR(30) | no | `not_checked` | CHECK IN (`not_checked`, `verified`, `not_found`, `needs_investigation`) | Beneficiary verification state |
-| `verification_notes` | TEXT | yes | — | — | Verification narrative |
-| `verification_evidence_ref` | VARCHAR(500) | yes | — | Required when `verification_status = 'verified'` | Pointer to the evidence seen; explicitly **not** an upload |
-| `verified_by` | UUID | yes | — | FK `users(id)` ON DELETE RESTRICT | Officer who verified |
-| `verified_at` | TIMESTAMPTZ | yes | — | — | Verification time |
+| `verification_status` | VARCHAR(30) | no | `not_checked` | CHECK IN (`not_checked`, `verified`, `not_found`, `needs_investigation`) | **Legacy.** The beneficiary verification stage was removed; the controller no longer writes this column |
+| `verification_notes` | TEXT | yes | — | — | **Legacy**, retained with the column |
+| `verification_evidence_ref` | VARCHAR(500) | yes | — | Required when `verification_status = 'verified'` (legacy) | **Legacy** pointer to the evidence seen; never written by the current controller |
+| `verified_by` | UUID | yes | — | FK `users(id)` ON DELETE RESTRICT | **Legacy**: officer who verified |
+| `verified_at` | TIMESTAMPTZ | yes | — | — | **Legacy**: verification time |
 | `decision_reason` | TEXT | yes | — | CHECK >= 5 trimmed characters when decided | Why approved or rejected |
 | `decided_by` | UUID | yes | — | FK `users(id)` ON DELETE RESTRICT | Administrator who decided |
 | `decided_at` | TIMESTAMPTZ | yes | — | — | Decision time |
@@ -154,9 +154,9 @@ Index `duplicate_review_events_flag_created_idx` on `(duplicate_flag_id, created
 | `created_at` | TIMESTAMPTZ | no | `NOW()` | — | Submission time |
 | `updated_at` | TIMESTAMPTZ | no | `NOW()` | — | Last modification |
 
-**Table-level CHECK constraints** (`bursary_awards_*`): a submitted row must have no decision fields; an approved row must have an amount, a reason, a decider and a time; a rejected row must have no amount but must have a reason, a decider and a time; **`status <> 'approved' OR verification_status = 'verified'`** — approval without verification is impossible at database level, not only in the controller; and a verified row must carry verifier, time and a non-empty evidence reference.
+**Table-level CHECK constraints** (`bursary_awards_*`): a submitted row must have no decision fields; an approved row must have an amount, a reason, a decider and a time; a rejected row must have no amount but must have a reason, a decider and a time; and a `verified` row must carry verifier, time and a non-empty evidence reference. The former `bursary_awards_approval_verification_check` (`status <> 'approved' OR verification_status = 'verified'`) was dropped by `20261111_remove_award_verification_gate.sql` when the verification stage was removed, so approval no longer needs a verification record.
 
-### 4.6 `bursary_award_verification_events` — verification history
+### 4.6 `bursary_award_verification_events` — verification history (legacy)
 
 | Column | Type | Null | Default | Constraint | Meaning |
 | --- | --- | --- | --- | --- | --- |
@@ -306,8 +306,8 @@ No index exists on `students.full_name`, `students.school_code` or `students.dat
 | Entity | Transition | Enforced by | Cannot happen |
 | --- | --- | --- | --- |
 | Duplicate case | `pending` to `confirmed_duplicate` / `not_duplicate` / `needs_verification`, then terminal | Controller refuses a second decision; `duplicate_review_events` appends history | Re-deciding a terminal case returns 404 |
-| Award | `submitted` to `approved` or `rejected` | `bursary_awards_decision_fields_check`; approval additionally requires `verification_status = 'verified'` | Approval of an unverified award; a decision without a reason; an amount on a rejected award |
-| Verification | `not_checked` to `verified` / `not_found` / `needs_investigation` | `bursary_awards_verification_fields_check`; the controller closes verification after a decision | A `verified` outcome without evidence, actor and time |
+| Award | `submitted` to `approved` or `rejected` | `bursary_awards_decision_fields_check`; approval also requires no open or confirmed duplicate case (the former verification gate was dropped by `20261111_remove_award_verification_gate.sql`) | A decision without a reason; an amount on a rejected award |
+| Verification *(legacy)* | `not_checked` to `verified` / `not_found` / `needs_investigation` | Stage removed; `bursary_awards_verification_fields_check` still constrains the retained columns | Writing a `verified` outcome without evidence, actor and time |
 | Payment | `issued` to `cleared` / `failed` / `cancelled`, with no further change | `bursaryRules.canTransitionPayment`; `disbursements_clearance_fields_check` | Clearing twice; failing a payment that already has a receipt status |
 | Receipt | NULL to `awaiting_acknowledgement` to `acknowledged` or `discrepancy` | `bursaryRules.receiptStatus` compares cents; `disbursements_acknowledgement_fields_check` | An acknowledged receipt without amount, actor, time and evidence; any method other than `officer_assisted` |
 | Certificate | No transition after issue: `status` stays `active` | `award_id` UNIQUE; the issue path refuses an award that already has a certificate | A second certificate for the same award |

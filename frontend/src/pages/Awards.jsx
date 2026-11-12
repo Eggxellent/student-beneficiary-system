@@ -1,21 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import AwardCertificatePanel from "../components/AwardCertificatePanel";
 
 const emptyAward = { student_id: "", requested_amount: "" };
-const emptyVerification = { award_id: "", outcome: "verified", notes: "", evidence_ref: "" };
 const emptyDecision = { award_id: "", decision: "approved", approved_amount: "", reason: "" };
+
+const DUPLICATE_ALLOCATION_WARNING = "This student has already been allocated a bursary. Are you sure you want to proceed with another bursary proposal?";
 
 const STATUS_LABELS = {
   submitted: "Proposed",
   approved: "Approved",
   rejected: "Rejected",
-  not_checked: "Not checked",
-  verified: "Verified",
-  not_found: "Not found",
-  needs_investigation: "Needs a check",
 };
 
 const FILTERS = [
@@ -34,7 +31,7 @@ function shortId(value) {
 }
 
 function statusText(value) {
-  return STATUS_LABELS[String(value || "").toLowerCase()] || String(value || "unverified").replaceAll("_", " ");
+  return STATUS_LABELS[String(value || "").toLowerCase()] || String(value || "unknown").replaceAll("_", " ");
 }
 
 function Status({ children }) {
@@ -56,14 +53,16 @@ export default function Awards() {
   const [students, setStudents] = useState([]);
   const [awards, setAwards] = useState([]);
   const [awardForm, setAwardForm] = useState(emptyAward);
-  const [verificationForm, setVerificationForm] = useState(emptyVerification);
   const [decisionForm, setDecisionForm] = useState(emptyDecision);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const submittingRef = useRef(false);
   const [statusFilter, setStatusFilter] = useState("all");
-  const [awardsOpen, setAwardsOpen] = useState(true);
+  // Collapsed by default for both roles: the page opens as a short list of section headers instead of
+  // a long scroll. The count in the header still shows how many awards match the current filter.
+  const [awardsOpen, setAwardsOpen] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -84,6 +83,10 @@ export default function Awards() {
   useEffect(() => { loadData(); }, [isAdmin]);
 
   const pendingAwards = awards.filter((award) => award.status === "submitted");
+  // An allocation is any proposal or approval that was not rejected. These students stay selectable:
+  // proposing a second bursary is allowed, but the officer must confirm the warning first. The API
+  // performs the same check and is the authority when this page's copy is stale.
+  const allocatedStudentIds = new Set(awards.filter((award) => award.status !== "rejected").map((award) => award.student_id));
   const counts = {
     total: awards.length,
     proposed: pendingAwards.length,
@@ -91,37 +94,44 @@ export default function Awards() {
     rejected: awards.filter((award) => award.status === "rejected").length,
   };
   // Each role only ever had one reachable tab, so the strip was a no-op click target. The form is
-  // rendered directly instead: administrators decide, field officers propose and then verify.
+  // rendered directly instead: administrators decide, field officers propose the award amount.
   const showDecision = isAdmin && pendingAwards.length > 0;
   const showProposal = !isAdmin;
-  const showVerification = !isAdmin && pendingAwards.length > 0;
   const visibleAwards = statusFilter === "all" ? awards : awards.filter((award) => award.status === statusFilter);
 
   async function submitAward(event) {
     event.preventDefault();
-    setError(""); setMessage(""); setSaving(true);
+    // A ref, not the state flag: two clicks in the same tick both read `saving === false`.
+    if (submittingRef.current) return;
+    setError(""); setMessage("");
+    const knownAllocation = allocatedStudentIds.has(awardForm.student_id);
+    if (knownAllocation && !window.confirm(DUPLICATE_ALLOCATION_WARNING)) return; // Cancel keeps the form as it is
+    submittingRef.current = true;
+    setSaving(true);
     try {
-      const response = await api.post("/awards", awardForm);
+      let response;
+      try {
+        response = await api.post("/awards", knownAllocation
+          ? { ...awardForm, confirm_duplicate_allocation: true }
+          : awardForm);
+      } catch (err) {
+        const data = err.response?.data;
+        if (data?.code !== "EXISTING_ALLOCATION") throw err;
+        // The server found an allocation this page had not loaded. Ask before resubmitting.
+        setSaving(false);
+        if (!window.confirm(data.message || DUPLICATE_ALLOCATION_WARNING)) {
+          setMessage("Proposal cancelled. The student's existing bursary is unchanged.");
+          return;
+        }
+        setSaving(true);
+        response = await api.post("/awards", { ...awardForm, confirm_duplicate_allocation: true });
+      }
       setMessage(response.data.message);
       setAwardForm(emptyAward);
       await loadData();
     } catch (err) {
       setError(err.response?.data?.message || "Unable to submit award.");
-    } finally { setSaving(false); }
-  }
-
-  async function submitVerification(event) {
-    event.preventDefault();
-    setError(""); setMessage(""); setSaving(true);
-    try {
-      const { award_id, ...payload } = verificationForm;
-      const response = await api.post(`/awards/${award_id}/verification`, payload);
-      setMessage(response.data.message);
-      setVerificationForm(emptyVerification);
-      await loadData();
-    } catch (err) {
-      setError(err.response?.data?.message || "Unable to save verification.");
-    } finally { setSaving(false); }
+    } finally { submittingRef.current = false; setSaving(false); }
   }
 
   async function submitDecision(event) {
@@ -148,7 +158,7 @@ export default function Awards() {
     <main className="mx-auto max-w-7xl space-y-5 p-5 sm:p-8">
       <header>
         <h1 className="text-2xl font-bold text-slate-900">Bursary awards</h1>
-        <p className="mt-1 text-sm text-slate-600">Propose, verify, then approve. Only an approved award counts &mdash; no payment is implied.</p>
+        <p className="mt-1 text-sm text-slate-600">The field officer proposes, an administrator decides. Only an approved award counts &mdash; its certificate is generated automatically for printing. No payment is implied.</p>
       </header>
 
       {error && <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p>}
@@ -161,7 +171,7 @@ export default function Awards() {
         <Stat label="Rejected" value={counts.rejected} />
       </div>
 
-      {(showProposal || showVerification || showDecision) && (
+      {(showProposal || showDecision) && (
         <section className="rounded border border-slate-200 bg-white">
           <div className="p-4">
             {showProposal && (
@@ -171,7 +181,12 @@ export default function Awards() {
                   <label className={label}>Student
                     <select required value={awardForm.student_id} onChange={(e) => setAwardForm({ ...awardForm, student_id: e.target.value })} className={field}>
                       <option value="">Select student</option>
-                      {students.map((student) => <option key={student.id} value={student.id}>{student.full_name} - {student.school_code || "No school"}</option>)}
+                      {students.map((student) => (
+                        <option key={student.id} value={student.id}>
+                          {student.full_name} - {student.school_code || "No school"}
+                          {allocatedStudentIds.has(student.id) ? " (already has a bursary)" : ""}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label className={label}>Amount (KSh)
@@ -179,32 +194,13 @@ export default function Awards() {
                   </label>
                   <button disabled={saving} className={`self-end ${primary}`}>{saving ? "Saving..." : "Propose award"}</button>
                 </form>
+                {allocatedStudentIds.has(awardForm.student_id) && (
+                  <p className="mt-2 text-xs text-amber-700">This student already has a bursary on record. You can still propose another one after confirming the warning.</p>
+                )}
+                {!students.length && (
+                  <p className="mt-2 text-xs text-slate-500">No students are registered yet, so there is nobody to propose an award for.</p>
+                )}
               </>
-            )}
-
-            {showVerification && (
-              <form onSubmit={submitVerification} className="grid gap-3 sm:grid-cols-2">
-                <label className={label}>Proposed award
-                  <select required value={verificationForm.award_id} onChange={(e) => setVerificationForm({ ...verificationForm, award_id: e.target.value })} className={field}>
-                    <option value="">Select award</option>
-                    {pendingAwards.map((award) => <option key={award.id} value={award.id}>{shortId(award.id)} - {award.student_name} - {award.school_code}</option>)}
-                  </select>
-                </label>
-                <label className={label}>Outcome
-                  <select value={verificationForm.outcome} onChange={(e) => setVerificationForm({ ...verificationForm, outcome: e.target.value })} className={field}>
-                    <option value="verified">Verified</option>
-                    <option value="not_found">Not found</option>
-                    <option value="needs_investigation">Needs a check</option>
-                  </select>
-                </label>
-                <label className={label}>Notes
-                  <input required minLength="5" value={verificationForm.notes} onChange={(e) => setVerificationForm({ ...verificationForm, notes: e.target.value })} className={field} />
-                </label>
-                <label className={label}>Evidence ref{verificationForm.outcome === "verified" ? " (required)" : ""}
-                  <input required={verificationForm.outcome === "verified"} value={verificationForm.evidence_ref} onChange={(e) => setVerificationForm({ ...verificationForm, evidence_ref: e.target.value })} className={field} />
-                </label>
-                <button disabled={saving} className={`w-fit ${primary}`}>Save verification</button>
-              </form>
             )}
 
             {showDecision && (
@@ -214,7 +210,7 @@ export default function Awards() {
                     <option value="">Select award</option>
                     {pendingAwards.map((award) => (
                       <option key={award.id} value={award.id}>
-                        {shortId(award.id)} - {award.student_name} - {money(award.requested_amount)} - {statusText(award.verification_status)}
+                        {shortId(award.id)} - {award.student_name} - {money(award.requested_amount)}
                       </option>
                     ))}
                   </select>
@@ -260,14 +256,13 @@ export default function Awards() {
         </div>
         {awardsOpen && (
         <div id="awards-table" className="overflow-x-auto">
-          <table className="w-full min-w-[620px] text-left text-sm">
+          <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-600">
               <tr>
                 <th className="px-3 py-2">Student</th>
                 <th className="px-3 py-2">Proposed</th>
                 <th className="px-3 py-2">Approved</th>
                 <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Verification</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -280,12 +275,11 @@ export default function Awards() {
                   <td className="px-3 py-2">{money(award.requested_amount)}</td>
                   <td className="px-3 py-2">{award.approved_amount == null ? "-" : money(award.approved_amount)}</td>
                   <td className="px-3 py-2"><Status>{statusText(award.status)}</Status></td>
-                  <td className="px-3 py-2"><Status>{statusText(award.verification_status)}</Status></td>
                 </tr>
               ))}
-              {loading && <tr><td colSpan="5" className="px-3 py-6 text-center text-slate-500">Loading...</td></tr>}
+              {loading && <tr><td colSpan="4" className="px-3 py-6 text-center text-slate-500">Loading...</td></tr>}
               {!loading && visibleAwards.length === 0 && (
-                <tr><td colSpan="5" className="px-3 py-6 text-center text-slate-500">No awards{statusFilter === "all" ? " yet" : " with this status"}.</td></tr>
+                <tr><td colSpan="4" className="px-3 py-6 text-center text-slate-500">No awards{statusFilter === "all" ? " yet" : " with this status"}.</td></tr>
               )}
             </tbody>
           </table>

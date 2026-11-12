@@ -7,15 +7,9 @@ const { notifyAwardSubmitted, notifyAwardDecision } = require('../services/notif
 const createSchema = z.object({
   student_id: z.string().uuid(),
   requested_amount: z.coerce.number().finite().positive().max(9999999999.99),
-});
-
-const verificationSchema = z.object({
-  outcome: z.enum(['verified', 'not_found', 'needs_investigation']),
-  notes: z.string().trim().min(5).max(2000),
-  evidence_ref: z.string().trim().max(500).optional().default(''),
-}).refine((value) => value.outcome !== 'verified' || value.evidence_ref.length > 0, {
-  message: 'Evidence reference is required for a verified outcome',
-  path: ['evidence_ref'],
+  // A second bursary is allowed, but only after the officer acknowledges the existing allocation.
+  // The frontend asks first; this flag is the officer's answer travelling with the request.
+  confirm_duplicate_allocation: z.boolean().optional(),
 });
 
 const decisionSchema = z.object({
@@ -34,8 +28,7 @@ async function list(req, res, next) {
               proposer.full_name AS submitted_by_name,
               decider.full_name AS decided_by_name,
               cert.certificate_reference,
-              COALESCE(duplicates.open_count, 0)::int AS open_duplicate_count,
-              COALESCE(history.events, '[]'::jsonb) AS verification_history
+              COALESCE(duplicates.open_count, 0)::int AS open_duplicate_count
        FROM bursary_awards a
        JOIN students s ON s.id = a.student_id
        LEFT JOIN users proposer ON proposer.id = a.submitted_by
@@ -46,14 +39,6 @@ async function list(req, res, next) {
          WHERE (f.student_id = a.student_id OR f.matched_student_id = a.student_id)
            AND f.status IN ('pending', 'needs_verification', 'confirmed_duplicate')
        ) duplicates ON TRUE
-       LEFT JOIN LATERAL (
-         SELECT jsonb_agg(jsonb_build_object(
-           'outcome', e.outcome, 'notes', e.notes, 'evidence_ref', e.evidence_ref,
-           'actor_name', u.full_name, 'created_at', e.created_at
-         ) ORDER BY e.created_at DESC) AS events
-         FROM bursary_award_verification_events e JOIN users u ON u.id = e.actor_id
-         WHERE e.award_id = a.id
-       ) history ON TRUE
        ORDER BY a.created_at DESC`
     );
     res.json({ awards: rows });
@@ -83,6 +68,54 @@ async function create(req, res, next) {
       return res.status(409).json({ message: 'Add the student’s school before submitting an award.' });
     }
 
+    // Serialise proposal creation per student: two accidental clicks then queue behind each other
+    // instead of both reading "no allocation" and inserting two rows.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [parsed.data.student_id]);
+
+    // One bursary per student is no longer enforced here. An existing allocation (approved, or still
+    // awaiting a decision) is reported so the officer can confirm; only a confirmed request may add
+    // a second proposal. Rejected proposals are ignored, as before.
+    const existing = await client.query(
+      `SELECT id, status, approved_amount, requested_amount, submitted_by, created_at
+       FROM bursary_awards
+       WHERE student_id = $1 AND status <> 'rejected'
+       ORDER BY created_at DESC LIMIT 1`,
+      [parsed.data.student_id]
+    );
+    const existingAward = existing.rows[0];
+    if (existingAward) {
+      const ageMs = Date.now() - new Date(existingAward.created_at).getTime();
+      const accidentalRepeat = existingAward.status === 'submitted'
+        && existingAward.submitted_by === actorId
+        && Number(existingAward.requested_amount) === parsed.data.requested_amount
+        && ageMs < 60_000;
+      if (accidentalRepeat) {
+        // The same officer just created this proposal: answer idempotently instead of queueing a twin.
+        await client.query('ROLLBACK');
+        return res.status(200).json({
+          message: 'This proposal was already submitted.',
+          already_submitted: true,
+          award: existingAward,
+        });
+      }
+      if (!parsed.data.confirm_duplicate_allocation) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          code: 'EXISTING_ALLOCATION',
+          message: existingAward.status === 'approved'
+            ? 'This student has already been allocated a bursary. Are you sure you want to proceed with another bursary proposal?'
+            : 'This student already has a bursary proposal awaiting a decision. Are you sure you want to proceed with another bursary proposal?',
+          existing_award: {
+            id: existingAward.id,
+            status: existingAward.status,
+            requested_amount: existingAward.requested_amount,
+            approved_amount: existingAward.approved_amount,
+            created_at: existingAward.created_at,
+          },
+        });
+      }
+    }
+
     const { rows } = await client.query(
       `INSERT INTO bursary_awards (student_id, school_code, requested_amount, submitted_by)
        VALUES ($1, $2, $3, $4) RETURNING *`,
@@ -91,6 +124,11 @@ async function create(req, res, next) {
     await logAudit(actorId, 'AWARD_SUBMITTED', 'bursary_awards', rows[0].id, {
       requested_amount: rows[0].requested_amount,
       school_code: rows[0].school_code,
+      ...(existingAward ? {
+        duplicate_allocation_confirmed: true,
+        existing_award_id: existingAward.id,
+        existing_award_status: existingAward.status,
+      } : {}),
     }, client);
     // The reviewers are the only people who can act on a proposal, so they are the only ones
     // notified. The proposing officer already knows: they just submitted it.
@@ -99,53 +137,6 @@ async function create(req, res, next) {
     // The stored status stays 'submitted', but the officer has only *proposed* an amount. Nothing
     // is awarded until an administrator approves it, and the wording says so.
     res.status(201).json({ message: 'Award proposed. It awaits an administrator decision.', award: rows[0] });
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
-    next(error);
-  } finally {
-    client.release();
-  }
-}
-
-async function recordVerification(req, res, next) {
-  const parsed = verificationSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: 'Provide an outcome, notes, and evidence for verified cases.' });
-  const actorId = req.user.id || req.user.sub;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const award = await client.query(
-      "SELECT id, status FROM bursary_awards WHERE id = $1 FOR UPDATE",
-      [req.params.id]
-    );
-    if (!award.rows.length) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ message: 'Award not found.' });
-    }
-    if (award.rows[0].status !== 'submitted') {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ message: 'Verification is closed after an award decision.' });
-    }
-    const { outcome, notes, evidence_ref } = parsed.data;
-    await client.query(
-      `INSERT INTO bursary_award_verification_events (award_id, outcome, notes, evidence_ref, actor_id)
-       VALUES ($1, $2, $3, NULLIF($4, ''), $5)`,
-      [req.params.id, outcome, notes, evidence_ref, actorId]
-    );
-    const updated = await client.query(
-      `UPDATE bursary_awards
-       SET verification_status = $1, verification_notes = $2,
-           verification_evidence_ref = NULLIF($3, ''), verified_by = $4,
-           verified_at = NOW(), updated_at = NOW()
-       WHERE id = $5 RETURNING *`,
-      [outcome, notes, evidence_ref, actorId, req.params.id]
-    );
-    await logAudit(actorId, 'AWARD_VERIFICATION_RECORDED', 'bursary_awards', req.params.id, {
-      outcome,
-      evidence_ref: evidence_ref || null,
-    }, client);
-    await client.query('COMMIT');
-    res.json({ message: 'Verification recorded.', award: updated.rows[0] });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);
@@ -185,10 +176,6 @@ async function decide(req, res, next) {
       return res.status(409).json({ message: 'The officer who proposed an award cannot approve it. A different authorised officer must decide.' });
     }
     if (decision === 'approved') {
-      if (award.verification_status !== 'verified') {
-        await client.query('ROLLBACK');
-        return res.status(409).json({ message: 'Verify the beneficiary before approving this award.' });
-      }
       const duplicates = await client.query(
         `SELECT id FROM duplicate_flags
          WHERE (student_id = $1 OR matched_student_id = $1)
@@ -259,4 +246,4 @@ async function decide(req, res, next) {
   }
 }
 
-module.exports = { create, decide, list, recordVerification };
+module.exports = { create, decide, list };

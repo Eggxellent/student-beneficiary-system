@@ -42,7 +42,9 @@ export default function AwardCertificatePanel({ awards, isAdmin, currentUserId }
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState("");
-  const [sectionOpen, setSectionOpen] = useState(true);
+  // Collapsed by default for both roles so the page stays short; certificates are fetched only once the
+  // section is opened, instead of on every mount of the Awards page.
+  const [sectionOpen, setSectionOpen] = useState(false);
 
   const loadCertificates = useCallback(async () => {
     if (approvedAwards.length === 0) {
@@ -71,7 +73,7 @@ export default function AwardCertificatePanel({ awards, isAdmin, currentUserId }
     }
   }, [approvedAwards]);
 
-  useEffect(() => { loadCertificates(); }, [loadCertificates]);
+  useEffect(() => { if (sectionOpen) loadCertificates(); }, [loadCertificates, sectionOpen]);
 
   async function certificatePdfUrl(awardId) {
     const response = await api.get(`/awards/${awardId}/certificate.pdf`, { responseType: "blob" });

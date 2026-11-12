@@ -47,7 +47,7 @@
 | Register / list / read students | yes | **no (403)** | no |
 | Compute eligibility | yes | no | no |
 | Submit award application | yes | no | no |
-| Record beneficiary verification | yes | no | no |
+| Propose a bursary award | yes | no | no |
 | Approve or reject award | no (403) | yes | no |
 | Issue, read, print and download a certificate | read and print only | yes (issue only; no revocation) | no |
 | Record, clear, acknowledge payment | yes | yes | no |

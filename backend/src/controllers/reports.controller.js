@@ -45,8 +45,7 @@ async function exportReport(req, res, next) {
          COUNT(*) FILTER (WHERE status = 'rejected')::int AS rejected_awards,
          COUNT(*) FILTER (WHERE status = 'submitted')::int AS submitted_awards,
          COALESCE(SUM(requested_amount) FILTER (WHERE status = 'submitted'), 0)::numeric AS pending_amount,
-         COALESCE(SUM(requested_amount), 0)::numeric AS requested_amount,
-         COUNT(*) FILTER (WHERE status = 'submitted' AND verification_status <> 'verified')::int AS awaiting_verification
+         COALESCE(SUM(requested_amount), 0)::numeric AS requested_amount
        FROM bursary_awards
        WHERE created_at::date BETWEEN $1 AND $2`,
       [start_date, end_date]
@@ -94,7 +93,6 @@ async function exportReport(req, res, next) {
         approvedAmount: awards.approved_amount,
         rejectedAwards: awards.rejected_awards,
         awaitingDecision: awards.submitted_awards,
-        awaitingVerification: awards.awaiting_verification,
         requestedAmount: awards.requested_amount,
         pendingAmount: awards.pending_amount,
       },

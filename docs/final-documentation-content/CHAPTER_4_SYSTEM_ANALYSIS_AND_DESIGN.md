@@ -128,8 +128,8 @@ exists, the row says so explicitly.
 | --- | --- | --- | --- | --- | --- |
 | FR-12 | The system shall compute an eligibility score from five weighted factors and assign one of four eligibility categories. | Field Officer | S | Proposal §1.5.1 (rule-based eligibility scoring) | Role and route covered by `tests/students.test.js`; **no automated test of the scoring arithmetic was found** |
 | FR-13 | The system shall allow a field officer to submit a bursary-award application for an existing student with a requested amount. | Field Officer | S | Award-reconciliation extension | `tests/bursaryAwards.controller.test.js` |
-| FR-14 | The system shall allow a field officer to record a beneficiary verification outcome with an evidence reference, and require an evidence reference for a `verified` outcome. | Field Officer | S | Addresses the missing-documentation problem in Chapter One | `tests/bursaryAwards.controller.test.js`; `tests/workflow.test.js` |
-| FR-15 | The system shall permit an administrator to approve or reject an award with a reason, and refuse approval unless the beneficiary is verified and no duplicate case is open or confirmed for that student. | Administrator | M | The central anti-duplication control over payment | `tests/bursaryAwards.controller.test.js`; `tests/workflow.test.js` |
+| FR-14 | The system shall allow a field officer to propose a bursary award for an eligible student, recording the recommended amount, without any separate beneficiary verification stage. | Field Officer | S | Addresses the missing-documentation problem in Chapter One | `tests/bursaryAwards.controller.test.js`; `tests/workflow.test.js` |
+| FR-15 | The system shall permit an administrator to approve or reject an award with a reason, and refuse approval unless no duplicate case is open or confirmed for that student. | Administrator | M | The central anti-duplication control over payment | `tests/bursaryAwards.controller.test.js`; `tests/workflow.test.js` |
 | FR-16 | The system shall record a payment as `issued` against an approved award, refuse payment for an unapproved award, an unverified beneficiary or a student with an unresolved or confirmed duplicate, and refuse a payment exceeding the approved amount. | Administrator, Field Officer | M | Proposal §1.5.1 (benefit-distribution tracking with audit trail) | `tests/disbursements.test.js`; `tests/disbursementReconciliation.controller.test.js`; `tests/workflow.test.js` |
 | FR-17 | The system shall record payment clearance separately from issuance and require an evidence reference for clearance. | Administrator, Field Officer | S | Distinguishes instruction to pay from confirmation of settlement | `tests/disbursementReconciliation.controller.test.js`; `tests/workflow.test.js` |
 | FR-18 | The system shall record an officer-assisted receipt acknowledgement and classify a shortfall as a `discrepancy` exception rather than overwriting the recorded amount. | Administrator, Field Officer | S | Preserves evidence of a mismatch for follow-up | `tests/workflow.test.js` |
@@ -430,7 +430,7 @@ associations, are:
 | UC-04 View registered beneficiaries | ✔ | — | — | — |
 | UC-05 Assess eligibility | ✔ | — | — | — |
 | UC-06 Submit bursary award | ✔ | — | — | «include» require school on record |
-| UC-07 Record beneficiary verification | ✔ | — | — | «include» require evidence reference when verified |
+| UC-07 Propose a bursary award | ✔ | — | — | «include» one award per student; no verification stage |
 | UC-08 Review duplicate queue | — | ✔ | — | «include» UC-09 |
 | UC-09 Reveal identifiers (audited) | — | ✔ | — | — |
 | UC-10 Decide duplicate case | — | ✔ | — | «include» append review event; «include» write audit entry |
@@ -524,10 +524,10 @@ or paid, and that only an administrator can release the hold.
    - `not_duplicate` → the hold is cleared for that pair;
    - `needs_verification` → the hold persists and a later decision may still be recorded;
    - `confirmed_duplicate` → the hold persists permanently and cannot be reversed through the API.
-5. Field Officer submits an award (`requested_amount`) and records a beneficiary verification outcome.
-   A `verified` outcome without an evidence reference is refused (400).
-6. Administrator approves or rejects. Approval is refused with 409 unless (a) the beneficiary is
-   verified and (b) no case against that student is `pending`, `needs_verification` or
+5. Field Officer proposes an award (`requested_amount`) for a student who holds no other
+   non-rejected award; the row is created with `status='submitted'`.
+6. Administrator approves or rejects. Approval is refused with 409 unless no case against that
+   student is `pending`, `needs_verification` or
    `confirmed_duplicate`, where the student may be either side of the pair.
 7. Field Officer or Administrator records a payment against the approved award. The API re-checks
    award status, verification status, the duplicate hold and the remaining approved balance, and
@@ -557,7 +557,7 @@ The class model describes the application-level domain and its behaviour, not th
 | `Student` | id, full_name, date_of_birth, school_code, guardian_id, upi, birth_certificate_number, national_id_number, primary_phone, qr_token, is_synthetic, eligibility_score, eligibility_category, created_at | `create`, `getById`, `getAll`, `hasQrToken`, `withoutQrToken` | participates in 0..* DuplicateFlag (as subject or as match); holds 0..* BursaryAward |
 | `DuplicateFlag` | id, student_id, matched_student_id, probability, status, model_version, review_threshold, comparison_features, resolved_by, resolved_at, updated_at | `list`, `evaluate`, `scanExisting`, `update`, `revealIdentifiers` | belongs to 2 Students; has 1..* DuplicateReviewEvent |
 | `DuplicateReviewEvent` | id, duplicate_flag_id, reviewer_id, decision, reason, notes, created_at | append-only | belongs to 1 DuplicateFlag and 1 User |
-| `BursaryAward` | id, student_id, school_code, requested_amount, approved_amount, status, verification_status, verification_evidence_ref, verified_by, verified_at, decision_reason, decided_by, decided_at | `list`, `create`, `recordVerification`, `decide` | 1 Student holds 0..* BursaryAward; 1 BursaryAward has 0..* Disbursement and 0..1 Certificate |
+| `BursaryAward` | id, student_id, school_code, requested_amount, approved_amount, status, decision_reason, decided_by, decided_at (legacy `verification_*` / `verified_*` columns are retained but unused) | `list`, `create`, `decide` | 1 Student holds 0..* BursaryAward; 1 BursaryAward has 0..* Disbursement and 0..1 Certificate |
 | `Disbursement` (payment) | id, student_id, award_id, amount, payment_method, payment_reference, payment_status, clearance_evidence_ref, receipt_status, acknowledged_amount, acknowledgement_method | `list`, `listExceptions`, `create`, `updatePaymentStatus`, `acknowledgeReceipt`, `linkLegacyPayment` | belongs to 1 Student and 0..1 BursaryAward; has 0..* ReconciliationEvent |
 | `BursaryCertificate` | id, award_id (unique), certificate_reference, verification_token, award_period, student_name, student_upi, school_code, approved_amount, award_approved_at, status, issued_by, issued_at (legacy `revoked_by` / `revoked_at` / `revocation_reason` columns are retained but unused — SBMS has no revocation path) | `insert`, `findByAwardId`, `findByVerificationToken`, `issue`, `downloadPdf`, `verifyPublic` | belongs to exactly 1 BursaryAward |
 | `AuditEntry` | id, user_id, action, table_name, record_id, details, created_at | `logAudit` | belongs to 0..1 User |
@@ -629,16 +629,14 @@ decision is that disclosure is an event, not a field permission.
 *Administrator*, *bursaryAwards.controller*, *disbursements.controller*, *certificates.controller*,
 *PostgreSQL*. Messages:
 
-1. `POST /api/awards {student_id, requested_amount}` (field officer) → the student must exist and must
-   have a school; the award row is created with `status='submitted'` and
-   `verification_status='not_checked'`.
-2. `POST /api/awards/:id/verification {outcome, notes, evidence_ref}` (field officer) → a `verified`
-   outcome without an evidence reference is refused (`400`); an event row is appended and the award's
-   verification fields updated.
-3. `PATCH /api/awards/:id/decision {decision:'approved', approved_amount, reason}` (administrator) →
-   advisory lock; `SELECT … FOR UPDATE`; status must be `submitted`; verification must be `verified`;
+1. `POST /api/awards {student_id, requested_amount}` (field officer) → the student must exist, must
+   have a school and must hold no other non-rejected award; the award row is created with
+   `status='submitted'`.
+2. `PATCH /api/awards/:id/decision {decision:'approved', approved_amount, reason}` (administrator) →
+   advisory lock; `SELECT … FOR UPDATE`; status must be `submitted`;
    no `pending`, `needs_verification` or `confirmed_duplicate` case may exist on either side of the
-   student's pairs; then `status='approved'` and an `AWARD_APPROVED` audit row.
+   student's pairs; then `status='approved'` and an `AWARD_APPROVED` audit row, and the certificate is
+   written in the same transaction.
 4. `POST /api/disbursements {award_id, amount, payment_method, payment_reference, disbursement_date}`
    (either role) → advisory lock; the award must be `approved` and `verified`; the duplicate check is
    repeated; `SUM(existing amounts) + amount` must not exceed `approved_amount`; insert with
@@ -844,7 +842,7 @@ otherwise introduce.
 | Role | Value | Population route | Purpose |
 | --- | --- | --- | --- |
 | Administrator | `admin` | Created by an existing administrator through `POST /api/users` | Owns duplicate decisions, award decisions, thresholds, reports, audit review, certificate issue and revocation |
-| Field Officer | `field_officer` | Created by an administrator; the public registration route always answers 410 | Owns registration, eligibility assessment, award submission, beneficiary verification, payment recording, certificate reading and printing |
+| Field Officer | `field_officer` | Created by an administrator; the public registration route always answers 410 | Owns registration, eligibility assessment, award proposal, certificate reading and printing |
 | Public verifier | *(unauthenticated)* | Not an account | May call only `POST /api/verify` and `POST /api/certificates/verify` |
 
 **Table 4.6: Access matrix for authenticated endpoints**
@@ -861,8 +859,7 @@ otherwise introduce.
 | `/api/duplicate-flags/evaluate` | POST | ✔ | 403 | Paired scoring without persistence |
 | `/api/duplicate-flags/scan` | POST | ✔ | 403 | Registry rescan |
 | `/api/awards` | GET | ✔ | ✔ | |
-| `/api/awards` | POST | 403 | ✔ | Submission is a field activity |
-| `/api/awards/:id/verification` | POST | 403 | ✔ | |
+| `/api/awards` | POST | 403 | ✔ | Proposal is a field activity |
 | `/api/awards/:id/decision` | PATCH | ✔ | 403 | Approval is administrative |
 | `/api/awards/:id/certificate` | POST | ✔ | 403 | Issue |
 | `/api/awards/:id/certificate`, `…/certificate.pdf` | GET | ✔ | ✔ | Read and print |
@@ -1022,10 +1019,11 @@ Four conventions apply throughout.
 1. **Validation precedes side effects.** Schemas are evaluated before a transaction is opened, and the
    threshold and aggregation policy are resolved before the connection is taken, so a misconfiguration
    never leaves a transaction open (`controllers/students.controller.js:54-57`).
-2. **Domain refusals are 409, not 400.** "Verify the beneficiary before approving this award", "Resolve
+2. **Domain refusals are 409, not 400.** "This student already has an approved bursary", "Resolve
    duplicate review cases before approving this award" and "Only verified, approved awards can be
    disbursed" describe conflicts with current state and are expected to be actionable by the client
-   (`controllers/bursaryAwards.controller.js:169-188`).
+   (`controllers/bursaryAwards.controller.js`). The beneficiary verification stage was removed, so its
+   former refusal no longer exists.
 3. **Public endpoints never distinguish "malformed" from "unknown".** Both produce the same answer, so
    the endpoint cannot be used to test whether a token was ever issued.
 4. **Server errors are opaque.** A sanitised handler returns `{message:'Internal server error'}` for any
@@ -1295,11 +1293,11 @@ indexes, 2 extensions and 12 applied migrations** (`docs/FINAL_TEST_REPORT.md` �
 | `school_code` | `VARCHAR(100)` | Not null (copied from the student at submission) |
 | `requested_amount`, `approved_amount` | `NUMERIC(12,2)` | `requested_amount > 0`; `approved_amount` null or `> 0` |
 | `status` | `VARCHAR(20)` | `CHECK IN ('submitted','approved','rejected')` |
-| `verification_status` | `VARCHAR(30)` | `CHECK IN ('not_checked','verified','not_found','needs_investigation')` |
-| `verification_notes`, `verification_evidence_ref` | `TEXT` / `VARCHAR(500)` | Evidence mandatory for `verified` |
+| `verification_status` | `VARCHAR(30)` | `CHECK IN ('not_checked','verified','not_found','needs_investigation')` — **legacy**, not written by the current controller |
+| `verification_notes`, `verification_evidence_ref` | `TEXT` / `VARCHAR(500)` | **Legacy** columns retained; no verification writes remain |
 | `verified_by`, `verified_at`, `decided_by`, `decided_at`, `submitted_by` | `UUID` / `TIMESTAMPTZ` | `REFERENCES users(id) ON DELETE RESTRICT` |
 | `decision_reason` | `TEXT` | ≥ 5 characters when a decision exists |
-| *(constraints)* | `CHECK` | `bursary_awards_decision_fields_check`, `bursary_awards_approval_verification_check`, `bursary_awards_verification_fields_check` |
+| *(constraints)* | `CHECK` | `bursary_awards_decision_fields_check`, `bursary_awards_verification_fields_check`; `bursary_awards_approval_verification_check` was dropped when the verification stage was removed |
 | *(indexes)* | index | `(status, created_at DESC)`, `(student_id, created_at DESC)` |
 | `bursary_award_verification_events.*` | — | `outcome`, `notes` (≥ 5 characters), `evidence_ref` (mandatory for `verified`), `actor_id`, `created_at`; index `(award_id, created_at DESC)` |
 

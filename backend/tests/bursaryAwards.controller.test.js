@@ -1,5 +1,11 @@
 jest.mock('../src/config/db', () => ({ connect: jest.fn() }));
 jest.mock('../src/services/auditLog', () => jest.fn());
+jest.mock('../src/services/notifications', () => ({
+  notifyAwardSubmitted: jest.fn(),
+  notifyAwardDecision: jest.fn(),
+  // certificateIssue requires this too; a partial mock would throw and hide the real assertion.
+  notifyCertificateReady: jest.fn(),
+}));
 
 const pool = require('../src/config/db');
 const logAudit = require('../src/services/auditLog');
@@ -19,12 +25,11 @@ function makeResponse() {
   };
 }
 
-function setupDecisionClient({ verificationStatus = 'verified', duplicateRows = [], awardStatus = 'submitted', submittedBy = 'a0b1c2d3-0000-4000-8000-000000000000' } = {}) {
+function setupDecisionClient({ duplicateRows = [], awardStatus = 'submitted', submittedBy = 'a0b1c2d3-0000-4000-8000-000000000000' } = {}) {
   const award = {
     id: awardId,
     student_id: studentId,
     status: awardStatus,
-    verification_status: verificationStatus,
     submitted_by: submittedBy,
   };
   const certificate = {
@@ -46,12 +51,119 @@ function setupDecisionClient({ verificationStatus = 'verified', duplicateRows = 
   return client;
 }
 
+describe('bursary award proposals (isolated; no database)', () => {
+  const approvedAward = {
+    id: '1d1d1d1d-2222-4333-8444-555555555555',
+    student_id: studentId,
+    status: 'approved',
+    requested_amount: 20000,
+    approved_amount: 20000,
+    submitted_by: 'a0b1c2d3-0000-4000-8000-000000000000',
+    created_at: '2026-01-05T09:00:00.000Z',
+  };
+
+  function setupCreateClient({ existingAward = null, createdAt = new Date().toISOString() } = {}) {
+    const created = {
+      id: awardId,
+      student_id: studentId,
+      status: 'submitted',
+      requested_amount: 25000,
+      submitted_by: actorId,
+      school_code: 'Nairobi School',
+      created_at: createdAt,
+    };
+    const client = {
+      release: jest.fn(),
+      query: jest.fn(async (sql) => {
+        if (/INSERT INTO bursary_awards/.test(sql)) return { rows: [created] };
+        if (/FROM students/.test(sql)) return { rows: [{ id: studentId, full_name: 'Test Learner', school_code: 'Nairobi School' }] };
+        if (/FROM bursary_awards/.test(sql)) return { rows: existingAward ? [existingAward] : [] };
+        return { rows: [] };
+      }),
+    };
+    pool.connect.mockResolvedValue(client);
+    return client;
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('asks for confirmation instead of silently allocating a second bursary', async () => {
+    const client = setupCreateClient({ existingAward: approvedAward });
+    const res = makeResponse();
+
+    await controller.create({ body: { student_id: studentId, requested_amount: 25000 }, user: { id: actorId } }, res, jest.fn());
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe('EXISTING_ALLOCATION');
+    expect(res.body.message).toBe('This student has already been allocated a bursary. Are you sure you want to proceed with another bursary proposal?');
+    expect(res.body.existing_award.id).toBe(approvedAward.id);
+    expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_awards/.test(sql))).toBe(false);
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  test('creates the second proposal once the officer confirms the existing allocation', async () => {
+    const client = setupCreateClient({ existingAward: approvedAward });
+    const res = makeResponse();
+
+    await controller.create({
+      body: { student_id: studentId, requested_amount: 25000, confirm_duplicate_allocation: true },
+      user: { id: actorId },
+    }, res, jest.fn());
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.award.status).toBe('submitted');
+    expect(logAudit).toHaveBeenCalledWith(actorId, 'AWARD_SUBMITTED', 'bursary_awards', awardId, expect.objectContaining({
+      duplicate_allocation_confirmed: true,
+      existing_award_id: approvedAward.id,
+      existing_award_status: 'approved',
+    }), client);
+  });
+
+  test('creates the first proposal with no warning when the student has no allocation', async () => {
+    const client = setupCreateClient();
+    const res = makeResponse();
+
+    await controller.create({ body: { student_id: studentId, requested_amount: 25000 }, user: { id: actorId } }, res, jest.fn());
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.award.student_id).toBe(studentId);
+    expect(logAudit).toHaveBeenCalledWith(actorId, 'AWARD_SUBMITTED', 'bursary_awards', awardId, {
+      requested_amount: 25000,
+      school_code: 'Nairobi School',
+    }, client);
+  });
+
+  test('one accidental double click does not queue a twin proposal', async () => {
+    // Same officer, same amount, seconds apart: the timestamp must be fresh for the guard to fire.
+    const justProposed = {
+      ...approvedAward,
+      status: 'submitted',
+      submitted_by: actorId,
+      requested_amount: 25000,
+      created_at: new Date().toISOString(),
+    };
+    const client = setupCreateClient({ existingAward: justProposed });
+    const res = makeResponse();
+
+    await controller.create({
+      body: { student_id: studentId, requested_amount: 25000, confirm_duplicate_allocation: true },
+      user: { id: actorId },
+    }, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.already_submitted).toBe(true);
+    expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_awards/.test(sql))).toBe(false);
+  });
+});
+
 describe('bursary award decisions (isolated; no database)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  test('approves a verified award with no open duplicate flags and records the audit event', async () => {
+  test('approves a submitted award with no open duplicate flags and records the audit event', async () => {
     const client = setupDecisionClient();
     const res = makeResponse();
 
@@ -76,8 +188,8 @@ describe('bursary award decisions (isolated; no database)', () => {
     );
   });
 
-  test('rejects an award with a reason and records the audit event without requiring verification', async () => {
-    const client = setupDecisionClient({ verificationStatus: 'not_found' });
+  test('rejects an award with a reason and records the audit event', async () => {
+    const client = setupDecisionClient();
     const res = makeResponse();
 
     await controller.decide({
@@ -93,9 +205,8 @@ describe('bursary award decisions (isolated; no database)', () => {
     expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_certificates/.test(sql))).toBe(false);
   });
 
-  test('blocks approval before verification or duplicate review is resolved', async () => {
+  test('blocks approval while a duplicate review case is open', async () => {
     const client = setupDecisionClient({
-      verificationStatus: 'verified',
       duplicateRows: [{ id: 'open-duplicate-flag' }],
     });
     const res = makeResponse();
@@ -136,7 +247,7 @@ describe('bursary award decisions (isolated; no database)', () => {
     expect(pool.connect).not.toHaveBeenCalled();
   });
 
-  test('route guards allow field officers to submit and verify but reserve decisions for admins', () => {
+  test('route guards allow field officers to submit but reserve decisions for admins', () => {
     const decisionRoute = routes.stack.find((layer) => layer.route?.path === '/:id/decision').route;
     const submissionRoute = routes.stack.find((layer) => layer.route?.path === '/' && layer.route.methods.post).route;
     const decisionGuard = decisionRoute.stack[0].handle;

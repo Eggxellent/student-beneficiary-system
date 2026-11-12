@@ -33,7 +33,7 @@ async function registerStudent(overrides) {
     .send({
       date_of_birth: "2010-03-11",
       school_code: "Nairobi School",
-      primary_phone: "+254700111222",
+      primary_phone: `+2547${String(Date.now()).slice(-8)}`,
       ...overrides,
     });
   if (response.statusCode !== 201) {
@@ -45,7 +45,7 @@ async function registerStudent(overrides) {
 
 const auth = (actor) => ({ Authorization: `Bearer ${actor.token}` });
 
-async function createVerifiedAward(studentId, amount, officerToken) {
+async function createProposedAward(studentId, amount, officerToken) {
   const award = await request(app)
     .post("/api/awards")
     .set("Authorization", `Bearer ${officerToken}`)
@@ -53,23 +53,22 @@ async function createVerifiedAward(studentId, amount, officerToken) {
   if (award.statusCode !== 201) {
     throw new Error(`award creation failed: ${award.statusCode} ${JSON.stringify(award.body)}`);
   }
-  const awardId = award.body.award.id;
-  const verification = await request(app)
-    .post(`/api/awards/${awardId}/verification`)
-    .set("Authorization", `Bearer ${officerToken}`)
-    .send({ outcome: "verified", notes: "Checked school records in person", evidence_ref: "EVIDENCE-001" });
-  if (verification.statusCode !== 200) {
-    throw new Error(`verification failed: ${verification.statusCode} ${JSON.stringify(verification.body)}`);
-  }
-  return awardId;
+  return award.body.award.id;
 }
 
 describe("Beneficiary workflow end to end", () => {
-  jest.setTimeout(120000);
+  // Registration screens each new student against the whole registry, so a long-lived local
+  // sbms_test database makes this suite's setup slower than the default hook budget.
+  jest.setTimeout(300000);
 
   let confirmedPair;
   let clearedPair;
   let payableAwardId;
+  // Repeat awards are allowed once the officer confirms, but each award-level test still needs its
+  // own student so one test's proposals cannot change what another sees.
+  let soloStudent;
+  let secondFlagged;
+  let thirdFlagged;
 
   beforeAll(async () => {
     officer = await createUser("field_officer", "WorkflowOfficer");
@@ -93,6 +92,13 @@ describe("Beneficiary workflow end to end", () => {
     if (!confirmedPair.flag || !clearedPair.flag) {
       throw new Error("setup did not create the duplicate flags the workflow needs");
     }
+
+    soloStudent = (await registerStudent({
+      full_name: "Workflow Solo Learner",
+      national_id_number: `WF-SOLO-${Date.now()}`,
+    })).student;
+    secondFlagged = (await registerStudent({ full_name: "Workflow Duplicate One", national_id_number: nationalIdA })).student;
+    thirdFlagged = (await registerStudent({ full_name: "Workflow Duplicate One", national_id_number: nationalIdA })).student;
   });
 
   afterAll(async () => {
@@ -128,23 +134,38 @@ describe("Beneficiary workflow end to end", () => {
     expect(confirmedPair.screening.candidates_considered).toBeGreaterThan(0);
   });
 
-  test("an award cannot be approved before the beneficiary is verified", async () => {
+  test("the officer proposes and the administrator approves, generating a certificate the proposing officer can download", async () => {
     const award = await request(app)
       .post("/api/awards")
       .set(auth(officer))
-      .send({ student_id: confirmedPair.flagged.id, requested_amount: 5000 });
+      .send({ student_id: soloStudent.id, requested_amount: 5000 });
     expect(award.statusCode).toBe(201);
+    expect(award.body.award.status).toBe("submitted");
 
-    const early = await request(app)
+    // No separate verification stage: the administrator decides on the proposal as submitted.
+    const approval = await request(app)
       .patch(`/api/awards/${award.body.award.id}/decision`)
       .set(auth(admin))
-      .send({ decision: "approved", approved_amount: 5000, reason: "Looks complete" });
-    expect(early.statusCode).toBe(409);
-    expect(early.body.message).toMatch(/verify the beneficiary/i);
+      .send({ decision: "approved", approved_amount: 5000, reason: "Eligibility and amount reviewed" });
+    expect(approval.statusCode).toBe(200);
+    expect(approval.body.award.status).toBe("approved");
+    expect(approval.body.certificate_reference).toMatch(/^SBMS-\d{4}-/);
+
+    const certificate = await request(app)
+      .get(`/api/awards/${award.body.award.id}/certificate`)
+      .set(auth(officer));
+    expect(certificate.statusCode).toBe(200);
+    expect(certificate.body.certificate.certificate_reference).toBe(approval.body.certificate_reference);
+
+    const pdf = await request(app)
+      .get(`/api/awards/${award.body.award.id}/certificate.pdf`)
+      .set(auth(officer));
+    expect(pdf.statusCode).toBe(200);
+    expect(pdf.headers["content-type"]).toMatch(/application\/pdf/);
   });
 
   test("a pending duplicate blocks award approval", async () => {
-    const awardId = await createVerifiedAward(confirmedPair.flagged.id, 5000, officer.token);
+    const awardId = await createProposedAward(secondFlagged.id, 5000, officer.token);
 
     const blockedApproval = await request(app)
       .patch(`/api/awards/${awardId}/decision`)
@@ -152,6 +173,37 @@ describe("Beneficiary workflow end to end", () => {
       .send({ decision: "approved", approved_amount: 5000, reason: "Verified and complete" });
     expect(blockedApproval.statusCode).toBe(409);
     expect(blockedApproval.body.message).toMatch(/resolve duplicate review cases/i);
+  });
+
+  test("a second proposal for an allocated student is refused until the officer confirms", async () => {
+    const repeat = (await registerStudent({
+      full_name: "Workflow Repeat Learner",
+      national_id_number: `WF-REPEAT-${Date.now()}`,
+    })).student;
+
+    const first = await request(app)
+      .post("/api/awards")
+      .set(auth(officer))
+      .send({ student_id: repeat.id, requested_amount: 3000 });
+    expect(first.statusCode).toBe(201);
+
+    // The server is the authority: the cached award list on the officer's screen can be stale.
+    const blocked = await request(app)
+      .post("/api/awards")
+      .set(auth(officer))
+      .send({ student_id: repeat.id, requested_amount: 6000 });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.body.code).toBe("EXISTING_ALLOCATION");
+    expect(blocked.body.existing_award.id).toBe(first.body.award.id);
+
+    // Acknowledging the warning lets the proposal through; the amount is recorded, not just echoed.
+    const confirmed = await request(app)
+      .post("/api/awards")
+      .set(auth(officer))
+      .send({ student_id: repeat.id, requested_amount: 6000, confirm_duplicate_allocation: true });
+    expect(confirmed.statusCode).toBe(201);
+    expect(confirmed.body.award.requested_amount).toBe("6000.00");
+    expect(confirmed.body.award.id).not.toBe(first.body.award.id);
   });
 
   test("confirming a duplicate keeps the beneficiary unable to receive an approved award", async () => {
@@ -162,7 +214,7 @@ describe("Beneficiary workflow end to end", () => {
     expect(decision.statusCode).toBe(200);
     expect(decision.body.flag.status).toBe("confirmed_duplicate");
 
-    const awardId = await createVerifiedAward(confirmedPair.flagged.id, 4000, officer.token);
+    const awardId = await createProposedAward(thirdFlagged.id, 4000, officer.token);
     const stillBlocked = await request(app)
       .patch(`/api/awards/${awardId}/decision`)
       .set(auth(admin))
@@ -187,7 +239,7 @@ describe("Beneficiary workflow end to end", () => {
       .send({ decision: "needs_verification", reason: "Guardian details differ, asked the school to confirm" });
     expect(escalated.statusCode).toBe(200);
 
-    const awardId = await createVerifiedAward(clearedPair.flagged.id, 5000, officer.token);
+    const awardId = await createProposedAward(clearedPair.flagged.id, 5000, officer.token);
     const blocked = await request(app)
       .patch(`/api/awards/${awardId}/decision`)
       .set(auth(admin))
@@ -221,7 +273,7 @@ describe("Beneficiary workflow end to end", () => {
     const seen = new Set(actions.rows.map((row) => row.action));
     for (const expected of [
       "CREATE",
-      "AWARD_VERIFICATION_RECORDED",
+      "AWARD_SUBMITTED",
       "DUPLICATE_CONFIRMED_DUPLICATE",
       "DUPLICATE_NOT_DUPLICATE",
       "AWARD_APPROVED",

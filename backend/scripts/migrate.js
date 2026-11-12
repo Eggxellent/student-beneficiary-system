@@ -21,6 +21,7 @@ const MIGRATION_ORDER = Object.freeze([
   '20261025_legacy_beneficiaries_baseline.sql',
   '20261031_bursary_certificates.sql',
   '20261111_notifications.sql',
+  '20261111_remove_award_verification_gate.sql',
 ]);
 
 const MANUAL_MIGRATIONS = Object.freeze([

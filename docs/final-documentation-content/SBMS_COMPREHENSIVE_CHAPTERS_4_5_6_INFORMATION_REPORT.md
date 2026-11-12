@@ -126,8 +126,8 @@ Three design decisions deserve explicit treatment because they are what the chap
 | Entity | States | Transition enforcer | Refusal message |
 | --- | --- | --- | --- |
 | Duplicate case | `pending` → `confirmed_duplicate` / `not_duplicate` / `needs_verification` (terminal) | Controller plus event history | `This duplicate flag has already been decided` |
-| Award | `submitted` → `approved` / `rejected` | Schema CHECK plus controller | `Verify the beneficiary before approving this award.` / `Resolve duplicate review cases before approving this award.` |
-| Verification | `not_checked` → `verified` / `not_found` / `needs_investigation` | Schema CHECK on evidence | `Provide an outcome, notes, and evidence for verified cases.` |
+| Award | `submitted` → `approved` / `rejected` | Schema CHECK plus controller | `This award already has a decision.` / `Resolve duplicate review cases before approving this award.` |
+| Verification *(legacy)* | `not_checked` → `verified` / `not_found` / `needs_investigation` | Stage removed; columns and CHECK retained | `Provide an outcome, notes, and evidence for verified cases.` (no longer raised) |
 | Payment | `issued` → `cleared` / `failed` / `cancelled` | `canTransitionPayment` plus CHECK | `This payment status cannot be changed.` |
 | Receipt | `null` → `awaiting_acknowledgement` → `acknowledged` / `discrepancy` | `receiptStatus` in cents | `Enter the received amount and evidence reference.` |
 | Certificate | one certificate per award, issued as `active`; no revocation state | UNIQUE `award_id` plus CHECK on token format | `This award already has a certificate.` |

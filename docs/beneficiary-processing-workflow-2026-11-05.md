@@ -22,7 +22,7 @@ that student, never means the bursary award has been approved.**
 | 2 | Register the student | `POST /api/students` (`students.routes.js`, `students.controller.js`); `StudentRegistration.jsx` |
 | 3 | Duplicate detection | ML service + `duplicate_flags` rows created on registration (`services/duplicateCheck.js`) |
 | 4 | Review duplicate flags | `/api/duplicate-flags`; `DuplicateReview.jsx`; statuses `pending`, `needs_verification`, `confirmed_duplicate`, `not_duplicate` |
-| 5 | Verify beneficiary | `POST /api/awards/:id/verification`; evidence reference mandatory for a `verified` outcome |
+| 5 | Propose the award | Field Officer `POST /api/awards` (status `submitted` = *proposed*) with the recommended amount; no verification stage |
 | 6 | Propose and approve award | Field Officer `POST /api/awards` (status `submitted` = *proposed*); administrator `PATCH /api/awards/:id/decision` (`approved`/`rejected`) |
 | 7 | Student QR code | `students.qr_token`; `POST /api/verify` answers `{ found }` only — it proves the record exists, never that an award was made |
 | 8 | Issue certificate | Administrator `POST /api/awards/:id/certificate`; row in `bursary_certificates`; PDF + certificate QR (`AwardCertificatePanel.jsx`) |
@@ -43,10 +43,23 @@ Surfaces updated: `Awards.jsx` (heading, form labels, table columns, status chip
 `AdminDashboard.jsx` (award card "Proposed, awaiting approval"), `Reports.jsx` (report contents
 list), and the API messages in `bursaryAwards.controller.js`.
 
+## Repeat proposals need confirmation
+
+A student who already holds a non-rejected award (`submitted` or `approved`) is not silently refused
+and not hidden any more: `Awards.jsx` labels them "(already has a bursary)" with an amber hint, and
+`POST /api/awards` answers `409` with `code: "EXISTING_ALLOCATION"` plus "This student has already
+been allocated a bursary…" (or "…already has a bursary proposal awaiting a decision…"). The officer
+confirms in a browser dialog and the screen retries with `confirm_duplicate_allocation: true`; the
+server re-checks under a per-student advisory lock, so a stale cached list cannot slip a second
+proposal through unnoticed. The confirmation is recorded in the `AWARD_SUBMITTED` audit payload as
+`duplicate_allocation_confirmed`, `existing_award_id` and `existing_award_status`. A repeated click
+from the same officer, same amount, under 60 seconds old answers `200 { already_submitted: true }`
+instead of creating a twin. Only a `rejected` proposal frees the student from the warning.
+
 ## Separation of duties
 
-- `POST /api/awards` and the verification route are `requireRole('field_officer')`.
-- `PATCH /api/awards/:id/decision`, certificate issuing and revocation are `requireRole('admin')`.
+- `POST /api/awards` is `requireRole('field_officer')`; there is no verification route.
+- `PATCH /api/awards/:id/decision` and certificate issuing are `requireRole('admin')`.
 - Approval additionally refuses `award.submitted_by === req.user.id`, so an officer who proposed the
   amount cannot approve it even if their role was later raised to administrator. Rejection is not
   blocked: withdrawing one's own proposal needs no second officer.
