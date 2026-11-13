@@ -336,32 +336,39 @@ uppercases both, like the other identifiers.
 
 ## 11. A failed notification write no longer fails the award (13 November 2026)
 
-**Problem (list).** The Bursary awards page shows `Internal server error` as soon as it opens. Its
-first call is `GET /api/awards`, and on 11 November that query gained
+**Problem (list).** The Bursary awards page shows `Internal server error` as soon as it opens, and
+every action on it answers 500. The page reads `GET /api/awards`, which gained
 `LEFT JOIN bursary_certificates cert ON cert.award_id = a.id` (`5008442`, an ancestor of the deployed
-`a5c4ef4`). `bursary_certificates` is created by `20261031_bursary_certificates.sql`, a file added on
-1 November — after the 31 October acceptance run in which `GET /api/awards` still returned 200. The
-Azure database has no `schema_migrations`, the API runs no migration at start-up, and the only
-migration recorded as applied since is `20261111_remove_award_verification_gate.sql`. A missing
-relation raises `42P01`, and `middleware/errorHandler.js:73-75` renders every 5xx as
-`Internal server error`, so the page can only show that sentence.
+`a5c4ef4`); the decision path (`PATCH /api/awards/:id/decision`) additionally writes a notification.
+`middleware/errorHandler.js:73-75` renders every 5xx as `Internal server error`, so the page can only
+show that sentence.
 
-**Problem (proposal).** `POST /api/awards` also answers 500. The only write that path adds over the
-read path is the notification insert, and `notifications` is created by `20261111_notifications.sql`,
-also unapplied. The insert runs inside the award transaction, so a missing table aborts the whole
-transaction (SQLSTATE `25P02`) and the officer is told the proposal failed when nothing was written.
-
-**Both are unconfirmed against the live database.** The workstation could not reach it: TCP 5432 to
-`pg-sbms.postgres.database.azure.com` times out even with the single-IP rule `TempDeployClient` in
-place. Two statements settle it from an allowed host:
+**Diagnosis (verified against the live database on 13 November).** The Azure database has no
+`schema_migrations` and the API runs no migration at start-up, so the probe has to be made directly:
 
 ```sql
 SELECT to_regclass('public.bursary_certificates') AS certificates,
        to_regclass('public.bursary_awards')        AS awards,
        to_regclass('public.notifications')         AS notifications;
+-- bursary_certificates | bursary_awards | (NULL)
 ```
 
-`NULL` for `certificates` is the list failure; `NULL` for `notifications` is the proposal failure.
+`bursary_certificates` was already present and the read query is valid against live data. The gap is
+`notifications`, created by `20261111_notifications.sql`, which was never applied. Reaching the API
+with a signed-in field-officer token settled which call fails:
+
+| Request | Before the fix | After the fix |
+| --- | --- | --- |
+| `GET /api/awards` | 200 | 200 |
+| `GET /api/students` | 200 | 200 |
+| `GET /api/notifications` | 500 `Internal server error` | 200 `{"notifications":[]}` |
+| `POST /api/awards` | 500 (notification insert aborts the transaction) | 201 |
+| `PATCH /api/awards/:id/decision` | 500 (same, plus `issueForApprovedAward()`) | 200, certificate issued |
+
+The notification insert runs unprotected in the award transaction on `a5c4ef4`, so a missing table
+aborts the whole transaction (SQLSTATE `25P02`) and the user is told the action failed when nothing was
+written. That is why the page displayed the sanitized 500 and why the 12 November proposal
+`7fc2efe3…` was still `submitted` after an approve attempt.
 
 **Change.** `backend/src/services/notifications.js` wraps every notification insert in
 `SAVEPOINT notification_write`. On failure it rolls back to the savepoint, logs
@@ -373,24 +380,40 @@ for it.
 
 | Check | Result |
 | --- | --- |
+| `psql … -f backend/src/db/migrations/20261111_notifications.sql` | `CREATE TABLE`, `CREATE INDEX` ×2 |
+| `psql … -f backend/src/db/migrations/20261111_remove_award_verification_gate.sql` | `ALTER TABLE` (constraint already absent — replay-safe) |
+| `notifications` service insert inside `BEGIN … ROLLBACK` | `INSERT 0 1`, `leftover_after_rollback = 0` |
+| Live `GET /api/notifications` with a field-officer token | 200 `{"notifications":[],"unread_count":0}` |
+| Live `POST /api/awards` (`student_id` + `requested_amount`) | 201, admin received `award_submitted` ("Brian Njehia ╖ KES 12,000 requested", `unread_count` 1) |
+| Live `PATCH /api/awards/:id/decision` reject | 200 `Award rejected.` |
+| Live `PATCH /api/awards/:id/decision` approve | 200 `Award approved. Certificate SBMS-2026-FQP3-YXWP-SVM was generated…` |
 | `npx jest --runInBand --silent tests/duplicateAggregation.test.js tests/notifications.test.js tests/notificationEvents.test.js` | 30 passed, 3 suites |
 | `notificationEvents` case "a proposal still commits when the notifications table does not exist" (insert throws `42P01`) | 201, `COMMIT` issued, `ROLLBACK TO SAVEPOINT notification_write` issued, warning logged |
 | `notifications` case "a missing notifications table costs the notification, not the caller transaction" | resolves `null`, savepoint order `SAVEPOINT` → `INSERT` → `ROLLBACK TO SAVEPOINT` |
 
+The live probes used two throwaway accounts (`probe.temp…`, `probe.admin…`, plus one proposal and two
+decisions on previously unallocated students). Every row they created — the two awards, the generated
+certificate, the notifications and the audit entries — was deleted afterwards; `bursary_awards` is back
+to its original six rows and `notifications` is empty.
+
 ### Carry-forward
 
-- Apply, in this order, from a host that can reach port 5432 (see §5):
-  `backend/src/db/migrations/20261031_bursary_certificates.sql`, then
-  `backend/src/db/migrations/20261111_notifications.sql`. Both are `CREATE ... IF NOT EXISTS` only, so
-  they are replayable:
-  `psql -h pg-sbms.postgres.database.azure.com -U sbmsadmin -d sbms -v ON_ERROR_STOP=1 -f <file>`.
-  Until the first is applied the awards page cannot load at all; until the second, an approved award
-  writes no notification.
-- Approval was equally broken before the savepoint: `issueForApprovedAward()` writes
-  `bursary_certificates` inside the decision transaction, so approving an award failed with `42P01`.
-  The savepoint deliberately does not cover it — a certificate is the deliverable, not a side effect.
-- Deploy an image containing this change and re-run the `POST /api/awards` smoke against Azure; the
-  container revision on `ca-sbms-api` predates it.
+- The schema is now current. Nothing else from `20261031_bursary_certificates.sql` to
+  `20261111_notifications.sql` is outstanding, but there is still no `schema_migrations` record and no
+  start-up migration runner, so this class of drift can return on the next release. Either add a
+  migration step to the deploy pipeline or record the applied set before the next schema change.
+- `ca-sbms-api` still runs `a5c4ef4`, which predates the notification savepoint. The schema fix makes
+  that image work, but a future notification failure (for example a body longer than the 280-character
+  column) would again abort an approval. Deploying an image that contains the savepoint change removes
+  that failure mode.
+- Approval still refuses while an award has an open duplicate case
+  (`Resolve duplicate review cases before approving this award.`), and an administrator cannot approve
+  a proposal they submitted themselves. The pending 12 November award `7fc2efe3…` has one open
+  duplicate flag, so it needs the duplicate case resolved first.
+- The administrator password for `peter.ngigi@o365.strathmore.edu` does not match `adminPassword` in
+  `deploy/azure/.secrets.json`, so that account still returns 401 from `/api/auth/login/admin`. The two
+  seeded test accounts (`admin@sbms.test`, `officer.1031205024@sbms.test`) are deactivated, so no
+  documented credential currently signs in as an administrator.
 
 ## 12. A shared guardian ID no longer flags a duplicate by itself (13 November 2026)
 
