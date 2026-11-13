@@ -63,7 +63,7 @@ The two sign-in routes share one limiter instance, so ten attempts across both e
 | `GET /api/students/:id` | — | 200 student record | 404 `Student not found` |
 | `POST /api/students` | `full_name`; `date_of_birth` (YYYY-MM-DD); `school_code` (enum of five); `guardian_id`; `upi`; `birth_certificate_number`; `national_id_number`; `primary_phone` (`+254[17]` plus eight digits) | 201 `{message, student, qr_code, duplicate_flags[], duplicate_screening{}}` | 400 `Invalid student data` with a Zod `errors` block; 503 when screening is unavailable |
 
-The 201 body is the richest contract in the system. It returns the created student, a `data:` URL QR image, every review case created, and a `duplicate_screening` block carrying `model_version`, `review_threshold`, `high_priority_threshold`, `thresholds_validated: false`, `score_is_calibrated_probability: false`, `aggregation_policy`, `candidates_considered`, `candidates_qualifying` and `candidates_suppressed`.
+The 201 body is the richest contract in the system. It returns the created student, a `data:` URL QR image, every review case created, and a `duplicate_screening` block carrying `model_version`, `review_threshold`, `high_priority_threshold`, `thresholds_validated: false`, `score_is_calibrated_probability: false`, `aggregation_policy`, `candidates_considered`, `candidates_qualifying`, `candidates_guardian_only` and `candidates_suppressed`.
 
 ### 3.4 Duplicate review — `/api/duplicate-flags` (administrator only)
 

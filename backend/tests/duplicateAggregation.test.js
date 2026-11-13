@@ -1,13 +1,25 @@
 const {
   AGGREGATION_POLICIES,
   DEFAULT_AGGREGATION_POLICY,
+  GUARDIAN_FIELD,
   corroboratingFields,
+  isGuardianOnlyMatch,
   normalizeAggregationPolicy,
   selectFlaggedCandidates,
   summarizeAggregation,
 } = require('../src/services/duplicateAggregation');
 
 const THRESHOLD = 0.5;
+
+// Two children of one guardian: same school, same guardian, similar names, nothing else.
+function sibling(score = 0.93, overrides = {}) {
+  return candidate(score, {
+    features: {
+      jaro_winkler: 0.94, dob_match: 0, school_match: 1, guardian_match: 1, upi_match: 0, birth_certificate_match: 0,
+    },
+    ...overrides,
+  });
+}
 
 function candidate(score, overrides = {}) {
   return {
@@ -132,8 +144,58 @@ describe('Registration-level duplicate aggregation', () => {
       policy: 'top-1',
       candidates_considered: 4,
       candidates_qualifying: 3,
+      candidates_guardian_only: 0,
       flags_selected: 1,
       candidates_suppressed: 2,
+    });
+  });
+
+  test('a shared guardian id alone is a sibling, not a duplicate', () => {
+    const { features } = sibling();
+    expect(GUARDIAN_FIELD).toBe('guardian_match');
+    expect(corroboratingFields(features)).toEqual(['guardian_match']);
+    expect(isGuardianOnlyMatch(features)).toBe(true);
+
+    // Every policy obeys the rule, including the legacy one used for comparison.
+    for (const policy of AGGREGATION_POLICIES) {
+      expect(selectFlaggedCandidates([sibling()], { policy, threshold: THRESHOLD })).toEqual([]);
+    }
+  });
+
+  test('a shared guardian still flags as soon as one independent field agrees', () => {
+    const sameChild = sibling(0.86, {
+      id: 'same-child',
+      features: {
+        jaro_winkler: 0.94, dob_match: 1, school_match: 1, guardian_match: 1, upi_match: 0, birth_certificate_match: 0,
+      },
+    });
+
+    expect(isGuardianOnlyMatch(sameChild.features)).toBe(false);
+    const selected = selectFlaggedCandidates([sameChild], { policy: 'top-1', threshold: THRESHOLD });
+    expect(selected).toHaveLength(1);
+    expect(selected[0].candidate.id).toBe('same-child');
+  });
+
+  test('an exact identifier outranks the guardian rule', () => {
+    const exact = sibling(0.3, { id: 'exact-identifier', exactIdentifiers: ['UPI'] });
+
+    expect(isGuardianOnlyMatch(exact.features, exact.exactIdentifiers)).toBe(false);
+    expect(selectFlaggedCandidates([exact], { policy: 'top-1', threshold: THRESHOLD })).toHaveLength(1);
+  });
+
+  test('the audit summary counts sibling pairs apart from near misses', () => {
+    const scored = [candidate(0.55, { id: 'name-and-school' }), sibling()];
+    const flagged = selectFlaggedCandidates(scored, { policy: 'top-1', threshold: THRESHOLD });
+
+    const summary = summarizeAggregation(scored, flagged, { policy: 'top-1', threshold: THRESHOLD });
+
+    expect(summary).toEqual({
+      policy: 'top-1',
+      candidates_considered: 2,
+      candidates_qualifying: 1,
+      candidates_guardian_only: 1,
+      flags_selected: 1,
+      candidates_suppressed: 0,
     });
   });
 

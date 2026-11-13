@@ -29,6 +29,16 @@
  *   all                 Legacy behaviour, retained only to reproduce and compare
  *                       against the defect it replaces. One flag per candidate pair.
  *
+ * Guardian rule (applies to every policy):
+ *
+ *   A guardian enrols several children, so two records that agree on guardian_id
+ *   are usually siblings, not the same child. A guardian match is therefore never
+ *   evidence on its own: when the only independent field that agrees is
+ *   guardian_match, the pair is a family relationship and no flag is created, no
+ *   matter what the model scored it. The flag returns as soon as another
+ *   independent field agrees (date of birth, UPI, birth certificate, national ID)
+ *   or an identifier matches exactly, because that is the same person's record.
+ *
  * This module never changes a score, a threshold, or the model. It only selects
  * which already-scored candidates become flags.
  */
@@ -37,6 +47,9 @@ const AGGREGATION_POLICIES = Object.freeze(['top-1', 'top-1-corroborated', 'all'
 const DEFAULT_AGGREGATION_POLICY = 'top-1';
 const CORROBORATION_MINIMUM_SIMILARITY = 0.99;
 const CORROBORATION_MINIMUM_FIELDS = 2;
+
+// The one field that is shared by siblings by design, so it cannot stand alone.
+const GUARDIAN_FIELD = 'guardian_match';
 
 // Fields that can independently corroborate a match. Name similarity and school
 // are excluded on purpose: names collide often and most applicants share a school,
@@ -61,6 +74,18 @@ function normalizeAggregationPolicy(value = process.env.DUPLICATE_AGGREGATION_PO
 function corroboratingFields(features) {
   const values = features || {};
   return CORROBORATION_FIELDS.filter((field) => Number(values[field]) >= CORROBORATION_MINIMUM_SIMILARITY);
+}
+
+/**
+ * True when the guardian is the only field that agrees: a sibling, not a second
+ * record of the same child. An exact identifier match settles the question the
+ * other way and is never suppressed here.
+ */
+function isGuardianOnlyMatch(features, exactIdentifiers = []) {
+  if (Array.isArray(exactIdentifiers) && exactIdentifiers.length > 0) return false;
+  const values = features || {};
+  if (!(Number(values[GUARDIAN_FIELD]) >= CORROBORATION_MINIMUM_SIMILARITY)) return false;
+  return corroboratingFields(values).every((field) => field === GUARDIAN_FIELD);
 }
 
 function qualifiesForReview(candidate, threshold) {
@@ -92,14 +117,23 @@ function selectFlaggedCandidates(candidates, options = {}) {
     ? normalizeAggregationPolicy()
     : normalizeAggregationPolicy(options.policy);
 
-  const prepared = (Array.isArray(candidates) ? candidates : []).map((candidate, index) => ({
-    ...candidate,
-    exactIdentifiers: Array.isArray(candidate.exactIdentifiers) ? candidate.exactIdentifiers : [],
-    corroboratingFields: corroboratingFields(candidate.features),
-    index,
-  }));
+  const prepared = (Array.isArray(candidates) ? candidates : []).map((candidate, index) => {
+    const exactIdentifiers = Array.isArray(candidate.exactIdentifiers) ? candidate.exactIdentifiers : [];
+    return {
+      ...candidate,
+      exactIdentifiers,
+      corroboratingFields: corroboratingFields(candidate.features),
+      guardianOnlyMatch: isGuardianOnlyMatch(candidate.features, exactIdentifiers),
+      index,
+    };
+  });
 
-  const qualifying = prepared.filter((candidate) => qualifiesForReview(candidate, threshold));
+  // Siblings share a guardian and can be scored above the cutoff; they are still
+  // two children. The guardian-only exclusion runs before the policy does, so no
+  // policy can turn a family relationship into a duplicate case.
+  const qualifying = prepared.filter((candidate) => (
+    !candidate.guardianOnlyMatch && qualifiesForReview(candidate, threshold)
+  ));
   if (policy === 'all') return qualifying;
   if (qualifying.length === 0) return [];
 
@@ -129,17 +163,28 @@ function summarizeAggregation(candidates, flagged, options = {}) {
     ? normalizeAggregationPolicy()
     : normalizeAggregationPolicy(options.policy);
   const list = Array.isArray(candidates) ? candidates : [];
-  const qualifying = list.filter((candidate) => (
-    Number(candidate.score) >= threshold
-    || (Array.isArray(candidate.exactIdentifiers) && candidate.exactIdentifiers.length > 0)
-  ));
+  const facts = list.map((candidate) => {
+    const exactIdentifiers = Array.isArray(candidate.exactIdentifiers) ? candidate.exactIdentifiers : [];
+    return {
+      exactIdentifiers,
+      guardianOnlyMatch: isGuardianOnlyMatch(candidate.features, exactIdentifiers),
+      reachesCutoff: Number(candidate.score) >= threshold || exactIdentifiers.length > 0,
+    };
+  });
+  // Counted only when the pair would otherwise have qualified, so the figure answers the question
+  // it is reported for: how many flags did the guardian rule remove from the queue?
+  const guardianOnly = facts.filter((fact) => fact.guardianOnlyMatch && fact.reachesCutoff).length;
+  const qualifying = facts.filter((fact) => !fact.guardianOnlyMatch && fact.reachesCutoff).length;
   const selected = Array.isArray(flagged) ? flagged.length : 0;
   return {
     policy,
     candidates_considered: list.length,
-    candidates_qualifying: qualifying.length,
+    candidates_qualifying: qualifying,
+    // Reported separately from candidates_suppressed: these pairs agreed on the
+    // guardian and nothing else, which is a sibling, not a near miss.
+    candidates_guardian_only: guardianOnly,
     flags_selected: selected,
-    candidates_suppressed: Math.max(0, qualifying.length - selected),
+    candidates_suppressed: Math.max(0, qualifying - selected),
   };
 }
 
@@ -149,7 +194,9 @@ module.exports = {
   CORROBORATION_MINIMUM_FIELDS,
   CORROBORATION_MINIMUM_SIMILARITY,
   DEFAULT_AGGREGATION_POLICY,
+  GUARDIAN_FIELD,
   corroboratingFields,
+  isGuardianOnlyMatch,
   normalizeAggregationPolicy,
   selectFlaggedCandidates,
   summarizeAggregation,

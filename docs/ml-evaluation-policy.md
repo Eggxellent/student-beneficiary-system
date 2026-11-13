@@ -45,13 +45,20 @@ tune the threshold or switch aggregation policy before D1–D3 have answers.
   `backend/src/services/duplicateAggregation.js`. Default `top-1`: at most one
   flag per registration, ranking exact identifier agreement above model score;
   deterministic tie-break by comparison order. Covered by
-  `backend/tests/duplicateAggregation.test.js` (13 tests), including
+  `backend/tests/duplicateAggregation.test.js`, including
   "creates only one flag when several candidates exceed the cutoff".
+- **Guardian rule:** a guardian enrols several children, so `guardian_match` alone
+  is never evidence of the same child. `isGuardianOnlyMatch()` drops a pair whose
+  only agreeing field is the guardian, under every policy, and re-admits it as
+  soon as another independent field (date of birth, UPI, birth certificate,
+  national ID) agrees or an identifier matches exactly. Siblings therefore stop
+  reaching the review queue while a re-registration still does.
 - **Auditability:** each registration writes `duplicate_aggregation_policy`,
   `duplicate_candidates_considered`, `duplicate_candidates_qualifying`,
-  `duplicate_candidates_suppressed`, and `duplicate_flags_created` to the audit
-  log, and returns `aggregation_policy`, `candidates_considered`, and
-  `candidates_suppressed` in `duplicate_screening`.
+  `duplicate_candidates_guardian_only`, `duplicate_candidates_suppressed`, and
+  `duplicate_flags_created` to the audit log, and returns `aggregation_policy`,
+  `candidates_considered`, `candidates_qualifying`, `candidates_guardian_only`
+  and `candidates_suppressed` in `duplicate_screening`.
 - **Per-pair baseline:** 0.35% of 2 000 synthetic unrelated pairs score ≥ 0.50
   (`docs/ml-evaluation-baseline-2026-10.md`). This is a queue-volume input, **not**
   an accuracy claim.

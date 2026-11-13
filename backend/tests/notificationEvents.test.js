@@ -24,7 +24,7 @@ function notificationInserts(client) {
   return client.query.mock.calls.filter(([sql]) => /INSERT INTO notifications/.test(sql));
 }
 
-function setupClient({ award, decisionRows }) {
+function setupClient({ award, decisionRows, notificationError } = {}) {
   const client = {
     release: jest.fn(),
     query: jest.fn(async (sql) => {
@@ -37,6 +37,7 @@ function setupClient({ award, decisionRows }) {
       }
       if (/INSERT INTO bursary_awards/.test(sql)) return { rows: [award] };
       if (/UPDATE bursary_awards/.test(sql)) return { rows: [decisionRows] };
+      if (/INSERT INTO notifications/.test(sql) && notificationError) throw notificationError;
       return { rows: [] };
     }),
   };
@@ -78,6 +79,38 @@ describe('notification-producing events (isolated; no database)', () => {
     ]);
     // The officer who submitted is not also notified that they submitted.
     expect(params[0]).not.toBe(officerId);
+  });
+
+  test('a proposal still commits when the notifications table does not exist', async () => {
+    const award = {
+      id: awardId,
+      student_id: studentId,
+      school_code: 'Nairobi School',
+      requested_amount: 15000,
+      submitted_by: officerId,
+      status: 'submitted',
+    };
+    const missingTable = new Error('relation "notifications" does not exist');
+    missingTable.code = '42P01';
+    const client = setupClient({ award, notificationError: missingTable });
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = makeResponse();
+    try {
+      await controller.create(
+        { body: { student_id: studentId, requested_amount: 15000 }, user: { id: officerId, role: 'field_officer' } },
+        res,
+        jest.fn()
+      );
+    } finally {
+      warn.mockRestore();
+    }
+
+    // The award is the point of the request; the notification is not allowed to veto it.
+    expect(res.statusCode).toBe(201);
+    const statements = client.query.mock.calls.map(([sql]) => String(sql).trim());
+    expect(statements).toContain('COMMIT');
+    expect(statements.some((sql) => /^ROLLBACK TO SAVEPOINT/.test(sql))).toBe(true);
   });
 
   test('an approved award notifies the proposing officer, deduped on the award', async () => {

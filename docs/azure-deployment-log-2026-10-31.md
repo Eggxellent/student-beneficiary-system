@@ -333,3 +333,59 @@ uppercases both, like the other identifiers.
   passwords. It was not re-run for the same admin-password reason; the officer flow is covered by the
   new smoke.
 
+
+## 11. A failed notification write no longer fails the award (13 November 2026)
+
+**Problem.** `POST /api/awards` on Azure answers 500 while `GET /api/awards` renders the tiles. The
+only write on that path the read path does not touch is the notification insert, and `notifications`
+is created by `20261111_notifications.sql` — a migration with no ledger row, because the Azure
+database has no `schema_migrations`. The insert runs inside the award transaction, so a missing table
+aborts the whole transaction (SQLSTATE `25P02`) and the officer is told the proposal failed when
+nothing was written.
+
+**Not confirmed on Azure.** The workstation could not reach the database: TCP 5432 to
+`pg-sbms.postgres.database.azure.com` times out even with the single-IP rule `TempDeployClient` in
+place. The live schema was therefore not inspected, and the missing table remains the leading
+hypothesis, not a verified cause.
+
+**Change.** `backend/src/services/notifications.js` wraps every notification insert in
+`SAVEPOINT notification_write`. On failure it rolls back to the savepoint, logs
+`[notifications] <category> not delivered: <sqlstate>` and returns `null`; the award, the decision and
+the certificate commit regardless. A notification is a side effect of the event, never a condition
+for it.
+
+### Evidence
+
+| Check | Result |
+| --- | --- |
+| `npx jest --runInBand --silent tests/duplicateAggregation.test.js tests/notifications.test.js tests/notificationEvents.test.js` | 30 passed, 3 suites |
+| `notificationEvents` case "a proposal still commits when the notifications table does not exist" (insert throws `42P01`) | 201, `COMMIT` issued, `ROLLBACK TO SAVEPOINT notification_write` issued, warning logged |
+| `notifications` case "a missing notifications table costs the notification, not the caller transaction" | resolves `null`, savepoint order `SAVEPOINT` → `INSERT` → `ROLLBACK TO SAVEPOINT` |
+
+### Carry-forward
+
+- Apply `backend/src/db/migrations/20261111_notifications.sql` to `sbms` as `sbmsadmin` from a host
+  that can reach port 5432 (see §5). Until then awards work but no notification is written.
+- Deploy an image containing this change and re-run the `POST /api/awards` smoke against Azure; the
+  container revision on `ca-sbms-api` predates it.
+
+## 12. A shared guardian ID no longer flags a duplicate by itself (13 November 2026)
+
+**Problem.** Two children of one guardian were queued as duplicates. The model scores a guardian
+match heavily, and the default policy (`top-1`) decides on the score alone, so a family relationship
+entered the review queue as a suspected double registration.
+
+**Change.** `isGuardianOnlyMatch()` in `backend/src/services/duplicateAggregation.js` excludes a pair
+whose only agreeing independent field is `guardian_match`, before any policy runs. The flag returns
+as soon as a date of birth, UPI, birth certificate or national ID also agrees, or an identifier
+matches exactly — the cases that mean "the same child". `summarizeAggregation()` reports the removed
+pairs as `candidates_guardian_only`; the registration audit entry and `duplicate_screening` carry the
+count so the suppression is visible.
+
+### Evidence
+
+| Check | Result |
+| --- | --- |
+| `backend/tests/duplicateAggregation.test.js` | 17 tests pass: a guardian-only pair is suppressed under `top-1`, `top-1-corroborated` and `all`; it is flagged again once `dob_match` agrees; an exact identifier outranks the rule; the audit summary counts sibling pairs apart from near misses |
+| `backend/src/controllers/students.controller.js` | `duplicate_candidates_guardian_only` added to the audit payload and `candidates_guardian_only` to `duplicate_screening` |
+

@@ -128,6 +128,7 @@ async function create(req, res, next) {
         duplicate_aggregation_policy: aggregation.policy,
         duplicate_candidates_considered: aggregation.candidates_considered,
         duplicate_candidates_qualifying: aggregation.candidates_qualifying,
+        duplicate_candidates_guardian_only: aggregation.candidates_guardian_only,
         duplicate_candidates_suppressed: aggregation.candidates_suppressed,
         duplicate_flags_created: flags.length,
       }, client);
@@ -152,6 +153,7 @@ async function create(req, res, next) {
         aggregation_policy: aggregation.policy,
         candidates_considered: aggregation.candidates_considered,
         candidates_qualifying: aggregation.candidates_qualifying,
+        candidates_guardian_only: aggregation.candidates_guardian_only,
         candidates_suppressed: aggregation.candidates_suppressed,
       },
     });

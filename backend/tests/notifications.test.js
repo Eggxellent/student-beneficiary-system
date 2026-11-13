@@ -18,13 +18,18 @@ function recordingDb(rows = []) {
   };
 }
 
+// The savepoint statements surround the insert; assertions target the insert itself.
+function insertCalls(db) {
+  return db.calls.filter(({ sql }) => /INSERT INTO notifications/.test(sql));
+}
+
 describe('notification service', () => {
   test('a submitted proposal notifies administrators only, once per award', async () => {
     const db = recordingDb();
     await notifications.notifyAwardSubmitted(db, { award, studentName: 'Test Learner' });
 
-    expect(db.calls).toHaveLength(1);
-    const [{ sql, params }] = db.calls;
+    expect(insertCalls(db)).toHaveLength(1);
+    const [{ sql, params }] = insertCalls(db);
     expect(sql).toContain("WHERE u.role = 'admin' AND u.is_active = TRUE");
     expect(sql).toContain('ON CONFLICT (user_id, dedupe_key) DO NOTHING');
     expect(params).toEqual([
@@ -46,7 +51,7 @@ describe('notification service', () => {
       approvedAmount: null,
     });
 
-    const [{ sql, params }] = db.calls;
+    const [{ sql, params }] = insertCalls(db);
     expect(sql).toContain('VALUES ($1, $2, $3, $4, $5, $6, $7)');
     expect(params[0]).toBe(award.submitted_by);
     expect(params[1]).toBe('award_rejected');
@@ -63,7 +68,7 @@ describe('notification service', () => {
       approvedAmount: 12000,
     });
 
-    const [{ params }] = db.calls;
+    const [{ params }] = insertCalls(db);
     expect(params[1]).toBe('award_approved');
     expect(params[3]).toBe('Test Learner · KES 12,000 approved');
   });
@@ -84,7 +89,7 @@ describe('notification service', () => {
     const certificate = { id: '0b0b0b0b-1111-4222-8333-444444444444', certificate_reference: 'SBMS-2026-K8M4-X7PQ-2RZ' };
     await notifications.notifyCertificateReady(db, { award, studentName: 'Test Learner', certificate });
 
-    const [{ params }] = db.calls;
+    const [{ params }] = insertCalls(db);
     expect(params[1]).toBe('certificate_ready');
     expect(params[3]).toBe('Test Learner · SBMS-2026-K8M4-X7PQ-2RZ');
     expect(params[6]).toBe(`certificate-ready:${certificate.id}`);
@@ -93,7 +98,52 @@ describe('notification service', () => {
   test('a notification body never carries identifier or guardian fields', async () => {
     const db = recordingDb();
     await notifications.notifyAwardSubmitted(db, { award, studentName: 'Test Learner' });
-    const body = String(db.calls[0].params[2]);
+    const body = String(insertCalls(db)[0].params[2]);
     expect(body).not.toMatch(/national|birth|guardian|score|token/i);
+  });
+
+  test('the write runs inside a savepoint and releases it on success', async () => {
+    const db = recordingDb();
+    await notifications.notifyAwardSubmitted(db, { award, studentName: 'Test Learner' });
+
+    expect(db.calls.map(({ sql }) => sql.trim().split('\n')[0])).toEqual([
+      'SAVEPOINT notification_write',
+      expect.stringContaining('INSERT INTO notifications'),
+      'RELEASE SAVEPOINT notification_write',
+    ]);
+  });
+
+  test('a missing notifications table costs the notification, not the caller transaction', async () => {
+    const statements = [];
+    const db = {
+      query: jest.fn(async (sql) => {
+        statements.push(sql.trim().split('\n')[0]);
+        if (/INSERT INTO notifications/.test(sql)) {
+          const error = new Error('relation "notifications" does not exist');
+          error.code = '42P01';
+          throw error;
+        }
+        return { rows: [] };
+      }),
+    };
+    const warnings = [];
+    const warn = jest.spyOn(console, 'warn').mockImplementation((message) => warnings.push(message));
+
+    try {
+      await expect(
+        notifications.notifyAwardSubmitted(db, { award, studentName: 'Test Learner' })
+      ).resolves.toBeNull();
+    } finally {
+      warn.mockRestore();
+    }
+
+    // No COMMIT and no rethrow: the mistake is contained by the rollback to the savepoint.
+    expect(statements).toEqual([
+      'SAVEPOINT notification_write',
+      expect.stringContaining('INSERT INTO notifications'),
+      'ROLLBACK TO SAVEPOINT notification_write',
+    ]);
+    expect(warnings.join('\n')).toContain('42P01');
+    expect(warnings.join('\n')).toContain('award_submitted');
   });
 });
