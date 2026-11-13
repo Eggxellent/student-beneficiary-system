@@ -336,17 +336,32 @@ uppercases both, like the other identifiers.
 
 ## 11. A failed notification write no longer fails the award (13 November 2026)
 
-**Problem.** `POST /api/awards` on Azure answers 500 while `GET /api/awards` renders the tiles. The
-only write on that path the read path does not touch is the notification insert, and `notifications`
-is created by `20261111_notifications.sql` — a migration with no ledger row, because the Azure
-database has no `schema_migrations`. The insert runs inside the award transaction, so a missing table
-aborts the whole transaction (SQLSTATE `25P02`) and the officer is told the proposal failed when
-nothing was written.
+**Problem (list).** The Bursary awards page shows `Internal server error` as soon as it opens. Its
+first call is `GET /api/awards`, and on 11 November that query gained
+`LEFT JOIN bursary_certificates cert ON cert.award_id = a.id` (`5008442`, an ancestor of the deployed
+`a5c4ef4`). `bursary_certificates` is created by `20261031_bursary_certificates.sql`, a file added on
+1 November — after the 31 October acceptance run in which `GET /api/awards` still returned 200. The
+Azure database has no `schema_migrations`, the API runs no migration at start-up, and the only
+migration recorded as applied since is `20261111_remove_award_verification_gate.sql`. A missing
+relation raises `42P01`, and `middleware/errorHandler.js:73-75` renders every 5xx as
+`Internal server error`, so the page can only show that sentence.
 
-**Not confirmed on Azure.** The workstation could not reach the database: TCP 5432 to
+**Problem (proposal).** `POST /api/awards` also answers 500. The only write that path adds over the
+read path is the notification insert, and `notifications` is created by `20261111_notifications.sql`,
+also unapplied. The insert runs inside the award transaction, so a missing table aborts the whole
+transaction (SQLSTATE `25P02`) and the officer is told the proposal failed when nothing was written.
+
+**Both are unconfirmed against the live database.** The workstation could not reach it: TCP 5432 to
 `pg-sbms.postgres.database.azure.com` times out even with the single-IP rule `TempDeployClient` in
-place. The live schema was therefore not inspected, and the missing table remains the leading
-hypothesis, not a verified cause.
+place. Two statements settle it from an allowed host:
+
+```sql
+SELECT to_regclass('public.bursary_certificates') AS certificates,
+       to_regclass('public.bursary_awards')        AS awards,
+       to_regclass('public.notifications')         AS notifications;
+```
+
+`NULL` for `certificates` is the list failure; `NULL` for `notifications` is the proposal failure.
 
 **Change.** `backend/src/services/notifications.js` wraps every notification insert in
 `SAVEPOINT notification_write`. On failure it rolls back to the savepoint, logs
@@ -364,8 +379,16 @@ for it.
 
 ### Carry-forward
 
-- Apply `backend/src/db/migrations/20261111_notifications.sql` to `sbms` as `sbmsadmin` from a host
-  that can reach port 5432 (see §5). Until then awards work but no notification is written.
+- Apply, in this order, from a host that can reach port 5432 (see §5):
+  `backend/src/db/migrations/20261031_bursary_certificates.sql`, then
+  `backend/src/db/migrations/20261111_notifications.sql`. Both are `CREATE ... IF NOT EXISTS` only, so
+  they are replayable:
+  `psql -h pg-sbms.postgres.database.azure.com -U sbmsadmin -d sbms -v ON_ERROR_STOP=1 -f <file>`.
+  Until the first is applied the awards page cannot load at all; until the second, an approved award
+  writes no notification.
+- Approval was equally broken before the savepoint: `issueForApprovedAward()` writes
+  `bursary_certificates` inside the decision transaction, so approving an award failed with `42P01`.
+  The savepoint deliberately does not cover it — a certificate is the deliverable, not a side effect.
 - Deploy an image containing this change and re-run the `POST /api/awards` smoke against Azure; the
   container revision on `ca-sbms-api` predates it.
 
