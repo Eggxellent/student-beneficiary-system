@@ -71,7 +71,7 @@ move money.** The payment/disbursement module that earlier drafts described was 
 
 | Area | Earlier documented behaviour | Current behaviour |
 |---|---|---|
-| Duplicate flag volume | One `duplicate_flags` row for **every** candidate pair scoring ≥ threshold. With N students and per-pair false-positive rate p, a legitimate registration was flagged with probability `1−(1−p)^N` (29.6% at N=100, 82.7% at N=500 at p=0.0035) | `backend/src/services/duplicateAggregation.js` selects flags from already-scored candidates. Default policy `top-1`: **at most one flag per registration**, the best qualifying candidate, ranking exact identifier agreement (UPI / birth certificate / national ID) above model score. `top-1-corroborated` exists but is EXPERIMENTAL and unevaluated; `all` reproduces the old behaviour and exists only for comparison. Selected with `DUPLICATE_AGGREGATION_POLICY` |
+| Duplicate flag volume | One `duplicate_flags` row for **every** candidate pair scoring ≥ threshold. With N students and per-pair false-positive rate p, a legitimate registration was flagged with probability `1−(1−p)^N` (29.6% at N=100, 82.7% at N=500 at p=0.0035) | `backend/src/services/duplicateAggregation.js` selects flags from already-scored candidates. Default policy `top-1-corroborated`: **a case needs decisive evidence** - an exact UPI / birth certificate / national ID match, or at least two independent fields agreeing (date of birth, guardian, or an identifier). A model score above the provisional cutoff with nothing corroborating it is counted in the audit summary as a suppressed near miss instead of opening a case. `top-1` (one flag whatever the evidence) and `all` (the legacy one-flag-per-pair behaviour) remain selectable with `DUPLICATE_AGGREGATION_POLICY` |
 | Duplicate threshold | Single high-priority threshold | Three configured values: `DUPLICATE_HIGH_PRIORITY_THRESHOLD` (0.70), `DUPLICATE_REVIEW_THRESHOLD` (0.30), `ML_REVIEW_SCORE_THRESHOLD` (0.50, the cut-off for creating a case). An administrator can change them at runtime through `/api/settings/threshold`; the change applies to the running process only (it is audited, not persisted) |
 | Header bell / notifications | Bell shown only to admins; panel rebuilt from `/api/duplicate-flags?status=open` plus submitted awards on every page load; "seen" ids kept in `localStorage` per device; no unread count server-side | Server-persisted rows in `notifications` (category, title, body, link, `reference_id`, `read_at`, `UNIQUE (user_id, dedupe_key)`). Recipients are chosen at write time: active admins for a proposal, the proposing officer (`submitted_by`) for the decision and for certificate readiness. Read state is per user in the database; `NotificationBell.jsx` shows a badge, unread styling, *Mark all as read* and an empty state; polled every 60 s and on focus, refreshed on open. No duplicate-flag entries |
 | Certificate issuance | Administrator opened an award and clicked "issue certificate"; the decision response carried no certificate | Certificate is written **inside the approval transaction**; the decision response returns `certificate_reference`. The manual route is now only a retry/backfill (`409` when one exists). Field officers are notified and print from `AwardCertificatePanel.jsx` |
@@ -127,7 +127,7 @@ absent from the repository.
 |---|---|---|---|
 | 1 | Receive the list of students selected for NG-CDF consideration | Field Officer, **outside SBMS** | No table, no import endpoint (deliberate scope decision, `docs/beneficiary-processing-workflow-2026-11-05.md`) |
 | 2 | Register the student | Field Officer | `POST /api/students`; fields: `full_name`, `date_of_birth` (YYYY-MM-DD), `school_code` (one of `APPROVED_SCHOOLS`), `guardian_id`, `upi`, `birth_certificate_number`, `national_id_number`, `primary_phone` (`+254[17]xxxxxxxx`); Zod-validated; page `/students/register` |
-| 3 | Duplicate screening inside the registration transaction | System | Loads existing students, scores in batches of 200, applies threshold + `top-1` aggregation, inserts the student and the flag, commits; a predictor failure rolls back and returns `503` with `code: DUPLICATE_SCREENING_UNAVAILABLE` |
+| 3 | Duplicate screening inside the registration transaction | System | Loads existing students, scores in batches of 200, applies the cutoff and the `top-1-corroborated` aggregation policy (a case needs decisive evidence), inserts the student and the flag, commits; a predictor failure rolls back and returns `503` with `code: DUPLICATE_SCREENING_UNAVAILABLE` |
 | 4 | Return the registration result | System | Student row, QR data URL (`/verify#token=…`) and, when flagged, the duplicate case summary and review priority |
 | 5 | List / view students | Field Officer | `GET /api/students`, `GET /api/students/:id`, `GET /api/students/schools`; page `/students` |
 
@@ -136,8 +136,11 @@ absent from the repository.
 1. Registration (or `POST /api/duplicate-flags/evaluate`) produces pair scores from the Python model.
 2. Candidates at or above `ML_REVIEW_SCORE_THRESHOLD` (0.50) are ranked: exact identifier agreement
    first (UPI, birth certificate, national ID), then model probability.
-3. `top-1` writes at most one `duplicate_flags` row (`pending`) carrying `probability`,
-   `model_version`, `review_threshold` and the comparison features.
+3. `top-1-corroborated` writes at most one `duplicate_flags` row (`pending`) carrying `probability`,
+   `model_version`, `review_threshold` and the comparison features - and only when the evidence is
+   decisive: an exact UPI / birth certificate / national ID match, or at least two independent fields
+   agreeing. A score above the cutoff with nothing corroborating it is counted in the audit summary as
+   a suppressed near miss, not opened as a case.
 4. An administrator opens `/duplicate-review`, optionally reveals both records' identifiers
    (`GET /api/duplicate-flags/:id/identifiers`, audited), and records a decision with a reason:
    `confirmed_duplicate`, `not_duplicate` or `needs_verification`. The case shows a **Decisive fields**
@@ -303,7 +306,8 @@ distribution p50 0.019, p90 0.050, p99 0.198, max 0.744. Raw JSON:
 ### 6.6 How the model sits in the duplicate workflow
 
 Registration → all existing records become candidates → model scores each pair → candidates ≥ 0.50
-are ranked by exact identifier agreement then probability → `top-1` selects one → one `duplicate_flags`
+are ranked by exact identifier agreement then probability → `top-1-corroborated` selects one, and only
+when an identifier matches exactly or two independent fields agree → one `duplicate_flags`
 row (`pending`) → admin decides → a confirmed/unresolved case blocks award approval. The model only
 creates review work; it never rejects a registration, approves an award or edits data. If the predictor
 cannot be reached, registration fails closed with `503` rather than proceeding unscreened.
@@ -426,7 +430,7 @@ Paths are under `docs/final-documentation-content/`. Line numbers refer to the v
 | ≈ lines 432, 441 | Dashboard "six-month disbursement trend"; report "disbursement detail list" | Replace with award / certificate / duplicate trends and the current report sections |
 | ≈ line 496 | Admin surface list includes `/api/disbursements` | Remove; add `/api/notifications` |
 | Certificate narrative | Certificate "issued from a panel by an administrator" | Certificate is issued inside the approval transaction; the panel is the officer's download/print surface; `POST /api/awards/:id/certificate` is retry/backfill only |
-| Duplicate-detection section | "every candidate pair ≥ threshold creates a flag" | `top-1` aggregation: at most one case per registration, ranked by exact identifier agreement then score; `all` exists only as a legacy comparison mode |
+| Duplicate-detection section | "every candidate pair ≥ threshold creates a flag" | `top-1-corroborated` aggregation: at most one case per registration, and only on decisive evidence (exact identifier, or two independent fields agreeing); `top-1` and `all` exist only as comparison modes |
 | Notifications | Absent from the chapter | Add a subsection: table, categories, role targeting, dedupe key, read state, polling, bell component and its tests |
 | Test evidence tables | 21 suites / 128 tests; 24 suites / 151 tests | Current: 27 suites / 175 tests — 24 suites / 154 tests pass, 3 suites / 21 tests blocked by the un-migrated test database (§7.1). State the blockage honestly |
 | Frontend build evidence | Module counts 2,002 / 2,006 | Re-measure; the verified statement for this commit is "exit 0, 11.67 s" |

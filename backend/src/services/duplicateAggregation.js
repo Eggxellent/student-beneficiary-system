@@ -15,16 +15,20 @@
  *
  * Policies (DUPLICATE_AGGREGATION_POLICY):
  *
- *   top-1               Default. At most one flag per registration: the single best
- *                       qualifying candidate, ranking exact identifier agreement
- *                       above model score. Still requires evaluation against
- *                       adjudicated pairs (Phase 2), but it bounds the queue.
+ *   top-1-corroborated  Default. A registration creates a case only when the
+ *                       evidence is decisive: an identifier matches exactly (UPI,
+ *                       birth certificate, national ID), or at least two
+ *                       independent fields corroborate the match. A high model
+ *                       score on its own is a near miss, not a case. The cutoff is
+ *                       provisional and the model is uncalibrated, so a queue that
+ *                       fills with one case per registration is not reviewed at
+ *                       all; a handful of decisive cases is.
  *
- *   top-1-corroborated  As top-1, but a flag is only created when at least two
- *                       independent fields corroborate the match, or an identifier
- *                       matches exactly. EXPERIMENTAL: it deliberately suppresses
- *                       weak single-field candidates and has not been evaluated
- *                       against adjudicated pairs, so it may raise the miss rate.
+ *   top-1               At most one flag per registration whatever the evidence:
+ *                       the single best qualifying candidate, ranking exact
+ *                       identifier agreement above model score. Kept for
+ *                       side-by-side comparison; at scale it still flags roughly
+ *                       one registration in two.
  *
  *   all                 Legacy behaviour, retained only to reproduce and compare
  *                       against the defect it replaces. One flag per candidate pair.
@@ -44,7 +48,8 @@
  */
 
 const AGGREGATION_POLICIES = Object.freeze(['top-1', 'top-1-corroborated', 'all']);
-const DEFAULT_AGGREGATION_POLICY = 'top-1';
+// Decisive evidence only: a score above an unvalidated cutoff is not a reason to open a case.
+const DEFAULT_AGGREGATION_POLICY = 'top-1-corroborated';
 const CORROBORATION_MINIMUM_SIMILARITY = 0.99;
 const CORROBORATION_MINIMUM_FIELDS = 2;
 

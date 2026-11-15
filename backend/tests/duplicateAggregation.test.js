@@ -39,10 +39,31 @@ describe('Registration-level duplicate aggregation', () => {
     else process.env.DUPLICATE_AGGREGATION_POLICY = originalPolicy;
   });
 
-  test('defaults to top-1 so one registration cannot flood the review queue', () => {
-    expect(DEFAULT_AGGREGATION_POLICY).toBe('top-1');
-    expect(normalizeAggregationPolicy(undefined)).toBe('top-1');
-    expect(normalizeAggregationPolicy('')).toBe('top-1');
+  test('defaults to decisive evidence so the queue stays reviewable', () => {
+    expect(DEFAULT_AGGREGATION_POLICY).toBe('top-1-corroborated');
+    expect(normalizeAggregationPolicy(undefined)).toBe('top-1-corroborated');
+    expect(normalizeAggregationPolicy('')).toBe('top-1-corroborated');
+  });
+
+  test('the default policy drops a high score that nothing corroborates', () => {
+    // Similar name, same school, nothing else: the case a reviewer learns to dismiss by the tenth one.
+    expect(selectFlaggedCandidates([candidate(0.97)], { threshold: THRESHOLD })).toEqual([]);
+  });
+
+  test('the default policy keeps the one decisive case per registration', () => {
+    const scored = [
+      candidate(0.97, { id: 'name-only' }),
+      candidate(0.64, {
+        id: 'dob-and-upi',
+        features: { jaro_winkler: 0.88, dob_match: 1, school_match: 1, guardian_match: 0, upi_match: 1, birth_certificate_match: 0 },
+      }),
+      candidate(0.42, { id: 'national-id', exactIdentifiers: ['National ID'] }),
+    ];
+
+    const selected = selectFlaggedCandidates(scored, { threshold: THRESHOLD });
+
+    expect(selected).toHaveLength(1);
+    expect(selected[0].candidate.id).toBe('national-id');
   });
 
   test('reads DUPLICATE_AGGREGATION_POLICY and rejects unknown values', () => {

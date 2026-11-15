@@ -33,7 +33,7 @@ tune the threshold or switch aggregation policy before D1–D3 have answers.
 
 | Decision | Configuration / code | Current state |
 | --- | --- | --- |
-| D1 | `DUPLICATE_AGGREGATION_POLICY` in `backend/.env`; `backend/src/services/duplicateAggregation.js` | Implemented and tested. Default `top-1` (≤ 1 flag per registration). `all` = legacy, `top-1-corroborated` = experimental. The admin re-scan endpoint is intentionally excluded (it enumerates pairs and skips known ones) |
+| D1 | `DUPLICATE_AGGREGATION_POLICY` in `backend/.env`; `backend/src/services/duplicateAggregation.js` | Implemented and tested. Default `top-1-corroborated`: a case needs decisive evidence (an exact UPI / birth certificate / national ID match, or at least two independent fields agreeing), so a high model score on its own stays a near miss. `top-1` (≤ 1 flag whatever the evidence) and `all` (legacy, one flag per pair) remain selectable. The admin re-scan endpoint is intentionally excluded (it enumerates pairs and skips known ones) |
 | D2 | `ML_REVIEW_SCORE_THRESHOLD` (default `0.50`); `backend/src/config/settings.js` | Cutoff is configurable; value is **not validated** against reviewed data |
 | D3 | Same cutoff; reported as miss rate / recall in the Phase 2 report | Not measured — no adjudicated pairs |
 | D4 | Candidate query in `backend/src/controllers/students.controller.js` (`FROM students` with no school filter) and the O(N²) scan | Compares against **all** schools. Blocking is **not implemented** |
@@ -42,11 +42,14 @@ tune the threshold or switch aggregation policy before D1–D3 have answers.
 ## 3. What is implemented right now (measured, not proposed)
 
 - **Aggregation (D1):** `selectFlaggedCandidates()` in
-  `backend/src/services/duplicateAggregation.js`. Default `top-1`: at most one
-  flag per registration, ranking exact identifier agreement above model score;
-  deterministic tie-break by comparison order. Covered by
-  `backend/tests/duplicateAggregation.test.js`, including
-  "creates only one flag when several candidates exceed the cutoff".
+  `backend/src/services/duplicateAggregation.js`. Default `top-1-corroborated`:
+  at most one flag per registration, and only on decisive evidence - an exact
+  identifier match (UPI, birth certificate, national ID) or at least two
+  independent fields agreeing. A score above the provisional cutoff with nothing
+  corroborating it is counted as a suppressed near miss, not opened as a case.
+  `top-1` (one flag whatever the evidence) and `all` (legacy one-flag-per-pair)
+  remain selectable. Covered by `backend/tests/duplicateAggregation.test.js`,
+  including "the default policy drops a high score that nothing corroborates".
 - **Guardian rule:** a guardian enrols several children, so `guardian_match` alone
   is never evidence of the same child. `isGuardianOnlyMatch()` drops a pair whose
   only agreeing field is the guardian, under every policy, and re-admits it as
@@ -71,16 +74,20 @@ tune the threshold or switch aggregation policy before D1–D3 have answers.
 | --- | --- |
 | Choosing the production cutoff on evidence | D1, D2, D3, D5 |
 | Precision / recall / F1 / PR-AUC / confusion matrix | D5 (no adjudicated labels) |
-| Deciding whether `top-1-corroborated` is safe to adopt | D3 + D5 + comparison on adjudicated pairs |
+| Whether `top-1-corroborated` is safe in production | Adopted as the default on 2026-11-15; D3 + D5 still block an evidence-based validation on adjudicated pairs |
 | School-blocking optimisation (cuts `N`, changes D4 semantics) | D4 |
 | Any claim that the system "detects duplicates accurately" | D5 — cannot be supported today |
 
 Update — 30 October 2026: the *synthetic* versions of two blocked rows now exist and are
 recorded in `docs/ml-decision-sheet-2026-10-30.md`: pair-level precision/recall/F1/PR-AUC
 (ROC-AUC 0.9685, PR-AUC 0.9727, F1 0.9063 at 0.50) and a registration-level simulation.
-`top-1-corroborated` was measured and is **not recommended**: it removes 34–54% of nuisance
-flags at the cost of 39–60% of true duplicates. None of this is an accuracy claim, and
-D5 still blocks the real evaluation.
+`top-1-corroborated` was measured at 34–54% fewer nuisance flags for 39–60% fewer true
+duplicates. On 2026-11-15 the owner chose it as the default anyway: a queue that flags
+essentially every registration (D2: ~194–200 cases per 200 registrations at N = 1 000 under
+`top-1`) is not reviewed at all, while the suppressed near misses stay visible in the audit
+summary. The synthetic recall loss is accepted and remains unmeasured on real pairs;
+`DUPLICATE_AGGREGATION_POLICY=top-1` restores the previous behaviour without a code change.
+None of this is an accuracy claim, and D5 still blocks the real evaluation.
 
 ## 5. Evidence available for each decision (synthetic labels only)
 
@@ -105,6 +112,7 @@ Source: `ml-service/evaluate_operating_point.py`, output
 | 2026-10-30 | Per-pair baseline measured | `docs/ml-evaluation-baseline-2026-10.md` |
 | 2026-10-30 | Operating-point evidence measured: pair-level metrics, registration-level simulation, blocking projection. D1–D5 remain unanswered | `docs/ml-decision-sheet-2026-10-30.md`, `ml-service/evaluation/operating_point_2026-10-30.json` |
 | 2026-10-30 | `top-1-corroborated` measured and **not recommended**: removes 34–54% of nuisance flags but loses 39–60% of true duplicates | decision sheet §5 |
+| 2026-11-15 | Default aggregation changed from `top-1` to `top-1-corroborated`: a case needs decisive evidence (exact identifier, or two independent fields agreeing); weak near misses stay in the audit summary. Owner decision - a queue that flags every registration cannot be reviewed. `DUPLICATE_AGGREGATION_POLICY=top-1` reverts it | `backend/src/services/duplicateAggregation.js`, `backend/tests/duplicateAggregation.test.js` |
 | 2026-10-30 | 14 tests added that fail if the report stops describing the live artifact or the simulation arithmetic drifts | `ml-service/tests/test_operating_point.py` |
 
 When a decision is answered, append the answer, the date, the owner, and the
