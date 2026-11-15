@@ -91,7 +91,7 @@ describe('notification service', () => {
 
     const [{ params }] = insertCalls(db);
     expect(params[1]).toBe('certificate_ready');
-    expect(params[3]).toBe('Test Learner · SBMS-2026-K8M4-X7PQ-2RZ');
+    expect(params[3]).toBe('Test Learner · Invoice SBMS-2026-K8M4-X7PQ-2RZ');
     expect(params[6]).toBe(`certificate-ready:${certificate.id}`);
   });
 

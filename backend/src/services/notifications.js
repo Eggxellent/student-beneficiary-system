@@ -102,15 +102,15 @@ async function notifyAwardDecision(db, { award, studentName, decision, approvedA
   }));
 }
 
-// Issued once per award, from the same transaction that writes the certificate row, so the
-// officer learns about the download at the moment the certificate exists.
+// Issued once per award, from the same transaction that writes the approval invoice row, so the
+// officer learns about the download at the moment the document exists.
 async function notifyCertificateReady(db, { award, studentName, certificate }) {
   if (!certificate) return null;
   return guardedWrite(db, 'certificate_ready', () => insertForUser(db, {
     userId: award.submitted_by,
     category: 'certificate_ready',
-    title: 'Certificate ready to download',
-    body: `${studentName} · ${certificate.certificate_reference}`,
+    title: 'Bursary approval invoice ready to download',
+    body: `${studentName} · Invoice ${certificate.certificate_reference}`,
     referenceId: award.id,
     dedupeKey: `certificate-ready:${certificate.id}`,
   }));

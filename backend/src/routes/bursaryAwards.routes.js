@@ -10,6 +10,12 @@ router.get('/', requireRole('admin', 'field_officer'), controller.list);
 router.post('/', requireRole('field_officer'), controller.create);
 router.patch('/:id/decision', requireRole('admin'), controller.decide);
 
+// A wrong award is never replaced by a second award. A field officer reports the error and an
+// administrator resolves it by correcting the award in place or voiding it with a reason.
+router.post('/:id/error-report', requireRole('field_officer'), controller.reportError);
+router.patch('/:id/correction', requireRole('admin'), controller.correct);
+router.post('/:id/void', requireRole('admin'), controller.voidAward);
+
 // A certificate is generated automatically when an administrator approves the award. This route
 // remains for awards approved before that rule, and for retrying a failed attempt; it never returns
 // a second certificate for the same award.

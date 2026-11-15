@@ -175,7 +175,7 @@ describe("Beneficiary workflow end to end", () => {
     expect(blockedApproval.body.message).toMatch(/resolve duplicate review cases/i);
   });
 
-  test("a second proposal for an allocated student is refused until the officer confirms", async () => {
+  test("a second proposal for the same student and year is refused, even with the old confirmation flag", async () => {
     const repeat = (await registerStudent({
       full_name: "Workflow Repeat Learner",
       national_id_number: `WF-REPEAT-${Date.now()}`,
@@ -186,6 +186,7 @@ describe("Beneficiary workflow end to end", () => {
       .set(auth(officer))
       .send({ student_id: repeat.id, requested_amount: 3000 });
     expect(first.statusCode).toBe(201);
+    expect(first.body.award.award_year).toBe(new Date().getUTCFullYear());
 
     // The server is the authority: the cached award list on the officer's screen can be stale.
     const blocked = await request(app)
@@ -193,17 +194,16 @@ describe("Beneficiary workflow end to end", () => {
       .set(auth(officer))
       .send({ student_id: repeat.id, requested_amount: 6000 });
     expect(blocked.statusCode).toBe(409);
-    expect(blocked.body.code).toBe("EXISTING_ALLOCATION");
+    expect(blocked.body.code).toBe("ANNUAL_AWARD_EXISTS");
     expect(blocked.body.existing_award.id).toBe(first.body.award.id);
 
-    // Acknowledging the warning lets the proposal through; the amount is recorded, not just echoed.
+    // There is no override. A wrong award is corrected or voided by an administrator instead.
     const confirmed = await request(app)
       .post("/api/awards")
       .set(auth(officer))
       .send({ student_id: repeat.id, requested_amount: 6000, confirm_duplicate_allocation: true });
-    expect(confirmed.statusCode).toBe(201);
-    expect(confirmed.body.award.requested_amount).toBe("6000.00");
-    expect(confirmed.body.award.id).not.toBe(first.body.award.id);
+    expect(confirmed.statusCode).toBe(409);
+    expect(confirmed.body.code).toBe("ANNUAL_AWARD_EXISTS");
   });
 
   test("confirming a duplicate keeps the beneficiary unable to receive an approved award", async () => {

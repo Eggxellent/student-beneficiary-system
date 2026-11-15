@@ -9,7 +9,7 @@ const {
 const { getCertificateIdentity } = require('../config/certificateIdentity');
 const { normalizeCertificateReference } = require('../services/certificateReference');
 const { issueForApprovedAward } = require('../services/certificateIssue');
-const { renderCertificatePdf } = require('../services/certificateDocument');
+const { renderInvoicePdf } = require('../services/invoiceDocument');
 
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 const AWARD_PERIOD_PATTERN = /^\d{4}(\/\d{4})?$/;
@@ -117,13 +117,13 @@ async function issue(req, res, next) {
     }
     if (award.status !== 'approved') {
       await client.query('ROLLBACK');
-      return res.status(409).json({ message: 'A certificate can only be issued for an approved award.' });
+      return res.status(409).json({ message: 'An approval invoice can only be issued for an approved award.' });
     }
     const existing = await certificateModel.findByAwardId(award.id, client);
     if (existing) {
       await client.query('ROLLBACK');
       return res.status(409).json({
-        message: `A certificate has already been issued for this award (${existing.certificate_reference}).`,
+        message: `An approval invoice has already been issued for this award (${existing.certificate_reference}).`,
         certificate_reference: existing.certificate_reference,
       });
     }
@@ -145,7 +145,7 @@ async function issue(req, res, next) {
     });
     if (!created) {
       await client.query('ROLLBACK');
-      return res.status(409).json({ message: 'A certificate has already been issued for this award.' });
+      return res.status(409).json({ message: 'An approval invoice has already been issued for this award.' });
     }
     await client.query('COMMIT');
 
@@ -153,7 +153,7 @@ async function issue(req, res, next) {
     const verificationUrl = buildCertificateVerificationUrl(row.verification_token);
     const manualVerificationUrl = buildCertificateVerificationPageUrl();
     return res.status(201).json({
-      message: 'Certificate issued.',
+      message: 'Approval invoice issued.',
       certificate: staffView(row, verificationUrl, manualVerificationUrl),
       qr_code: await qrDataUrl(verificationUrl),
       verification_url: verificationUrl,
@@ -173,10 +173,10 @@ async function issue(req, res, next) {
 function accessRefusal(req, row) {
   const actorId = req.user.id || req.user.sub;
   if (req.user.role === 'field_officer' && row.award_submitted_by !== actorId) {
-    return { status: 403, message: 'You can only open certificates for awards you proposed.' };
+    return { status: 403, message: 'You can only open approval invoices for awards you proposed.' };
   }
   if (row.award_status !== 'approved') {
-    return { status: 409, message: 'This award is not approved, so its certificate is not available.' };
+    return { status: 409, message: 'This award is not approved, so its approval invoice is not available.' };
   }
   return null;
 }
@@ -184,7 +184,7 @@ function accessRefusal(req, row) {
 async function get(req, res, next) {
   try {
     const row = await certificateModel.findByAwardId(req.params.id);
-    if (!row) return res.status(404).json({ message: 'No certificate has been issued for this award.' });
+    if (!row) return res.status(404).json({ message: 'No approval invoice has been issued for this award.' });
     const refusal = accessRefusal(req, row);
     if (refusal) return res.status(refusal.status).json({ message: refusal.message });
     const verificationUrl = buildCertificateVerificationUrl(row.verification_token);
@@ -203,11 +203,11 @@ async function get(req, res, next) {
 async function downloadPdf(req, res, next) {
   try {
     const row = await certificateModel.findByAwardId(req.params.id);
-    if (!row) return res.status(404).json({ message: 'No certificate has been issued for this award.' });
+    if (!row) return res.status(404).json({ message: 'No approval invoice has been issued for this award.' });
     const refusal = accessRefusal(req, row);
     if (refusal) return res.status(refusal.status).json({ message: refusal.message });
     const verificationUrl = buildCertificateVerificationUrl(row.verification_token);
-    const pdf = await renderCertificatePdf({
+    const pdf = await renderInvoicePdf({
       certificate: row,
       // The QR carries the opaque token. The paper prints the base page and the reference, so a
       // reader who cannot scan types a reference instead of copying a token out of print.

@@ -67,7 +67,7 @@ export default function AwardCertificatePanel({ awards, isAdmin, currentUserId }
       }));
       setRecords(Object.fromEntries(entries));
     } catch (err) {
-      setError(err.response?.data?.message || "Unable to load certificates.");
+      setError(err.response?.data?.message || "Unable to load approval invoices.");
     } finally {
       setLoading(false);
     }
@@ -93,7 +93,7 @@ export default function AwardCertificatePanel({ awards, isAdmin, currentUserId }
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 15000);
     } catch (err) {
-      setError(err.response?.data?.message || "Unable to download the certificate.");
+      setError(err.response?.data?.message || "Unable to download the approval invoice.");
     } finally {
       setBusy("");
     }
@@ -107,7 +107,7 @@ export default function AwardCertificatePanel({ awards, isAdmin, currentUserId }
       window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (err) {
-      setError(err.response?.data?.message || "Unable to open the certificate for printing.");
+      setError(err.response?.data?.message || "Unable to open the approval invoice for printing.");
     } finally {
       setBusy("");
     }
@@ -124,12 +124,12 @@ export default function AwardCertificatePanel({ awards, isAdmin, currentUserId }
             className="flex items-center gap-1.5 font-semibold text-slate-900"
           >
             <ChevronDown size={16} aria-hidden="true" className={`transition-transform ${sectionOpen ? "" : "-rotate-90"}`} />
-            Bursary certificates
+            Bursary approval invoices
             <span className="text-xs font-normal text-slate-500">{sectionOpen ? "Minimize" : "Expand"}</span>
           </button>
           {sectionOpen && (
             <p className="mt-1 text-xs text-slate-600">
-              Generated automatically when an administrator approves an award. The field officer who proposed it prints it for the student or school. Approval is not payment.
+              Generated automatically when an administrator approves an award. The field officer who proposed it prints the invoice for the student or school. Approval is not payment.
             </p>
           )}
         </div>
@@ -149,11 +149,11 @@ export default function AwardCertificatePanel({ awards, isAdmin, currentUserId }
       {error && <p className="border-b border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p>}
 
       {loading ? (
-        <p className="p-6 text-sm text-slate-600">Loading certificates...</p>
+        <p className="p-6 text-sm text-slate-600">Loading approval invoices...</p>
       ) : approvedAwards.length === 0 ? (
         <div className="flex items-start gap-3 p-6 text-sm text-slate-600">
           <Award size={18} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
-          <p>No approved awards yet. A certificate becomes available as soon as an administrator approves an award.</p>
+          <p>No approved awards yet. An approval invoice becomes available as soon as an administrator approves an award.</p>
         </div>
       ) : (
         <table className="w-full min-w-[900px] text-left text-sm">
@@ -162,7 +162,7 @@ export default function AwardCertificatePanel({ awards, isAdmin, currentUserId }
               <th className="p-3">Award</th>
               <th className="p-3">Student</th>
               <th className="p-3">Approved</th>
-              <th className="p-3">Certificate</th>
+              <th className="p-3">Invoice</th>
               <th className="p-3">Actions</th>
             </tr>
           </thead>
@@ -224,7 +224,7 @@ export default function AwardCertificatePanel({ awards, isAdmin, currentUserId }
                           <div className="shrink-0 rounded border border-slate-200 bg-white p-3 text-center">
                             <img
                               src={record.qr_code}
-                              alt={`Verification QR code for certificate ${certificate.certificate_reference}`}
+                              alt={`Verification QR code for invoice ${certificate.certificate_reference}`}
                               width={132}
                               height={132}
                               className="mx-auto h-[132px] w-[132px]"
@@ -233,7 +233,7 @@ export default function AwardCertificatePanel({ awards, isAdmin, currentUserId }
                           </div>
                           <dl className="min-w-0 flex-1 space-y-1 text-sm">
                             <div className="flex flex-wrap justify-between gap-2">
-                              <dt className="text-slate-600">Certificate reference</dt>
+                              <dt className="text-slate-600">Invoice number</dt>
                               <dd className="font-mono text-xs font-semibold text-slate-900">{certificate.certificate_reference}</dd>
                             </div>
                             <div className="flex flex-wrap justify-between gap-2">

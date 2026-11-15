@@ -7,9 +7,6 @@ const { notifyAwardSubmitted, notifyAwardDecision } = require('../services/notif
 const createSchema = z.object({
   student_id: z.string().uuid(),
   requested_amount: z.coerce.number().finite().positive().max(9999999999.99),
-  // A second bursary is allowed, but only after the officer acknowledges the existing allocation.
-  // The frontend asks first; this flag is the officer's answer travelling with the request.
-  confirm_duplicate_allocation: z.boolean().optional(),
 });
 
 const decisionSchema = z.object({
@@ -21,19 +18,69 @@ const decisionSchema = z.object({
   path: ['approved_amount'],
 });
 
+const reportSchema = z.object({
+  reason: z.string().trim().min(5).max(2000),
+});
+
+const correctionSchema = z.object({
+  approved_amount: z.coerce.number().finite().positive().max(9999999999.99).optional(),
+  requested_amount: z.coerce.number().finite().positive().max(9999999999.99).optional(),
+  school_code: z.string().trim().min(2).max(100).optional(),
+  reason: z.string().trim().min(5).max(2000),
+}).refine((value) => value.approved_amount !== undefined
+  || value.requested_amount !== undefined
+  || value.school_code !== undefined, {
+  message: 'Enter the value that should be corrected',
+  path: ['approved_amount'],
+});
+
+const voidSchema = z.object({
+  reason: z.string().trim().min(5).max(2000),
+});
+
+// The award year is the calendar year the proposal was made in. Storing it (rather than deriving it
+// from created_at on every read) lets the database enforce the annual rule with a unique index.
+function currentAwardYear() {
+  return new Date().getUTCFullYear();
+}
+
+// A report stays open until a correction or a void is written after it. The award row itself only
+// records the outcome (`voided_at`); the events table holds the sequence.
+const OPEN_REPORT_SQL = `
+  SELECT r.id, r.reason, r.created_at, r.actor_id, reporter.full_name AS reported_by_name
+  FROM bursary_award_correction_events r
+  LEFT JOIN users reporter ON reporter.id = r.actor_id
+  WHERE r.award_id = $1 AND r.event_type = 'error_reported'
+    AND NOT EXISTS (
+      SELECT 1 FROM bursary_award_correction_events resolved
+      WHERE resolved.award_id = r.award_id
+        AND resolved.event_type IN ('award_corrected', 'award_voided')
+        AND resolved.created_at >= r.created_at
+    )
+  ORDER BY r.created_at DESC
+  LIMIT 1`;
+
+
 async function list(req, res, next) {
   try {
     const { rows } = await pool.query(
       `SELECT a.*, s.full_name AS student_name, s.upi,
               proposer.full_name AS submitted_by_name,
               decider.full_name AS decided_by_name,
+              voider.full_name AS voided_by_name,
               cert.certificate_reference,
+              report.id AS open_report_id,
+              report.reason AS open_report_reason,
+              report.created_at AS open_report_at,
+              report.reported_by_name AS open_report_reported_by_name,
               COALESCE(duplicates.open_count, 0)::int AS open_duplicate_count
        FROM bursary_awards a
        JOIN students s ON s.id = a.student_id
        LEFT JOIN users proposer ON proposer.id = a.submitted_by
        LEFT JOIN users decider ON decider.id = a.decided_by
+       LEFT JOIN users voider ON voider.id = a.voided_by
        LEFT JOIN bursary_certificates cert ON cert.award_id = a.id
+       LEFT JOIN LATERAL (${OPEN_REPORT_SQL.replace('$1', 'a.id')}) report ON TRUE
        LEFT JOIN LATERAL (
          SELECT COUNT(*) AS open_count FROM duplicate_flags f
          WHERE (f.student_id = a.student_id OR f.matched_student_id = a.student_id)
@@ -72,15 +119,16 @@ async function create(req, res, next) {
     // instead of both reading "no allocation" and inserting two rows.
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [parsed.data.student_id]);
 
-    // One bursary per student is no longer enforced here. An existing allocation (approved, or still
-    // awaiting a decision) is reported so the officer can confirm; only a confirmed request may add
-    // a second proposal. Rejected proposals are ignored, as before.
+    // One bursary per student per calendar year. The check below gives the officer a readable answer;
+    // the partial unique index on (student_id, award_year) is what actually holds when two requests
+    // arrive at once, because the INSERT is the only place both transactions can collide.
+    const awardYear = currentAwardYear();
     const existing = await client.query(
-      `SELECT id, status, approved_amount, requested_amount, submitted_by, created_at
+      `SELECT id, status, approved_amount, requested_amount, submitted_by, award_year, created_at
        FROM bursary_awards
-       WHERE student_id = $1 AND status <> 'rejected'
+       WHERE student_id = $1 AND award_year = $2 AND status IN ('submitted', 'approved')
        ORDER BY created_at DESC LIMIT 1`,
-      [parsed.data.student_id]
+      [parsed.data.student_id, awardYear]
     );
     const existingAward = existing.rows[0];
     if (existingAward) {
@@ -98,37 +146,32 @@ async function create(req, res, next) {
           award: existingAward,
         });
       }
-      if (!parsed.data.confirm_duplicate_allocation) {
-        await client.query('ROLLBACK');
-        return res.status(409).json({
-          code: 'EXISTING_ALLOCATION',
-          message: existingAward.status === 'approved'
-            ? 'This student has already been allocated a bursary. Are you sure you want to proceed with another bursary proposal?'
-            : 'This student already has a bursary proposal awaiting a decision. Are you sure you want to proceed with another bursary proposal?',
-          existing_award: {
-            id: existingAward.id,
-            status: existingAward.status,
-            requested_amount: existingAward.requested_amount,
-            approved_amount: existingAward.approved_amount,
-            created_at: existingAward.created_at,
-          },
-        });
-      }
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'ANNUAL_AWARD_EXISTS',
+        message: existingAward.status === 'approved'
+          ? `This student already received an approved bursary for ${awardYear}. A student can only receive one bursary per calendar year. If that award is wrong, report the error so an administrator can correct or void it.`
+          : `This student already has a bursary proposal awaiting a decision for ${awardYear}. A student can only receive one bursary per calendar year.`,
+        existing_award: {
+          id: existingAward.id,
+          status: existingAward.status,
+          award_year: existingAward.award_year,
+          requested_amount: existingAward.requested_amount,
+          approved_amount: existingAward.approved_amount,
+          created_at: existingAward.created_at,
+        },
+      });
     }
 
     const { rows } = await client.query(
-      `INSERT INTO bursary_awards (student_id, school_code, requested_amount, submitted_by)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [parsed.data.student_id, student.rows[0].school_code, parsed.data.requested_amount, actorId]
+      `INSERT INTO bursary_awards (student_id, school_code, requested_amount, submitted_by, award_year)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [parsed.data.student_id, student.rows[0].school_code, parsed.data.requested_amount, actorId, awardYear]
     );
     await logAudit(actorId, 'AWARD_SUBMITTED', 'bursary_awards', rows[0].id, {
       requested_amount: rows[0].requested_amount,
       school_code: rows[0].school_code,
-      ...(existingAward ? {
-        duplicate_allocation_confirmed: true,
-        existing_award_id: existingAward.id,
-        existing_award_status: existingAward.status,
-      } : {}),
+      award_year: awardYear,
     }, client);
     // The reviewers are the only people who can act on a proposal, so they are the only ones
     // notified. The proposing officer already knows: they just submitted it.
@@ -139,6 +182,14 @@ async function create(req, res, next) {
     res.status(201).json({ message: 'Award proposed. It awaits an administrator decision.', award: rows[0] });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
+    // A concurrent request won the race after the check above read no row. The unique index rejected
+    // this insert, and the officer gets the same answer as the sequential path.
+    if (error.code === '23505' && /bursary_awards_student_year_active_unique/.test(error.constraint || '')) {
+      return res.status(409).json({
+        code: 'ANNUAL_AWARD_EXISTS',
+        message: `This student already has a bursary award for ${currentAwardYear()}. A student can only receive one bursary per calendar year. If that award is wrong, report the error so an administrator can correct or void it.`,
+      });
+    }
     next(error);
   } finally {
     client.release();
@@ -233,7 +284,7 @@ async function decide(req, res, next) {
     await client.query('COMMIT');
     res.json({
       message: decision === 'approved'
-        ? `Award approved. Certificate ${certificate.certificate_reference} was generated for the proposing field officer to print and issue.`
+        ? `Award approved. Bursary approval invoice ${certificate.certificate_reference} was generated for the proposing field officer to print and issue.`
         : 'Award rejected.',
       award: updated.rows[0],
       certificate_reference: certificate ? certificate.certificate_reference : null,
@@ -246,4 +297,208 @@ async function decide(req, res, next) {
   }
 }
 
-module.exports = { create, decide, list };
+// A field officer who spots a mistake reports it; the award itself does not change and the student's
+// year stays occupied until an administrator resolves the report. This is the replacement for the
+// old "propose another award anyway" escape hatch, which the annual rule now refuses.
+async function reportError(req, res, next) {
+  const parsed = reportSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Describe the error in at least 5 characters.' });
+  }
+  const actorId = req.user.id || req.user.sub;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT * FROM bursary_awards WHERE id = $1 FOR UPDATE', [req.params.id]);
+    const award = rows[0];
+    if (!award) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Award not found.' });
+    }
+    if (!['submitted', 'approved'].includes(award.status)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'Only a proposed or approved award can be reported. A rejected or voided award is already closed.' });
+    }
+    // The same ownership rule the invoice endpoints use: an officer acts on the awards they proposed.
+    if (req.user.role === 'field_officer' && award.submitted_by !== actorId) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ message: 'You can only report an error in an award you proposed.' });
+    }
+    const openReport = await client.query(OPEN_REPORT_SQL, [award.id]);
+    if (openReport.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'This award already has an error report awaiting an administrator.' });
+    }
+    const created = await client.query(
+      `INSERT INTO bursary_award_correction_events (award_id, event_type, reason, changes, actor_id)
+       VALUES ($1, 'error_reported', $2, NULL, $3)
+       RETURNING id, reason, created_at`,
+      [award.id, parsed.data.reason, actorId]
+    );
+    await logAudit(actorId, 'AWARD_ERROR_REPORTED', 'bursary_awards', award.id, {
+      reason: parsed.data.reason,
+      status: award.status,
+      approved_amount: award.approved_amount,
+      award_year: award.award_year,
+    }, client);
+    await client.query('COMMIT');
+    res.status(201).json({
+      message: 'Error reported. An administrator will review the award before it is corrected or voided.',
+      report: created.rows[0],
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally {
+    client.release();
+  }
+}
+
+// Correcting keeps the award alive and keeps the year occupied: the student still has their one
+// bursary, now with the right amount. The previous values survive in the event row and the audit log.
+async function correct(req, res, next) {
+  const parsed = correctionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Enter the corrected value and a reason of at least 5 characters.' });
+  }
+  const actorId = req.user.id || req.user.sub;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT * FROM bursary_awards WHERE id = $1 FOR UPDATE', [req.params.id]);
+    const award = rows[0];
+    if (!award) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Award not found.' });
+    }
+    if (award.status !== 'approved') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'Only an approved award can be corrected. A proposal is decided; a voided award cannot be changed.' });
+    }
+    const openReport = await client.query(OPEN_REPORT_SQL, [award.id]);
+    if (!openReport.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'No error report is awaiting resolution for this award.' });
+    }
+    const changes = {};
+    if (parsed.data.approved_amount !== undefined && Number(award.approved_amount) !== parsed.data.approved_amount) {
+      changes.approved_amount = { from: Number(award.approved_amount), to: parsed.data.approved_amount };
+    }
+    if (parsed.data.requested_amount !== undefined && Number(award.requested_amount) !== parsed.data.requested_amount) {
+      changes.requested_amount = { from: Number(award.requested_amount), to: parsed.data.requested_amount };
+    }
+    if (parsed.data.school_code !== undefined && award.school_code !== parsed.data.school_code) {
+      changes.school_code = { from: award.school_code, to: parsed.data.school_code };
+    }
+    if (!Object.keys(changes).length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'The corrected value matches the recorded value, so nothing changed.' });
+    }
+    const updated = await client.query(
+      `UPDATE bursary_awards
+       SET requested_amount = COALESCE($1, requested_amount),
+           approved_amount = COALESCE($2, approved_amount),
+           school_code = COALESCE($3, school_code),
+           corrected_by = $4, corrected_at = NOW(), updated_at = NOW()
+       WHERE id = $5 RETURNING *`,
+      [
+        parsed.data.requested_amount === undefined ? null : parsed.data.requested_amount,
+        parsed.data.approved_amount === undefined ? null : parsed.data.approved_amount,
+        parsed.data.school_code === undefined ? null : parsed.data.school_code,
+        actorId,
+        award.id,
+      ]
+    );
+    await client.query(
+      `INSERT INTO bursary_award_correction_events (award_id, event_type, reason, changes, actor_id)
+       VALUES ($1, 'award_corrected', $2, $3, $4)`,
+      [award.id, parsed.data.reason, JSON.stringify(changes), actorId]
+    );
+    await logAudit(actorId, 'AWARD_CORRECTED', 'bursary_awards', award.id, {
+      reason: parsed.data.reason,
+      changes,
+      award_year: award.award_year,
+    }, client);
+    await client.query('COMMIT');
+    res.json({
+      message: `Award corrected. It still counts as the student's bursary for ${award.award_year}.`,
+      award: updated.rows[0],
+      changes,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally {
+    client.release();
+  }
+}
+
+// Voiding closes the award without deleting it. Because the unique index only covers pending and
+// approved rows, the student becomes eligible again for the same calendar year as soon as this
+// transaction commits — not before.
+async function voidAward(req, res, next) {
+  const parsed = voidSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Give a reason for voiding the award, at least 5 characters.' });
+  }
+  const actorId = req.user.id || req.user.sub;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT * FROM bursary_awards WHERE id = $1 FOR UPDATE', [req.params.id]);
+    const award = rows[0];
+    if (!award) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Award not found.' });
+    }
+    if (!['submitted', 'approved'].includes(award.status)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'This award is already closed and cannot be voided.' });
+    }
+    const openReport = await client.query(OPEN_REPORT_SQL, [award.id]);
+    if (!openReport.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'No error report is awaiting resolution for this award.' });
+    }
+    // Money already recorded against the award would be left pointing at a voided decision.
+    const payments = await client.query(
+      `SELECT 1 FROM disbursements
+       WHERE award_id = $1 AND payment_status IN ('issued', 'cleared')
+       LIMIT 1`,
+      [award.id]
+    );
+    if (payments.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'Payments recorded against this award must be reconciled before it can be voided.' });
+    }
+    const updated = await client.query(
+      `UPDATE bursary_awards
+       SET status = 'voided', void_reason = $1, voided_by = $2, voided_at = NOW(), updated_at = NOW()
+       WHERE id = $3 RETURNING *`,
+      [parsed.data.reason, actorId, award.id]
+    );
+    await client.query(
+      `INSERT INTO bursary_award_correction_events (award_id, event_type, reason, changes, actor_id)
+       VALUES ($1, 'award_voided', $2, $3, $4)`,
+      [award.id, parsed.data.reason, JSON.stringify({ status: { from: award.status, to: 'voided' } }), actorId]
+    );
+    await logAudit(actorId, 'AWARD_VOIDED', 'bursary_awards', award.id, {
+      reason: parsed.data.reason,
+      previous_status: award.status,
+      approved_amount: award.approved_amount,
+      award_year: award.award_year,
+    }, client);
+    await client.query('COMMIT');
+    res.json({
+      message: `Award voided. The student can be considered for another bursary in ${award.award_year}. The voided record is kept for the audit trail.`,
+      award: updated.rows[0],
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { create, decide, list, reportError, correct, voidAward };

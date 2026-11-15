@@ -6,13 +6,15 @@ import AwardCertificatePanel from "../components/AwardCertificatePanel";
 
 const emptyAward = { student_id: "", requested_amount: "" };
 const emptyDecision = { award_id: "", decision: "approved", approved_amount: "", reason: "" };
-
-const DUPLICATE_ALLOCATION_WARNING = "This student has already been allocated a bursary. Are you sure you want to proceed with another bursary proposal?";
+const emptyReport = { award_id: "", reason: "" };
+const emptyCorrection = { award_id: "", approved_amount: "", reason: "" };
+const emptyVoid = { award_id: "", reason: "" };
 
 const STATUS_LABELS = {
   submitted: "Proposed",
   approved: "Approved",
   rejected: "Rejected",
+  voided: "Voided",
 };
 
 const FILTERS = [
@@ -20,6 +22,7 @@ const FILTERS = [
   { id: "submitted", label: "Proposed" },
   { id: "approved", label: "Approved" },
   { id: "rejected", label: "Rejected" },
+  { id: "voided", label: "Voided" },
 ];
 
 function money(value) {
@@ -54,6 +57,9 @@ export default function Awards() {
   const [awards, setAwards] = useState([]);
   const [awardForm, setAwardForm] = useState(emptyAward);
   const [decisionForm, setDecisionForm] = useState(emptyDecision);
+  const [reportForm, setReportForm] = useState(emptyReport);
+  const [correctionForm, setCorrectionForm] = useState(emptyCorrection);
+  const [voidForm, setVoidForm] = useState(emptyVoid);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -83,10 +89,19 @@ export default function Awards() {
   useEffect(() => { loadData(); }, [isAdmin]);
 
   const pendingAwards = awards.filter((award) => award.status === "submitted");
-  // An allocation is any proposal or approval that was not rejected. These students stay selectable:
-  // proposing a second bursary is allowed, but the officer must confirm the warning first. The API
-  // performs the same check and is the authority when this page's copy is stale.
-  const allocatedStudentIds = new Set(awards.filter((award) => award.status !== "rejected").map((award) => award.student_id));
+  // One bursary per student per calendar year. A proposal or an approval occupies the year; a
+  // rejected or voided award does not. The API enforces the same rule, so this copy only prevents a
+  // pointless request when the page already knows the answer.
+  const currentYear = new Date().getFullYear();
+  const awardedStudentIds = new Set(
+    awards
+      .filter((award) => ["submitted", "approved"].includes(award.status)
+        && Number(award.award_year) === currentYear)
+      .map((award) => award.student_id)
+  );
+  const openReports = awards.filter((award) => award.open_report_id);
+  const reportableAwards = awards.filter((award) => ["submitted", "approved"].includes(award.status)
+    && award.submitted_by === user?.id);
   const counts = {
     total: awards.length,
     proposed: pendingAwards.length,
@@ -104,34 +119,60 @@ export default function Awards() {
     // A ref, not the state flag: two clicks in the same tick both read `saving === false`.
     if (submittingRef.current) return;
     setError(""); setMessage("");
-    const knownAllocation = allocatedStudentIds.has(awardForm.student_id);
-    if (knownAllocation && !window.confirm(DUPLICATE_ALLOCATION_WARNING)) return; // Cancel keeps the form as it is
     submittingRef.current = true;
     setSaving(true);
     try {
-      let response;
-      try {
-        response = await api.post("/awards", knownAllocation
-          ? { ...awardForm, confirm_duplicate_allocation: true }
-          : awardForm);
-      } catch (err) {
-        const data = err.response?.data;
-        if (data?.code !== "EXISTING_ALLOCATION") throw err;
-        // The server found an allocation this page had not loaded. Ask before resubmitting.
-        setSaving(false);
-        if (!window.confirm(data.message || DUPLICATE_ALLOCATION_WARNING)) {
-          setMessage("Proposal cancelled. The student's existing bursary is unchanged.");
-          return;
-        }
-        setSaving(true);
-        response = await api.post("/awards", { ...awardForm, confirm_duplicate_allocation: true });
-      }
+      const response = await api.post("/awards", awardForm);
       setMessage(response.data.message);
       setAwardForm(emptyAward);
       await loadData();
     } catch (err) {
+      // The server refuses a second award for the same student and year; its message explains why
+      // and points at the report-an-error path.
       setError(err.response?.data?.message || "Unable to submit award.");
     } finally { submittingRef.current = false; setSaving(false); }
+  }
+
+  async function submitReport(event) {
+    event.preventDefault();
+    setError(""); setMessage(""); setSaving(true);
+    try {
+      const response = await api.post(`/awards/${reportForm.award_id}/error-report`, { reason: reportForm.reason });
+      setMessage(response.data.message);
+      setReportForm(emptyReport);
+      await loadData();
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to report the error.");
+    } finally { setSaving(false); }
+  }
+
+  async function submitCorrection(event) {
+    event.preventDefault();
+    setError(""); setMessage(""); setSaving(true);
+    try {
+      const response = await api.patch(`/awards/${correctionForm.award_id}/correction`, {
+        approved_amount: Number(correctionForm.approved_amount),
+        reason: correctionForm.reason,
+      });
+      setMessage(response.data.message);
+      setCorrectionForm(emptyCorrection);
+      await loadData();
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to correct the award.");
+    } finally { setSaving(false); }
+  }
+
+  async function submitVoid(event) {
+    event.preventDefault();
+    setError(""); setMessage(""); setSaving(true);
+    try {
+      const response = await api.post(`/awards/${voidForm.award_id}/void`, { reason: voidForm.reason });
+      setMessage(response.data.message);
+      setVoidForm(emptyVoid);
+      await loadData();
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to void the award.");
+    } finally { setSaving(false); }
   }
 
   async function submitDecision(event) {
@@ -158,7 +199,7 @@ export default function Awards() {
     <main className="mx-auto max-w-7xl space-y-5 p-5 sm:p-8">
       <header>
         <h1 className="text-2xl font-bold text-slate-900">Bursary awards</h1>
-        <p className="mt-1 text-sm text-slate-600">The field officer proposes, an administrator decides. Only an approved award counts &mdash; its certificate is generated automatically for printing. No payment is implied.</p>
+        <p className="mt-1 text-sm text-slate-600">The field officer proposes, an administrator decides. One bursary per student per calendar year. Only an approved award counts &mdash; its bursary approval invoice is generated automatically for printing. No payment is implied.</p>
       </header>
 
       {error && <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p>}
@@ -182,9 +223,9 @@ export default function Awards() {
                     <select required value={awardForm.student_id} onChange={(e) => setAwardForm({ ...awardForm, student_id: e.target.value })} className={field}>
                       <option value="">Select student</option>
                       {students.map((student) => (
-                        <option key={student.id} value={student.id}>
+                        <option key={student.id} value={student.id} disabled={awardedStudentIds.has(student.id)}>
                           {student.full_name} - {student.school_code || "No school"}
-                          {allocatedStudentIds.has(student.id) ? " (already has a bursary)" : ""}
+                          {awardedStudentIds.has(student.id) ? ` (bursary already awarded for ${currentYear})` : ""}
                         </option>
                       ))}
                     </select>
@@ -192,11 +233,11 @@ export default function Awards() {
                   <label className={label}>Amount (KSh)
                     <input required type="number" min="0.01" step="0.01" value={awardForm.requested_amount} onChange={(e) => setAwardForm({ ...awardForm, requested_amount: e.target.value })} className={field} />
                   </label>
-                  <button disabled={saving} className={`self-end ${primary}`}>{saving ? "Saving..." : "Propose award"}</button>
+                  <button disabled={saving || awardedStudentIds.has(awardForm.student_id)} className={`self-end ${primary}`}>{saving ? "Saving..." : "Propose award"}</button>
                 </form>
-                {allocatedStudentIds.has(awardForm.student_id) && (
-                  <p className="mt-2 text-xs text-amber-700">This student already has a bursary on record. You can still propose another one after confirming the warning.</p>
-                )}
+                <p className="mt-2 text-xs text-slate-500">
+                  A student can receive one bursary per calendar year ({currentYear}). A proposal occupies the year until it is decided.
+                </p>
                 {!students.length && (
                   <p className="mt-2 text-xs text-slate-500">No students are registered yet, so there is nobody to propose an award for.</p>
                 )}
@@ -232,6 +273,95 @@ export default function Awards() {
                 <button disabled={saving} className={`w-fit ${primary}`}>Save decision</button>
               </form>
             )}
+          </div>
+        </section>
+      )}
+
+      {!isAdmin && reportableAwards.some((award) => !award.open_report_id) && (
+        <section className="rounded border border-slate-200 bg-white">
+          <div className="p-4">
+            <h2 className="text-sm font-semibold text-slate-900">Report an error in an award</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              A wrong award cannot be replaced with a second one. Report it here; an administrator will correct or void it.
+            </p>
+            <form onSubmit={submitReport} className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className={label}>Award
+                <select required value={reportForm.award_id} onChange={(e) => setReportForm({ ...reportForm, award_id: e.target.value })} className={field}>
+                  <option value="">Select award</option>
+                  {reportableAwards.filter((award) => !award.open_report_id).map((award) => (
+                    <option key={award.id} value={award.id}>
+                      {shortId(award.id)} - {award.student_name} - {money(award.approved_amount ?? award.requested_amount)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={label}>What is wrong?
+                <input required minLength="5" value={reportForm.reason} onChange={(e) => setReportForm({ ...reportForm, reason: e.target.value })} className={field} />
+              </label>
+              <button disabled={saving} className={primary}>Report error</button>
+            </form>
+            {reportableAwards.some((award) => award.open_report_id) && (
+              <p className="mt-2 text-xs text-amber-700">An award you reported is already awaiting an administrator's decision.</p>
+            )}
+          </div>
+        </section>
+      )}
+
+      {isAdmin && openReports.length > 0 && (
+        <section className="rounded border border-amber-300 bg-amber-50">
+          <div className="p-4">
+            <h2 className="text-sm font-semibold text-slate-900">Reported award errors ({openReports.length})</h2>
+            <ul className="mt-2 space-y-2">
+              {openReports.map((award) => (
+                <li key={award.id} className="rounded border border-amber-200 bg-white p-2 text-xs text-slate-700">
+                  <span className="font-semibold text-slate-900">{award.student_name}</span> - {statusText(award.status)} - {money(award.approved_amount ?? award.requested_amount)} for {award.award_year}
+                  <span className="block text-slate-500">
+                    Reported by {award.open_report_reported_by_name || "a field officer"}
+                    {award.open_report_at ? ` on ${new Date(award.open_report_at).toLocaleDateString()}` : ""}
+                  </span>
+                  <span className="mt-1 block text-slate-700">&ldquo;{award.open_report_reason}&rdquo;</span>
+                </li>
+              ))}
+            </ul>
+
+            <form onSubmit={submitCorrection} className="mt-4 grid gap-3 border-t border-amber-200 pt-3 sm:grid-cols-2">
+              <label className={label}>Correct award
+                <select required value={correctionForm.award_id} onChange={(e) => {
+                  const award = openReports.find((item) => item.id === e.target.value);
+                  setCorrectionForm({ ...correctionForm, award_id: e.target.value, approved_amount: award?.approved_amount ?? "" });
+                }} className={field}>
+                  <option value="">Select award</option>
+                  {openReports.filter((award) => award.status === "approved").map((award) => (
+                    <option key={award.id} value={award.id}>{shortId(award.id)} - {award.student_name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={label}>Corrected approved amount (KSh)
+                <input required type="number" min="0.01" step="0.01" value={correctionForm.approved_amount} onChange={(e) => setCorrectionForm({ ...correctionForm, approved_amount: e.target.value })} className={field} />
+              </label>
+              <label className={label}>Reason for the correction
+                <input required minLength="5" value={correctionForm.reason} onChange={(e) => setCorrectionForm({ ...correctionForm, reason: e.target.value })} className={field} />
+              </label>
+              <button disabled={saving} className={`w-fit self-end ${primary}`}>Correct award</button>
+            </form>
+
+            <form onSubmit={submitVoid} className="mt-4 grid gap-3 border-t border-amber-200 pt-3 sm:grid-cols-2">
+              <label className={label}>Void award
+                <select required value={voidForm.award_id} onChange={(e) => setVoidForm({ ...voidForm, award_id: e.target.value })} className={field}>
+                  <option value="">Select award</option>
+                  {openReports.map((award) => (
+                    <option key={award.id} value={award.id}>{shortId(award.id)} - {award.student_name} - {statusText(award.status)}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={label}>Reason for voiding (required)
+                <input required minLength="5" value={voidForm.reason} onChange={(e) => setVoidForm({ ...voidForm, reason: e.target.value })} className={field} />
+              </label>
+              <button disabled={saving} className="w-fit self-end rounded border border-red-300 bg-white px-4 py-2 font-semibold text-red-700 disabled:opacity-50">Void award</button>
+            </form>
+            <p className="mt-2 text-xs text-slate-600">
+              A corrected award still counts as the student&rsquo;s bursary for that year. Voiding frees the year once it is completed and keeps the original record.
+            </p>
           </div>
         </section>
       )}
@@ -274,7 +404,9 @@ export default function Awards() {
                   </td>
                   <td className="px-3 py-2">{money(award.requested_amount)}</td>
                   <td className="px-3 py-2">{award.approved_amount == null ? "-" : money(award.approved_amount)}</td>
-                  <td className="px-3 py-2"><Status>{statusText(award.status)}</Status></td>
+                  <td className="px-3 py-2"><Status>{statusText(award.status)}</Status>
+                    {award.open_report_id && <span className="ml-2 text-xs text-amber-700">error reported</span>}
+                  </td>
                 </tr>
               ))}
               {loading && <tr><td colSpan="4" className="px-3 py-6 text-center text-slate-500">Loading...</td></tr>}

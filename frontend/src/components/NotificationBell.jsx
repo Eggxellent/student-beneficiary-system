@@ -177,7 +177,7 @@ export default function NotificationBell({ tone = "light" }) {
                 <Inbox size={22} className="text-slate-300" aria-hidden="true" />
                 <p className="text-sm font-semibold text-slate-700">You&apos;re all caught up</p>
                 <p className="text-[11px] text-slate-500">
-                  Proposals awaiting review, award decisions and ready certificates will appear here.
+                  Proposals awaiting review, award decisions and ready approval invoices will appear here.
                 </p>
               </div>
             )}

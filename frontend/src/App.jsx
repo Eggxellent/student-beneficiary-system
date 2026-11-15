@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
 import Verification from "./pages/Verification";
 import CertificateVerification from "./pages/CertificateVerification";
+import Landing from "./pages/Landing";
 import AdminDashboard from "./pages/AdminDashboard";
 import Students from "./pages/Students";
 import StudentRegistration from "./pages/StudentRegistration";
@@ -143,14 +144,9 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <Navigate to="/dashboard" replace />
-          </ProtectedRoute>
-        }
-      />
+      {/* The public landing page is the entry point for everyone who is not signed in. It renders
+          outside the authenticated layout, and the staff sign-in route is unchanged. */}
+      <Route path="/" element={<Landing />} />
     </Routes>
   );
 }

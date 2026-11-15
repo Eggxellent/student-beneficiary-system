@@ -42,7 +42,7 @@ function ResetButton({ onClick }) {
       onClick={onClick}
       className="text-sm font-semibold text-[#173D35] underline underline-offset-2 hover:text-[#245747]"
     >
-      Check another certificate
+      Check another invoice
     </button>
   );
 }
@@ -91,7 +91,7 @@ export default function CertificateVerification() {
     async (reference) => {
       const trimmed = reference.trim();
       if (!trimmed) {
-        setFormError("Enter the certificate reference printed on the document.");
+        setFormError("Enter the invoice number printed on the document.");
         return;
       }
       setFormError("");
@@ -156,7 +156,7 @@ export default function CertificateVerification() {
       className="space-y-3"
     >
       <label htmlFor="certificate-reference" className="block text-sm font-semibold text-slate-900">
-        Check a certificate reference
+        Check an approval invoice number
       </label>
       <p className="text-xs leading-relaxed text-slate-600">
         Printed below the QR code, e.g. {REFERENCE_EXAMPLE}. Letter case and spaces do not matter.
@@ -179,7 +179,7 @@ export default function CertificateVerification() {
         disabled={status === "loading"}
         className="w-full rounded-md border border-[#173D35] bg-[#173D35] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#245747] disabled:opacity-60 sm:w-auto"
       >
-        Verify certificate
+        Verify invoice
       </button>
     </form>
   );
@@ -187,18 +187,18 @@ export default function CertificateVerification() {
   return (
     <PublicVerificationLayout>
       <div>
-        <h1 className="text-xl font-bold tracking-tight text-[#173D35]">Bursary certificate verification</h1>
+        <h1 className="text-xl font-bold tracking-tight text-[#173D35]">Bursary approval invoice verification</h1>
         <p className="mt-1 text-sm text-slate-600">
-          {token ? "Scanned SBMS bursary award certificate" : "Check an SBMS bursary award certificate"}
+          {token ? "Scanned SBMS bursary approval invoice" : "Check an SBMS bursary approval invoice"}
         </p>
       </div>
 
-      {status === "loading" && <div className="mt-8"><LoadingState message="Checking this certificate..." /></div>}
+      {status === "loading" && <div className="mt-8"><LoadingState message="Checking this approval invoice..." /></div>}
 
       {status === "idle" && (
         <div className="mt-6 space-y-5">
           <p className="text-sm leading-relaxed text-slate-700">
-            Scan the QR code on an SBMS bursary award certificate, or type the reference printed on it.
+            Scan the QR code on an SBMS bursary approval invoice, or type the invoice number printed on it.
           </p>
           {referenceForm}
         </div>
@@ -206,7 +206,7 @@ export default function CertificateVerification() {
 
       {status === "verified" && (
         <div className="mt-6 space-y-4">
-          <StatusBadge tone="success" icon={BadgeCheck}>Current certificate</StatusBadge>
+          <StatusBadge tone="success" icon={BadgeCheck}>Current approval</StatusBadge>
           <p className="text-sm leading-relaxed text-slate-700">
             Matches an approved bursary award. Compare every field with the document in your hands.
           </p>
@@ -218,8 +218,8 @@ export default function CertificateVerification() {
             <DetailRow label="Approved bursary award" value={formatAmount(result?.approved_amount)} />
             <DetailRow label="Date of issue" value={formatDate(result?.issued_at)} />
             <DetailRow label="Award approved on" value={formatDate(result?.award_approved_at)} />
-            <DetailRow label="Certificate reference" value={reference} mono />
-            <DetailRow label="Certificate status" value="Current" />
+            <DetailRow label="Invoice number" value={reference} mono />
+            <DetailRow label="Approval status" value="Current" />
             <DetailRow label="Checked" value={checked ? `${checked} (device time)` : null} />
           </dl>
           <p className="text-xs leading-relaxed text-slate-600">
@@ -234,12 +234,12 @@ export default function CertificateVerification() {
         <div className="mt-6 space-y-4">
           <StatusBadge tone="warning" icon={AlertTriangle}>No longer current</StatusBadge>
           <p className="text-sm leading-relaxed text-slate-700">
-            The award this certificate names has changed since it was issued, so the printed document can
-            no longer be relied on. Ask the awarding office for a replacement.
+            The award this approval invoice names has changed since it was issued, so the printed document
+            can no longer be relied on. Ask the awarding office for a replacement.
           </p>
           <dl className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2">
-            <DetailRow label="Certificate reference" value={reference} mono />
-            <DetailRow label="Certificate status" value="Superseded" />
+            <DetailRow label="Invoice number" value={reference} mono />
+            <DetailRow label="Approval status" value="Superseded" />
             <DetailRow label="Checked" value={checked ? `${checked} (device time)` : null} />
           </dl>
           <ResetButton onClick={resetToForm} />
@@ -254,7 +254,7 @@ export default function CertificateVerification() {
             cannot pass.
           </p>
           <p className="text-xs leading-relaxed text-slate-600">
-            Check the reference character by character, scan the QR code on the certificate itself, or ask
+            Check the invoice number character by character, scan the QR code on the invoice itself, or ask
             the awarding office to confirm.
           </p>
           {checked && <p className="text-xs text-slate-600">Checked at {checked} (device time).</p>}
@@ -266,7 +266,7 @@ export default function CertificateVerification() {
         <div className="mt-6 space-y-4">
           <StatusBadge tone="warning" icon={AlertTriangle}>Please wait</StatusBadge>
           <p className="text-sm leading-relaxed text-slate-700">
-            Too many checks in a short time, so this certificate was not checked. Wait a few minutes and try again.
+            Too many checks in a short time, so this approval invoice was not checked. Wait a few minutes and try again.
           </p>
           <RetryButton onClick={retry}>Try again</RetryButton>
         </div>
@@ -276,7 +276,7 @@ export default function CertificateVerification() {
         <div className="mt-6 space-y-4">
           <StatusBadge tone="warning" icon={WifiOff}>Connection problem</StatusBadge>
           <p className="text-sm leading-relaxed text-slate-700">
-            The verification service could not be reached, so this certificate was
+            The verification service could not be reached, so this approval invoice was
             <strong> not</strong> checked.
           </p>
           <RetryButton onClick={retry} />

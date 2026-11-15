@@ -1,3 +1,10 @@
+> **Superseded 2026-11-13.** The landscape bursary certificate described below has been replaced by
+> the A4 portrait **Bursary Approval Invoice** rendered by `backend/src/services/invoiceDocument.js`.
+> The table (`bursary_certificates`), the `/api/awards/:id/certificate*` routes, the opaque token and
+> the public QR verification endpoint are unchanged; only the printed document, its wording and the
+> staff-facing labels changed. Read this file for the verification model, not for the current layout.
+
+
 # Bursary award certificates — 1 November 2026
 
 **Scope:** issuing a QR-verifiable certificate for an approved bursary award, the public
