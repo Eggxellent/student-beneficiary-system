@@ -25,7 +25,7 @@ function fieldEvidence(first, second, feature, similarity = 0) {
   if (feature === 'name') {
     return similarity >= MIN_NAME_SIMILARITY ? `high similarity (${Math.round(similarity * 100)}%)` : 'differs';
   }
-  if (['school', 'guardian'].includes(feature) && similarity >= MIN_NAME_SIMILARITY && similarity < 1) {
+  if (feature === 'school' && similarity >= MIN_NAME_SIMILARITY && similarity < 1) {
     return `similar (${Math.round(similarity * 100)}%)`;
   }
   const left = normalized(first);
@@ -42,7 +42,7 @@ function maskIdentifier(value) {
 }
 
 const CASE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const REVEALED_IDENTIFIER_FIELDS = ['guardian_id', 'guardian_contact', 'upi', 'birth_certificate_number', 'national_id_number'];
+const REVEALED_IDENTIFIER_FIELDS = ['guardian_contact', 'upi', 'birth_certificate_number', 'national_id_number'];
 
 function toReviewCase(row) {
   const first = {
@@ -88,11 +88,22 @@ function toReviewCase(row) {
     exactNationalId && 'National ID',
   ].filter(Boolean);
   const features = modelFeatures || legacyFeatures;
+  // A name, a date of birth and a school code are all shared by unrelated beneficiaries, so they
+  // cannot separate two people on their own. When both records carry a UPI or a birth certificate
+  // number and those values differ, the pair is described that way instead of as a model match.
+  const bothUpi = Boolean(normalized(first.upi) && normalized(second.upi));
+  const bothCertificate = Boolean(normalized(first.birth_certificate_number) && normalized(second.birth_certificate_number));
+  const conflictingIdentifiers = [
+    bothUpi && legacyFeatures.upi_match < 1 && 'UPI',
+    bothCertificate && legacyFeatures.birth_certificate_match < 1 && 'birth certificate number',
+  ].filter(Boolean);
   const reason = exactIdentifiers.length
     ? `Exact ${exactIdentifiers.join(' and ')} match; verify the source documents.`
-    : row.model_version
-      ? `Model score met the provisional human-review threshold (${threshold.toFixed(2)}).`
-      : 'Legacy rule-based flag retained for human review.';
+    : conflictingIdentifiers.length
+      ? `The ${conflictingIdentifiers.join(' and ')} differ between the two records. Agreement is limited to fields that are not unique, so treat these as different beneficiaries unless the documents show otherwise.`
+      : row.model_version
+        ? `Model score met the provisional human-review threshold (${threshold.toFixed(2)}).`
+        : 'Legacy rule-based flag retained for human review.';
 
   return {
     id: row.id,
@@ -108,14 +119,13 @@ function toReviewCase(row) {
     reason,
     exact_identifier_matches: exactIdentifiers,
     students: [
-      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code, school_code: first.school_code, guardian_id: maskIdentifier(first.guardian_id), guardian_contact: maskIdentifier(first.primary_phone), upi: maskIdentifier(first.upi), birth_certificate_number: maskIdentifier(first.birth_certificate_number), national_id_number: maskIdentifier(first.national_id_number) },
-      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code, school_code: second.school_code, guardian_id: maskIdentifier(second.guardian_id), guardian_contact: maskIdentifier(second.primary_phone), upi: maskIdentifier(second.upi), birth_certificate_number: maskIdentifier(second.birth_certificate_number), national_id_number: maskIdentifier(second.national_id_number) },
+      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code, school_code: first.school_code, guardian_contact: maskIdentifier(first.primary_phone), upi: maskIdentifier(first.upi), birth_certificate_number: maskIdentifier(first.birth_certificate_number), national_id_number: maskIdentifier(first.national_id_number) },
+      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code, school_code: second.school_code, guardian_contact: maskIdentifier(second.primary_phone), upi: maskIdentifier(second.upi), birth_certificate_number: maskIdentifier(second.birth_certificate_number), national_id_number: maskIdentifier(second.national_id_number) },
     ],
     evidence: {
       name: fieldEvidence(first.full_name, second.full_name, 'name', features.jaro_winkler || 0),
       date_of_birth: features.dob_match >= 1 ? 'matches' : features.dob_match > 0 ? `similar (${Math.round(features.dob_match * 100)}%)` : fieldEvidence(first.date_of_birth, second.date_of_birth),
       school: fieldEvidence(first.school_code, second.school_code, 'school', features.school_match || 0),
-      guardian: fieldEvidence(first.guardian_id, second.guardian_id, 'guardian', features.guardian_match || 0),
       upi: features.upi_match > 0 ? `similar (${Math.round(features.upi_match * 100)}%)` : fieldEvidence(first.upi, second.upi),
       birth_certificate: features.birth_certificate_match > 0 ? `similar (${Math.round(features.birth_certificate_match * 100)}%)` : fieldEvidence(first.birth_certificate_number, second.birth_certificate_number),
       national_id: fieldEvidence(first.national_id_number, second.national_id_number),
@@ -381,7 +391,6 @@ async function revealIdentifiers(req, res, next) {
               s1.is_synthetic AS student_is_synthetic,
               TO_CHAR(s1.date_of_birth, 'YYYY-MM-DD') AS student_date_of_birth,
               s1.school_code AS student_school,
-              s1.guardian_id AS student_guardian_id,
               s1.primary_phone AS student_guardian_contact,
               s1.upi AS student_upi,
               s1.birth_certificate_number AS student_birth_certificate_number,
@@ -390,7 +399,6 @@ async function revealIdentifiers(req, res, next) {
               s2.is_synthetic AS matched_student_is_synthetic,
               TO_CHAR(s2.date_of_birth, 'YYYY-MM-DD') AS matched_date_of_birth,
               s2.school_code AS matched_school,
-              s2.guardian_id AS matched_guardian_id,
               s2.primary_phone AS matched_guardian_contact,
               s2.upi AS matched_upi,
               s2.birth_certificate_number AS matched_birth_certificate_number,
@@ -411,7 +419,6 @@ async function revealIdentifiers(req, res, next) {
         is_synthetic: row.student_is_synthetic,
         date_of_birth: row.student_date_of_birth,
         school_code: row.student_school,
-        guardian_id: row.student_guardian_id,
         guardian_contact: row.student_guardian_contact,
         upi: row.student_upi,
         birth_certificate_number: row.student_birth_certificate_number,
@@ -423,7 +430,6 @@ async function revealIdentifiers(req, res, next) {
         is_synthetic: row.matched_student_is_synthetic,
         date_of_birth: row.matched_date_of_birth,
         school_code: row.matched_school,
-        guardian_id: row.matched_guardian_id,
         guardian_contact: row.matched_guardian_contact,
         upi: row.matched_upi,
         birth_certificate_number: row.matched_birth_certificate_number,

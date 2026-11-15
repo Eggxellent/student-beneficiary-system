@@ -9,11 +9,28 @@ const evidenceLabels = {
   name: "Name similarity",
   date_of_birth: "Date of birth",
   school: "School identifier",
-  guardian: "Guardian",
   upi: "UPI",
   birth_certificate: "Birth certificate",
   national_id: "National ID",
 };
+
+// Names, dates of birth and school codes are not unique: two people can share all three and share
+// nothing else. So the comparison shows a weak field only when its similarity actually cleared the
+// threshold, while the three identifiers that cannot be partly shared (UPI, birth certificate,
+// national ID) are shown either way — agreement proves the match, disagreement refutes it.
+const DECISIVE_FIELDS = new Set(["upi", "birth_certificate", "national_id"]);
+
+function evidenceSurpassesThreshold(key, value) {
+  if (!value) return false;
+  if (DECISIVE_FIELDS.has(key)) return true;
+  return value === "matches" || value.startsWith("high similarity");
+}
+
+function visibleEvidence(evidence) {
+  return Object.entries(evidenceLabels)
+    .filter(([key]) => evidenceSurpassesThreshold(key, evidence?.[key]))
+    .map(([key, label]) => [key, label, evidence[key]]);
+}
 
 function prettyStatus(status) {
   return ({ pending: "Pending review", needs_verification: "Needs further verification", confirmed_duplicate: "Confirmed duplicate", not_duplicate: "Not a duplicate" })[status] || status;
@@ -29,7 +46,6 @@ function identityRows(student) {
   return [
     ["Date of birth", student.date_of_birth],
     ["School identifier (stored value)", student.school_code],
-    ["Guardian identifier", student.guardian_id],
     ["Guardian no:", student.guardian_contact],
     ["UPI", student.upi],
     ["Birth certificate", student.birth_certificate_number],
@@ -213,7 +229,7 @@ export default function DuplicateReview() {
               return <article key={student.reference} className="rounded border border-slate-200 p-4"><h3 className="font-semibold">{student.full_name}</h3><p className="mb-3 text-xs text-slate-500">Case reference: {student.reference}</p><dl className="space-y-2 text-sm">{identityRows(shown).map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b border-slate-100 pb-1"><dt className="text-slate-500">{label}</dt><dd className="text-right font-medium">{value || "Unavailable"}</dd></div>)}</dl></article>;
             })}
           </div>
-          <section className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Field comparison</h3><dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{Object.entries(evidenceLabels).map(([key, label]) => <div key={key} className="flex justify-between gap-3"><dt>{label}</dt><dd className="font-medium capitalize">{selected.evidence[key]}</dd></div>)}</dl>{selected.exact_identifier_matches.length > 0 && <p className="mt-3 text-sm font-semibold text-slate-800">Exact match: {selected.exact_identifier_matches.join(", ")}. Verify it; this is not proof of misconduct.</p>}</section>
+          <section className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Decisive fields</h3><p className="mt-1 text-xs text-slate-500">Only fields whose similarity cleared the threshold, plus every UPI, birth-certificate and national-ID comparison. A shared name, date of birth or school proves nothing: none of them is unique.</p><dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{visibleEvidence(selected.evidence).map(([key, label, value]) => <div key={key} className="flex justify-between gap-3"><dt>{label}</dt><dd className="font-medium capitalize">{value}</dd></div>)}</dl>{selected.exact_identifier_matches.length > 0 && <p className="mt-3 text-sm font-semibold text-slate-800">Exact match: {selected.exact_identifier_matches.join(", ")}. Verify it; this is not proof of misconduct.</p>}</section>
           <section className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Review history</h3>{selected.history.length ? <ol className="mt-2 space-y-3">{selected.history.map((event) => <li key={event.id} className="border-l-2 border-slate-300 pl-3 text-sm"><p className="font-medium">{prettyStatus(event.decision)} · {event.reviewer_name}</p><p className="text-slate-700">Reason: {event.reason}</p>{event.notes && <p className="text-slate-600">Notes: {event.notes}</p>}<time className="text-xs text-slate-500">{formatDate(event.created_at)}</time></li>)}</ol> : <p className="mt-2 text-sm text-slate-500">No previous review actions.</p>}</section>
           {isAdmin && ['pending', 'needs_verification'].includes(selected.status) && <form onSubmit={submitDecision} className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Decision</h3><div className="mt-3 grid gap-3 sm:grid-cols-3"><button type="button" onClick={() => setDecision("confirmed_duplicate")} aria-pressed={decision === "confirmed_duplicate"} className={`rounded border px-3 py-2 text-sm ${decision === "confirmed_duplicate" ? "border-slate-800 bg-slate-100 font-semibold" : "border-slate-300"}`}>Confirmed duplicate</button><button type="button" onClick={() => setDecision("not_duplicate")} aria-pressed={decision === "not_duplicate"} className={`rounded border px-3 py-2 text-sm ${decision === "not_duplicate" ? "border-slate-800 bg-slate-100 font-semibold" : "border-slate-300"}`}>Not a duplicate</button><button type="button" onClick={() => setDecision("needs_verification")} aria-pressed={decision === "needs_verification"} className={`rounded border px-3 py-2 text-sm ${decision === "needs_verification" ? "border-slate-800 bg-slate-100 font-semibold" : "border-slate-300"}`}>Needs verification</button></div><label className="mt-4 block text-sm font-medium">Reason <span aria-hidden="true">*</span><textarea required minLength={5} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className="mt-1 w-full border border-slate-300 p-2" placeholder="What did you verify, and why?" /></label><label className="mt-3 block text-sm font-medium">Notes<textarea maxLength={4000} value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} className="mt-1 w-full border border-slate-300 p-2" /></label><button type="submit" disabled={saving || reason.trim().length < 5} className="mt-3 rounded bg-slate-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving…" : "Save decision"}</button></form>}
         </section>

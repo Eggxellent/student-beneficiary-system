@@ -140,7 +140,12 @@ absent from the repository.
    `model_version`, `review_threshold` and the comparison features.
 4. An administrator opens `/duplicate-review`, optionally reveals both records' identifiers
    (`GET /api/duplicate-flags/:id/identifiers`, audited), and records a decision with a reason:
-   `confirmed_duplicate`, `not_duplicate` or `needs_verification`.
+   `confirmed_duplicate`, `not_duplicate` or `needs_verification`. The case shows a **Decisive fields**
+   block, not a full column dump: a weak field (name, date of birth, school) appears only when its
+   similarity cleared the threshold, while UPI, birth-certificate and national-ID comparisons always
+   appear, because those three cannot be fully shared by two people. Guardian identifier was removed
+   from the case payload, the reveal list and the UI; a UPI or birth-certificate pair that is present
+   but different is stated in the case reason instead of being scored as a similarity.
 5. Decisions are written to `duplicate_flags` and `duplicate_review_events` and audited. A confirmed
    or unresolved duplicate case blocks award approval for that student.
 6. `POST /api/duplicate-flags/scan` re-screens the existing registry on demand (admin). It is a full
