@@ -357,7 +357,7 @@ against the whole registry, which a long-lived local database makes slow.
 | 2026-10-31 | `3a29fab` | Backend Jest **21 suites / 128 tests passed**; native `node --test` 43/43; API smoke 3/3 against a live server; ML 33/33 + research helpers 7/7; frontend build exit 0 (`docs/FINAL_TEST_REPORT.md`) |
 | 2026-11-01 | — | Backend Jest **24 suites / 151 tests passed** with the certificate feature (`docs/bursary-certificates-2026-11-01.md` §7) |
 | 2026-11-11 (prior session) | before `9fbf701` | Notification work: **4 suites / 21 tests passing**, frontend build clean, live local DB smoke test of admin fan-out, dedupe suppression and read toggling |
-| 2026-11-15 | `3aea0c5` | Verification QR link chain checked end to end against the live deployment: **17/17 checks** via `npm run diag:qr` (both pages return 200 with the SPA shell, both public endpoints answer with CORS, Google Safe Browsing / Norton / Sucuri report clean); the scanner warning was traced to shared-hostname reputation, not application behaviour (`docs/qr-verification-2026-10-30.md` §7) |
+| 2026-11-15 | `99b32b7` | Verification QR link chain checked end to end against the live deployment: **17/17 checks** via `npm run diag:qr` (both pages return 200 with the SPA shell, both public endpoints answer with CORS, Google Safe Browsing / Norton / Sucuri report clean); the scanner warning was traced to shared-hostname reputation, not application behaviour (`docs/qr-verification-2026-10-30.md` §7) |
 
 
 Do not cite 21/128 or 24/151 as the current totals; they predate the notification suites.
