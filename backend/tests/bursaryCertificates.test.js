@@ -309,6 +309,7 @@ describe("Bursary award certificates", () => {
       "institution",
       "issued_at",
       "issuing_authority",
+      "payments",
       "programme",
       "status",
       "valid",

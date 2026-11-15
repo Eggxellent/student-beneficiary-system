@@ -147,6 +147,15 @@ export default function CertificateVerification() {
     ? `${result.programme} Â· ${result.constituency} constituency`
     : result?.programme;
 
+  const payments = result?.payments;
+  const paymentLabel = !payments || payments.status === "no_payment"
+    ? "No payment recorded"
+    : payments.status === "pending_clearance"
+      ? `Recorded, awaiting clearance — ${formatAmount(payments.total_recorded)}`
+      : payments.status === "cleared"
+        ? `Cleared — ${formatAmount(payments.total_cleared)}`
+        : `Partly cleared — ${formatAmount(payments.total_cleared)} of ${formatAmount(result?.approved_amount)}`;
+
   const referenceForm = (
     <form
       onSubmit={(event) => {
@@ -220,11 +229,17 @@ export default function CertificateVerification() {
             <DetailRow label="Award approved on" value={formatDate(result?.award_approved_at)} />
             <DetailRow label="Invoice number" value={reference} mono />
             <DetailRow label="Approval status" value="Current" />
+            <DetailRow label="Payment tracking" value={paymentLabel} />
+            <DetailRow
+              label="Last payment date"
+              value={payments?.last_payment_date ? formatDate(payments.last_payment_date) : "No payment recorded"}
+            />
             <DetailRow label="Checked" value={checked ? `${checked} (device time)` : null} />
           </dl>
           <p className="text-xs leading-relaxed text-slate-600">
             A copy of these details on altered paper is not genuine, and only this live check counts. Approval is
-            not payment. If any printed detail differs, treat the document as unverified.
+            not payment: the payment lines above report what SBMS has recorded, not what it has promised. If any
+            printed detail differs, treat the document as unverified.
           </p>
           <ResetButton onClick={resetToForm} />
         </div>

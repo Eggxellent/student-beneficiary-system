@@ -121,31 +121,25 @@ function invoiceContent({ certificate, identity = {}, manualVerificationUrl }) {
       amount: amountKnown ? plainAmount(amount) : 'Not recorded',
     }],
     totals: [
-      { label: 'Approved bursary amount', value: amountKnown ? money(amount) : 'Not recorded', emphasis: false },
-      { label: 'Amount transferred to date', value: 'KSh 0.00', emphasis: false },
-      { label: 'Balance payable under this invoice', value: amountKnown ? money(amount) : 'Not recorded', emphasis: true },
+      { label: 'Approved bursary amount', value: amountKnown ? money(amount) : 'Not recorded', emphasis: true },
     ],
     paymentTerms: {
-      status: 'Not paid',
       lines: [
-        'Approval is not payment. This invoice records an approved bursary decision in SBMS only.',
-        'No transfer, disbursement or receipt is recorded by this document or by SBMS.',
-        'Any payment is arranged separately by the awarding office and confirmed on its own records.',
+        'Approval is not payment.',
+        'Payments recorded for this award appear in SBMS and on the verification page, not here.',
       ],
     },
     notes: [
-      `Quote invoice number ${information.certificate_reference || '(not recorded)'} in all correspondence about this award.`,
-      'Neither this document nor the verification page confirms that funds have reached the student or the institution.',
-      'Scan the QR code to check the approval record, or type the invoice number on the verification page.',
+      `Quote invoice number ${information.certificate_reference || '(not recorded)'} in all correspondence.`,
+      'Scan the QR code to see the live record: approval status, student details and any payment recorded.',
     ],
     verification: {
-      instructions: 'Scan the QR code to open the SBMS verification page for this approval record. '
-        + 'The page reports the current status of the award; it never reports a payment.',
+      instructions: 'Scan to check this award, its status and any payment recorded in SBMS.',
       reference: information.certificate_reference,
       url: manualVerificationUrl || '',
     },
     signatory: identity.signatory || null,
-    footnote: 'Issued electronically by SBMS. This is not a tax invoice, a receipt, or evidence of payment.',
+    footnote: 'Issued electronically by SBMS. Not a tax invoice or a receipt.',
   };
 }
 
@@ -263,10 +257,6 @@ async function renderInvoicePdf({ certificate, verificationUrl, manualVerificati
     .text(amountValue, boxX + 14, boxTop + 26, { width: boxWidth - 28 });
   doc.font('Helvetica').fontSize(7.6).fillColor(MUTED)
     .text(`Approved ${content.dates.approved}`, boxX + 14, boxTop + 52, { width: boxWidth - 28 });
-  doc.font('Helvetica-Bold').fontSize(6.8).fillColor(statusColor)
-    .text(`PAYMENT STATUS: ${content.paymentTerms.status.toUpperCase()}`, boxX + 14, boxTop + 67, {
-      width: boxWidth - 28, characterSpacing: 0.7,
-    });
   // Line item table.
   const tableTop = Math.max(fieldY + 22, 356);
   doc.font('Helvetica-Bold').fontSize(6.6).fillColor(MUTED)

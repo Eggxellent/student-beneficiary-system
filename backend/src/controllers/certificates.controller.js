@@ -20,6 +20,7 @@ const issueSchema = z.object({
 }).strict();
 
 function toIso(value) {
+  if (!value) return null;
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
@@ -55,6 +56,28 @@ function staffView(row, verificationUrl, manualVerificationUrl) {
 // What it never shows: UPI or any other identifier, date of birth, national ID, birth certificate
 // number, guardian or phone details, address, supporting-document references, duplicate-detection
 // scores or flags, administrative notes, database identifiers, or the verification token itself.
+// Tracking for the same award the paper names: what SBMS has actually recorded against it. The page
+// reports the record, never a promise — "no_payment" means nothing was recorded, not that nothing
+// will be paid, and a cleared payment is still only as good as the officer's evidence reference.
+function paymentTracking(row) {
+  const approved = Number(row.approved_amount);
+  const count = Number(row.payment_count) || 0;
+  const recorded = Number(row.recorded_amount) || 0;
+  const cleared = Number(row.cleared_amount) || 0;
+
+  let status = 'no_payment';
+  if (count > 0) status = cleared <= 0 ? 'pending_clearance' : (cleared >= approved ? 'cleared' : 'partly_cleared');
+
+  return {
+    status,
+    recorded_count: count,
+    total_recorded: recorded,
+    total_cleared: cleared,
+    outstanding: Number.isFinite(approved) ? Math.max(approved - recorded, 0) : null,
+    last_payment_date: toIso(row.last_payment_date),
+  };
+}
+
 function publicView(row) {
   const identity = getCertificateIdentity();
 
@@ -85,6 +108,7 @@ function publicView(row) {
     issued_at: toIso(row.issued_at),
     award_approved_at: toIso(row.award_approved_at),
     award_status: 'approved',
+    payments: paymentTracking(row),
     issuing_authority: identity.issuingAuthority,
   };
 }

@@ -61,23 +61,26 @@ describe('Invoice content', () => {
       amount: '45,000.00',
     }]);
     expect(content.totals).toEqual([
-      { label: 'Approved bursary amount', value: 'KSh 45,000.00', emphasis: false },
-      { label: 'Amount transferred to date', value: 'KSh 0.00', emphasis: false },
-      { label: 'Balance payable under this invoice', value: 'KSh 45,000.00', emphasis: true },
+      { label: 'Approved bursary amount', value: 'KSh 45,000.00', emphasis: true },
     ]);
 
     expect(content.status.label).toBe('APPROVED');
     expect(content.dates.approved).toBe('11 Feb 2026');
-    expect(content.paymentTerms.status).toBe('Not paid');
   });
 
-  test('states plainly that approval is not payment', () => {
+  test('says once, in one line, that approval is not payment', () => {
     const content = invoiceContent({ certificate, identity, manualVerificationUrl });
+    const printed = [
+      content.paymentTerms.lines.join(' '),
+      content.notes.join(' '),
+      content.verification.instructions,
+      content.footnote,
+    ].join(' ');
 
-    expect(content.paymentTerms.lines.join(' ')).toMatch(/approval is not payment/i);
-    expect(content.paymentTerms.lines.join(' ')).toMatch(/no transfer, disbursement or receipt/i);
-    expect(content.notes.join(' ')).toMatch(/neither this document nor the verification page confirms/i);
-    expect(content.verification.instructions).toMatch(/never reports a payment/i);
+    expect(content.paymentTerms.lines[0]).toBe('Approval is not payment.');
+    // One statement, not four: the paper is a decision record, and the live page carries tracking.
+    expect(printed.match(/not payment/gi)).toHaveLength(1);
+    expect(content.verification.instructions).toMatch(/any payment recorded/i);
   });
 
   test('marks a superseded approval instead of restating it as current', () => {

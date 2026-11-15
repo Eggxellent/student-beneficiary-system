@@ -7,7 +7,15 @@ const WITH_LIVE_AWARD = `
   SELECT c.*, a.status AS award_status, a.approved_amount AS award_live_amount,
          a.decided_at AS award_decided_at, a.submitted_by AS award_submitted_by,
          a.decided_by AS award_decided_by, issuer.full_name AS issued_by_name,
-         proposer.full_name AS proposed_by_name, decider.full_name AS approved_by_name
+         proposer.full_name AS proposed_by_name, decider.full_name AS approved_by_name,
+         (SELECT COUNT(*)::int FROM disbursements d
+           WHERE d.award_id = a.id AND d.payment_status IN ('issued', 'cleared')) AS payment_count,
+         (SELECT COALESCE(SUM(d.amount), 0)::numeric FROM disbursements d
+           WHERE d.award_id = a.id AND d.payment_status IN ('issued', 'cleared')) AS recorded_amount,
+         (SELECT COALESCE(SUM(d.amount), 0)::numeric FROM disbursements d
+           WHERE d.award_id = a.id AND d.payment_status = 'cleared') AS cleared_amount,
+         (SELECT MAX(d.disbursement_date) FROM disbursements d
+           WHERE d.award_id = a.id AND d.payment_status IN ('issued', 'cleared')) AS last_payment_date
   FROM bursary_certificates c
   JOIN bursary_awards a ON a.id = c.award_id
   JOIN users issuer ON issuer.id = c.issued_by
