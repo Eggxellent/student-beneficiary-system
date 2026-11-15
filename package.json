@@ -1,7 +1,8 @@
 {
   "scripts": {
     "start": "concurrently --kill-others --names API,WEB \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
-    "smoke:browser": "node scripts/browser-smoke.mjs"
+    "smoke:browser": "node scripts/browser-smoke.mjs",
+    "diag:qr": "node scripts/verify-link-diagnostics.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

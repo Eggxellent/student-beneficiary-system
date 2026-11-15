@@ -126,3 +126,51 @@ changing it (it is read per request, but restart avoids doubt).
 5. **Verification proves existence only.** It does not prove identity, eligibility, approval or
    payment, which is the correct scope but must be stated in the report.
 
+
+## 7. Link-integrity and reputation check (2026-11-15)
+
+Reported symptom: scanning a student or invoice QR produced a "dangerous link" warning, and in
+some cases the page did not open. The payload is assembled server-side from `PUBLIC_APP_URL`
+(`backend/src/config/publicAppUrl.js`), so a wrong origin, a missing SPA fallback and a dead API
+are indistinguishable from a phone.
+
+`scripts/verify-link-diagnostics.mjs` (`npm run diag:qr`) rebuilds the exact URL the backend
+embeds, requests the part a scanner actually sends (the fragment is never transmitted), calls the
+two public endpoints with the same body the pages post, and reports the three reputation sources
+that answer without a key. Run on 2026-11-15 against the live deployment: 17/17 checks passed.
+
+| Check | Result |
+| --- | --- |
+| QR payload | `https://sbms-web.azurewebsites.net/verify#token=<64 hex>` and `.../verify-certificate#token=<64 hex>`, both built with `NODE_ENV=production` rules |
+| Page requests | `/verify`, `/verify-certificate` and an arbitrary deep link all answer **200** with the SPA shell (`text/html`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`) |
+| API | `POST /api/verify` returns `{"found":false}` and `POST /api/certificates/verify` returns `{"valid":false,"status":"not_recognised"}` for an unknown token, both with `Access-Control-Allow-Origin: https://sbms-web.azurewebsites.net` and status below 500 |
+| Google Safe Browsing | no listing for `sbms-web.azurewebsites.net` |
+| Norton Safe Web | rating `g` (safe), `globalRestriction: false` |
+| Sucuri sitecheck | total rating B, security 6/6, domain A, no blacklist findings |
+
+Conclusion: the link resolves and is not on any of the three blocklists. What remains is
+**reputation, not behaviour** - `*.azurewebsites.net` is a shared hostname with no category, and a
+64-character hex fragment is exactly what generic scanner heuristics rate as unknown. Consumer
+scanner apps (Kaspersky, Avast, McAfee, Samsung/Xiaomi built-ins) warn on that combination even
+when the site is clean, and some corporate DNS filters block the whole `azurewebsites.net` zone.
+
+Options, cheapest first:
+
+1. **Report the false positive.** Vendor forms: Microsoft
+   (`https://www.microsoft.com/wdsi/support/report-unsafe-site`), Norton
+   (`https://safeweb.norton.com/report/show`), McAfee
+   (`https://www.siteadvisor.com/sites/submit`), Kaspersky (`https://opentip.kaspersky.com/`).
+   Review is manual and slow, and it does not help against zone-wide blocks.
+2. **Bind a custom domain to the same site and point the backend at it.** Reputation follows the
+   hostname, so this is the durable fix:
+   `az webapp config hostname add -g rg-sbms -w sbms-web --hostname verify.<domain>` plus a
+   certificate binding, then set `PUBLIC_APP_URL=https://verify.<domain>` **and**
+   `CORS_ORIGINS=https://verify.<domain>` on `ca-sbms-api`. No frontend rebuild is required -
+   the SPA calls the API by absolute origin (`VITE_API_ORIGIN`) and its own routes are relative.
+   QR codes printed before the switch keep working because their host still serves the SPA; new
+   codes carry the new host and can be reissued per student from `/api/students` once a
+   re-issue path exists (gap 3 above).
+3. **Nothing in the application code.** The page reveals no beneficiary data, posts the token in a
+   body rather than a query string, and is served with the three headers above, so there is no
+   application-level change that would clear a scanner warning.
+
