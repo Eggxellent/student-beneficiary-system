@@ -51,33 +51,41 @@ describe('Invoice content', () => {
     expect(content.beneficiary).toEqual([
       { label: 'UPI / student no.', value: 'CERT-UPI-987654' },
       { label: 'Institution', value: 'Alliance High' },
-      { label: 'Academic year', value: '2025/2026' },
-      { label: 'Constituency', value: 'Kamukunji' },
     ]);
 
     expect(content.lineItems).toEqual([{
-      description: 'Approved bursary award for the 2025/2026 academic year',
-      quantity: '1',
+      description: 'Bursary award, 2025/2026',
       amount: '45,000.00',
     }]);
-    expect(content.totals).toEqual([
-      { label: 'Approved bursary amount', value: 'KSh 45,000.00', emphasis: true },
-    ]);
+    expect(content.total).toEqual({ label: 'Total approved', value: 'KSh 45,000.00' });
 
     expect(content.status.label).toBe('APPROVED');
     expect(content.dates.approved).toBe('11 Feb 2026');
   });
 
+  test('states each fact once, so nothing on the page competes with itself', () => {
+    const content = invoiceContent({ certificate, identity, manualVerificationUrl });
+    const serialized = JSON.stringify(content);
+
+    // The period lives on the line item only, not again as a beneficiary field.
+    expect(serialized.match(/2025\/2026/g)).toHaveLength(1);
+    // The number appears in the header block and beside the code, nowhere else.
+    expect(serialized.match(new RegExp(content.invoiceNumber, 'g'))).toHaveLength(2);
+    // The amount appears as the line amount and as the total, nowhere else.
+    expect(serialized.match(/45,000\.00/g)).toHaveLength(2);
+    // An invoice of one bursary award has nothing to put in a quantity column.
+    expect(serialized).not.toMatch(/"quantity"/);
+  });
+
   test('says once, in one line, that approval is not payment', () => {
     const content = invoiceContent({ certificate, identity, manualVerificationUrl });
     const printed = [
-      content.paymentTerms.lines.join(' '),
       content.notes.join(' '),
       content.verification.instructions,
       content.footnote,
     ].join(' ');
 
-    expect(content.paymentTerms.lines[0]).toBe('Approval is not payment.');
+    expect(content.notes[0]).toBe('Approval is not payment.');
     // One statement, not four: the paper is a decision record, and the live page carries tracking.
     expect(printed.match(/not payment/gi)).toHaveLength(1);
     expect(content.verification.instructions).toMatch(/any payment recorded/i);
@@ -106,7 +114,7 @@ describe('Invoice content', () => {
     });
 
     expect(content.beneficiary).toEqual([]);
-    expect(content.lineItems[0].description).toBe('Approved bursary award');
+    expect(content.lineItems[0].description).toBe('Bursary award');
     expect(content.organisation.constituency).toBeNull();
     expect(content.signatory).toBeNull();
     expect(content.organisation.programmeHeading).toBe('NG-CDF BURSARY PROGRAMME');
