@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Award, Bell, CheckCheck, CheckCircle2, FileText, Inbox, XCircle } from "lucide-react";
+import { Award, Bell, CheckCheck, CheckCircle2, Clock, FileText, Inbox, XCircle } from "lucide-react";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
@@ -11,12 +11,19 @@ const PAGE_LIMIT = 20;
 // glance without reading the text.
 const CATEGORY_STYLE = {
   award_submitted: { Icon: FileText, tone: "bg-blue-50 text-blue-700" },
+  award_pending: { Icon: Clock, tone: "bg-amber-50 text-amber-700" },
   award_approved: { Icon: CheckCircle2, tone: "bg-emerald-50 text-emerald-700" },
   award_rejected: { Icon: XCircle, tone: "bg-rose-50 text-rose-700" },
   certificate_ready: { Icon: Award, tone: "bg-amber-50 text-amber-700" },
 };
 
 const FALLBACK_STYLE = { Icon: Bell, tone: "bg-slate-100 text-slate-600" };
+
+function formatMoney(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return "";
+  return `KES ${Math.round(amount).toLocaleString("en-KE")}`;
+}
 
 function timeAgo(value) {
   const then = new Date(value).getTime();
@@ -34,6 +41,8 @@ export default function NotificationBell({ tone = "light" }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
+  const [approvals, setApprovals] = useState([]);
+  const [approvalCount, setApprovalCount] = useState(0);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -44,6 +53,8 @@ export default function NotificationBell({ tone = "light" }) {
     try {
       const { data } = await api.get("/notifications", { params: { limit: PAGE_LIMIT } });
       setItems(Array.isArray(data?.notifications) ? data.notifications : []);
+      setApprovals(Array.isArray(data?.pending_approvals) ? data.pending_approvals : []);
+      setApprovalCount(Number(data?.pending_approval_count) || 0);
       setUnread(Number(data?.unread_count) || 0);
       setError("");
     } catch {
@@ -100,6 +111,10 @@ export default function NotificationBell({ tone = "light" }) {
   const triggerClass = dark
     ? "text-white/80 hover:bg-white/10 hover:text-white"
     : "text-slate-500 hover:bg-slate-100 hover:text-slate-800";
+  // The badge counts outstanding work, not messages: an administrator who has opened every
+  // notification but left three proposals undecided still needs to see a badge.
+  const badge = unread + Math.max(approvalCount, approvals.length);
+  const empty = items.length === 0 && approvals.length === 0;
 
   // Reading a notification consumes it: the API deletes the row, so the panel drops it from the
   // list instead of restyling it, and "clear all" empties the panel. There is no read history to
@@ -129,21 +144,28 @@ export default function NotificationBell({ tone = "light" }) {
     if (item.link) navigate(item.link);
   }
 
+  // A waiting student is not a message: the row survives until an administrator decides the award,
+  // so the click navigates and deletes nothing.
+  function openAwaiting(item) {
+    setOpen(false);
+    navigate(item.link || "/awards");
+  }
+
   return (
     <div ref={containerRef} className="relative">
       <button
         ref={triggerRef}
         type="button"
-        aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
+        aria-label={badge ? `Notifications, ${badge} unread` : "Notifications"}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
         className={`relative flex h-8 w-8 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A45D] ${triggerClass}`}
       >
         <Bell size={16} aria-hidden="true" />
-        {unread > 0 && (
+        {badge > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#C8A45D] px-1 text-[9px] font-bold text-[#173D35]">
-            {unread > 9 ? "9+" : unread}
+            {badge > 9 ? "9+" : badge}
           </span>
         )}
       </button>
@@ -167,11 +189,55 @@ export default function NotificationBell({ tone = "light" }) {
           </div>
 
           <div className="max-h-[60vh] overflow-y-auto">
-            {loading && items.length === 0 && (
+            {approvals.length > 0 && (
+              <section aria-label="Students awaiting approval">
+                <p className="flex items-center justify-between gap-2 bg-amber-50/70 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                  <span>Students awaiting approval</span>
+                  <span>{approvalCount > approvals.length ? approvalCount : approvals.length}</span>
+                </p>
+                <ul className="divide-y divide-slate-100">
+                  {approvals.map((item) => {
+                    const { Icon } = CATEGORY_STYLE.award_pending;
+                    const amount = formatMoney(item.requested_amount);
+                    return (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          onClick={() => openAwaiting(item)}
+                          title="Open Awards to decide"
+                          className="flex w-full items-start gap-2.5 bg-white px-3 py-2.5 text-left transition hover:bg-slate-50"
+                        >
+                          <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${CATEGORY_STYLE.award_pending.tone}`}>
+                            <Icon size={14} aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-semibold text-slate-900">
+                              {item.student_name}
+                            </span>
+                            <span className="mt-0.5 block truncate text-[11px] text-slate-500">
+                              {amount ? `${amount} requested` : "Proposal awaiting a decision"}
+                            </span>
+                            <span className="mt-0.5 block text-[10px] uppercase tracking-wide text-slate-400">
+                              Waiting since {timeAgo(item.created_at)}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {approvalCount > approvals.length && (
+                  <p className="border-t border-slate-100 px-3 py-1.5 text-[10px] text-amber-800">
+                    {approvalCount - approvals.length} more waiting in Awards.
+                  </p>
+                )}
+              </section>
+            )}
+            {loading && empty && (
               <p className="px-3 py-4 text-xs text-slate-500">Loading notifications…</p>
             )}
             {error && <p className="px-3 py-2 text-xs text-red-600">{error}</p>}
-            {!loading && items.length === 0 && !error && (
+            {!loading && empty && !error && (
               <div className="flex flex-col items-center gap-1 px-4 py-8 text-center">
                 <Inbox size={22} className="text-slate-300" aria-hidden="true" />
                 <p className="text-sm font-semibold text-slate-700">You&apos;re all caught up</p>

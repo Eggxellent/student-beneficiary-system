@@ -1,15 +1,67 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
-import { ArrowRight, ClipboardCheck, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { Navigate, useNavigate } from "react-router-dom";
+import { ArrowRight, Eye, EyeOff, KeyRound, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
-export default function Login({ role }) {
+// Reset links are handed over by an administrator as a URL, but people paste whatever they were
+// given: the whole link, the path, or just the 64-character token. Accept all three and reject
+// anything else, so the reset page never receives a malformed value.
+const TOKEN_PATTERN = /^[a-f0-9]{64}$/i;
+
+function extractToken(value) {
+  const raw = value.trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const token = new URL(raw).searchParams.get("token") || "";
+      return TOKEN_PATTERN.test(token) ? token.toLowerCase() : "";
+    } catch {
+      return "";
+    }
+  }
+  const plain = raw.replace(/^.*[?&]token=/, "").replace(/[?#].*$/, "");
+  return TOKEN_PATTERN.test(plain) ? plain.toLowerCase() : "";
+}
+
+function Brand() {
+  return (
+    <div className="sbms-login-brand">
+      <span className="sbms-login-brand-mark" aria-hidden="true">S</span>
+      <span>Student Beneficiary<br />Management System</span>
+    </div>
+  );
+}
+
+function HeroPanel() {
+  return (
+    <aside className="sbms-auth-hero">
+      <div className="sbms-auth-hero-copy">
+        <h2 className="sbms-auth-hero-title">Welcome to the<br />student beneficiary system</h2>
+        <p className="sbms-auth-hero-text">
+          Register students, screen duplicates and issue bursary awards from one audited record.
+        </p>
+      </div>
+      <svg className="sbms-auth-hero-art" viewBox="0 0 320 220" role="img" aria-hidden="true" focusable="false">
+        <circle cx="262" cy="44" r="34" fill="rgb(200 164 93 / 28%)" />
+        <circle cx="42" cy="188" r="26" fill="rgb(255 255 255 / 12%)" />
+        <rect x="54" y="50" width="156" height="122" rx="12" fill="#f7faf8" />
+        <rect x="72" y="72" width="86" height="9" rx="4.5" fill="#c8a45d" />
+        <rect x="72" y="94" width="118" height="7" rx="3.5" fill="#c6d6cd" />
+        <rect x="72" y="111" width="104" height="7" rx="3.5" fill="#c6d6cd" />
+        <rect x="72" y="128" width="118" height="7" rx="3.5" fill="#d8e3dc" />
+        <rect x="72" y="145" width="72" height="7" rx="3.5" fill="#d8e3dc" />
+        <rect x="168" y="112" width="110" height="80" rx="12" fill="#12312a" stroke="rgb(255 255 255 / 26%)" />
+        <path d="M196 150l11 11 24-26" fill="none" stroke="#c8a45d" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="180" y="172" width="56" height="6" rx="3" fill="rgb(255 255 255 / 42%)" />
+      </svg>
+    </aside>
+  );
+}
+
+
+export default function Login() {
   const navigate = useNavigate();
   const { login, isAuthenticated, user, authLoading } = useAuth();
-  const [selectedRole, setSelectedRole] = useState(null);
-  const [transitioning, setTransitioning] = useState(false);
-  const [leaving, setLeaving] = useState(false);
-  const transitionTimer = useRef(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,87 +70,39 @@ export default function Login({ role }) {
   const [loading, setLoading] = useState(false);
   const submitting = useRef(false);
 
-  useEffect(() => {
-    window.clearTimeout(transitionTimer.current);
-    transitionTimer.current = null;
-    setSelectedRole(null);
-    setTransitioning(false);
-    setLeaving(false);
-  }, [role]);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetValue, setResetValue] = useState("");
+  const [resetError, setResetError] = useState("");
+  const resetInput = useRef(null);
 
-  useEffect(() => () => window.clearTimeout(transitionTimer.current), []);
+  useEffect(() => {
+    if (!resetOpen) return undefined;
+    resetInput.current?.focus();
+    function onKeyDown(event) {
+      if (event.key === "Escape") setResetOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [resetOpen]);
 
   if (authLoading) return null;
   if (isAuthenticated) return <Navigate to={user?.role === "admin" ? "/dashboard" : "/field-officer"} replace />;
 
-  function selectRole(event, nextRole) {
+  async function handleSubmit(event) {
     event.preventDefault();
-    if (transitioning || transitionTimer.current) return;
-    setSelectedRole(nextRole);
-    setTransitioning(true);
-    const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 260;
-    transitionTimer.current = window.setTimeout(() => {
-      transitionTimer.current = null;
-      navigate(nextRole === "admin" ? "/admin/login" : "/field-officer/login");
-    }, delay);
-  }
-
-  function changeRole(event) {
-    event.preventDefault();
-    if (transitioning || transitionTimer.current) return;
-    setTransitioning(true);
-    setLeaving(true);
-    const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200;
-    transitionTimer.current = window.setTimeout(() => {
-      transitionTimer.current = null;
-      navigate("/login");
-    }, delay);
-  }
-
-  if (!role) {
-    return <main className="sbms-login-screen sbms-login-screen--chooser" data-theme={selectedRole || "neutral"}>
-      <section className={`sbms-login-panel sbms-login-panel--chooser${leaving ? " sbms-login-panel--leaving" : ""}`} aria-busy={transitioning}>
-        <div className="sbms-login-brand">
-          <span className="sbms-login-brand-mark" aria-hidden="true">S</span>
-          <span>Student Beneficiary<br />Management System</span>
-        </div>
-        <h1 className="text-2xl font-bold">Sign in</h1>
-        <p className="mt-2 text-slate-600">Choose your role.</p>
-        <div className="sbms-login-choices mt-6 grid gap-4 sm:grid-cols-2">
-          <Link to="/admin/login" onClick={(event) => selectRole(event, "admin")} aria-disabled={transitioning} data-role="admin" data-selected={selectedRole === "admin"} className="sbms-login-choice">
-            <span className="sbms-login-choice-icon" aria-hidden="true"><ShieldCheck size={21} strokeWidth={1.8} /></span>
-            <span className="sbms-login-choice-label"><span className="block text-lg font-semibold">Admin</span></span>
-            <ArrowRight className="sbms-login-choice-arrow" size={18} aria-hidden="true" />
-          </Link>
-          <Link to="/field-officer/login" onClick={(event) => selectRole(event, "field_officer")} aria-disabled={transitioning} data-role="field_officer" data-selected={selectedRole === "field_officer"} className="sbms-login-choice">
-            <span className="sbms-login-choice-icon" aria-hidden="true"><ClipboardCheck size={21} strokeWidth={1.8} /></span>
-            <span className="sbms-login-choice-label"><span className="block text-lg font-semibold">Field Officer</span></span>
-            <ArrowRight className="sbms-login-choice-arrow" size={18} aria-hidden="true" />
-          </Link>
-        </div>
-        <span className="sr-only" aria-live="polite">{selectedRole && `${selectedRole === "admin" ? "Admin" : "Field Officer"} selected. Opening sign in.`}</span>
-      </section>
-    </main>;
-  }
-
-  const roleLabel = role === "admin" ? "Admin" : "Field Officer";
-
-  async function handleSubmit(e) {
-    e.preventDefault();
     if (submitting.current) return;
 
     submitting.current = true;
     setError("");
     setLoading(true);
-
     try {
-      const user = await login(email, password, role);
-      navigate(user.role === "admin" ? "/dashboard" : "/field-officer");
+      const account = await login(email, password);
+      navigate(account.role === "admin" ? "/dashboard" : "/field-officer");
     } catch (err) {
       setError(
         err.response?.data?.message ||
         err.response?.data?.error ||
-        "Login failed. Please check your details."
+        "Sign in failed. Check your email and password."
       );
     } finally {
       submitting.current = false;
@@ -106,74 +110,145 @@ export default function Login({ role }) {
     }
   }
 
+  function openResetDialog() {
+    setResetValue("");
+    setResetError("");
+    setResetOpen(true);
+  }
+
+  function submitResetLink(event) {
+    event.preventDefault();
+    const token = extractToken(resetValue);
+    if (!token) {
+      setResetError("That does not look like a reset link. Ask your administrator to issue a new one.");
+      return;
+    }
+    setResetOpen(false);
+    navigate(`/reset-password?token=${token}`);
+  }
+
   return (
-    <main className="sbms-login-screen" data-theme={role}>
-      <form
-        onSubmit={handleSubmit}
-        aria-busy={loading}
-        className={`sbms-login-panel sbms-login-panel--form${leaving ? " sbms-login-panel--leaving" : ""}`}
-      >
-        <div className="sbms-login-brand">
-          <span className="sbms-login-brand-mark" aria-hidden="true">S</span>
-          <span>Student Beneficiary<br />Management System</span>
-        </div>
-        <h1 className="sbms-login-heading text-2xl font-bold mb-2">{roleLabel} sign in</h1>
+    <>
+      <main className="sbms-login-screen">
+        <section className="sbms-auth-card">
+          <div className="sbms-auth-form">
+            <Brand />
+            <h1 className="sbms-auth-heading">Sign in</h1>
+            <p className="sbms-auth-subtitle">Use your work account. Administrators and field officers sign in here.</p>
 
+            {error && (
+              <div className="sbms-login-error mb-4 p-3 rounded" role="alert">
+                {error}
+              </div>
+            )}
 
-        {error && (
-          <div className="sbms-login-error mb-4 p-3 rounded" role="alert">
-            {error}
+            <form onSubmit={handleSubmit} aria-busy={loading}>
+              <label htmlFor="sbms-login-email" className="sbms-login-field sbms-login-field--first block mb-2 font-medium">
+                Email
+              </label>
+              <input
+                id="sbms-login-email"
+                name="email"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className="sbms-login-input w-full border rounded p-2 mb-4"
+                placeholder="name@o365.strathmore.edu"
+                required
+              />
+
+              <label htmlFor="sbms-login-password" className="sbms-login-field block mb-2 font-medium">
+                Password
+              </label>
+              <div className="sbms-login-password mb-2">
+                <input
+                  id="sbms-login-password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="sbms-login-input w-full border rounded p-2 pr-10"
+                  placeholder="Enter your password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  className="sbms-login-password-toggle"
+                >
+                  {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+                </button>
+              </div>
+
+              <div className="sbms-auth-forgot-row">
+                <button type="button" onClick={openResetDialog} className="sbms-auth-forgot">
+                  Forgot password?
+                </button>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="sbms-login-submit w-full text-white py-2 rounded disabled:opacity-50"
+              >
+                <span aria-live="polite">{loading ? "Signing in..." : "Sign in"}</span>
+              </button>
+            </form>
+
+            <p className="sbms-auth-note">
+              <ShieldCheck size={15} aria-hidden="true" />
+              Accounts are created by an administrator. There is no sign-up: ask your administrator for access.
+            </p>
           </div>
-        )}
 
-        <label htmlFor="sbms-login-email" className="sbms-login-field sbms-login-field--first block mb-2 font-medium">
-          Email
-        </label>
+          <HeroPanel />
+        </section>
+      </main>
 
-        <input
-          id="sbms-login-email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="sbms-login-input w-full border rounded p-2 mb-4"
-          placeholder={role === "admin" ? "Admin email" : "Field Officer email"}
-          required
-        />
-
-        <label htmlFor="sbms-login-password" className="sbms-login-field block mb-2 font-medium">
-          Password
-        </label>
-
-        <div className="sbms-login-password mb-6">
-          <input
-            id="sbms-login-password"
-            type={showPassword ? "text" : "password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="sbms-login-input w-full border rounded p-2 pr-10"
-            placeholder="Enter password"
-            required
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword((visible) => !visible)}
-            aria-label={showPassword ? "Hide password" : "Show password"}
-            aria-pressed={showPassword}
-            className="sbms-login-password-toggle"
-          >
-            {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
-          </button>
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="sbms-login-submit w-full text-white py-2 rounded disabled:opacity-50"
+      {resetOpen && (
+        <div
+          className="sbms-auth-dialog-backdrop"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setResetOpen(false); }}
         >
-          <span aria-live="polite">{loading ? "Signing in..." : "Sign In"}</span>
-        </button>
-        <Link to="/login" onClick={changeRole} aria-disabled={transitioning} className="sbms-login-back mt-4 block text-center text-sm">Change role</Link>
-      </form>
-    </main>
+          <div className="sbms-auth-dialog" role="dialog" aria-modal="true" aria-labelledby="sbms-reset-dialog-title">
+            <span className="sbms-auth-dialog-icon" aria-hidden="true"><KeyRound size={20} /></span>
+            <h2 id="sbms-reset-dialog-title">Reset your password</h2>
+            <ol className="sbms-auth-steps">
+              <li>Ask an administrator for a one-time reset link for your account.</li>
+              <li>Open the link they hand you; it takes you to the new-password form.</li>
+              <li>Choose a new password. The link works once and expires after 30 minutes.</li>
+            </ol>
+
+            <form onSubmit={submitResetLink}>
+              <label htmlFor="sbms-reset-link" className="block mb-2 font-medium">Already have a reset link?</label>
+              <input
+                id="sbms-reset-link"
+                ref={resetInput}
+                value={resetValue}
+                onChange={(event) => setResetValue(event.target.value)}
+                className="sbms-login-input w-full border rounded p-2"
+                placeholder="Paste the link or token"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {resetError && <p className="sbms-auth-dialog-error" role="alert">{resetError}</p>}
+              <div className="sbms-auth-dialog-actions">
+                <button type="button" onClick={() => setResetOpen(false)} className="sbms-auth-dialog-secondary">
+                  Back to sign in
+                </button>
+                <button type="submit" className="sbms-auth-dialog-primary">
+                  Open reset form <ArrowRight size={15} aria-hidden="true" />
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
+

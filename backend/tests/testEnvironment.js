@@ -18,3 +18,4 @@ if (!process.env.PUBLIC_APP_URL) {
 require('../src/middleware/loginRateLimit').reset();
 require('../src/middleware/verificationRateLimit').reset();
 require('../src/middleware/certificateRateLimit').reset();
+require('../src/middleware/passwordResetRateLimit').reset();

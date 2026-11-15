@@ -72,6 +72,9 @@ async function login(req, res, expectedRole) {
 
 const loginAdmin = (req, res) => login(req, res, 'admin');
 const loginFieldOfficer = (req, res) => login(req, res, 'field_officer');
+// The single sign-in form posts here; the account's stored role decides the workspace.
+const loginAny = (req, res) => login(req, res, null);
+
 
 async function me(req, res, next) {
   try {
@@ -81,4 +84,4 @@ async function me(req, res, next) {
   } catch (error) { next(error); }
 }
 
-module.exports = { register, loginAdmin, loginFieldOfficer, me };
+module.exports = { register, loginAdmin, loginFieldOfficer, loginAny, me };

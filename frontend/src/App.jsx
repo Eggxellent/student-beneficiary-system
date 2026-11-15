@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
 import Verification from "./pages/Verification";
 import CertificateVerification from "./pages/CertificateVerification";
 import Landing from "./pages/Landing";
@@ -60,9 +61,13 @@ export default function App() {
     <Routes>
       <Route path="/verify" element={<Verification />} />
       <Route path="/verify-certificate" element={<CertificateVerification />} />
+      {/* One sign-in page for both account types, and one page that spends an administrator's
+          one-time reset link. The old role-specific sign-in URLs stay as redirects so bookmarks and
+          links in older emails still land on the single form. */}
       <Route path="/login" element={<Login />} />
-      <Route path="/admin/login" element={<Login role="admin" />} />
-      <Route path="/field-officer/login" element={<Login role="field_officer" />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/admin/login" element={<Navigate to="/login" replace />} />
+      <Route path="/field-officer/login" element={<Navigate to="/login" replace />} />
       <Route
         path="/students"
         element={

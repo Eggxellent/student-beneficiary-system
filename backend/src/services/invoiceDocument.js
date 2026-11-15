@@ -46,6 +46,16 @@ function shortDate(value) {
   return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
+// The header prints on a fixed grid, so a heading is shrunk until it fits its column rather than
+// being allowed to wrap onto the line underneath it.
+function fitFontSize(doc, text, { sizes, width, font = 'Helvetica-Bold', characterSpacing = 0 }) {
+  for (const size of sizes) {
+    doc.font(font).fontSize(size);
+    if (doc.widthOfString(text, { characterSpacing }) <= width) return size;
+  }
+  return sizes[sizes.length - 1];
+}
+
 function hr(doc, y, { x = LEFT, width = WIDTH, color = RULE, weight = 0.7 } = {}) {
   doc.save().lineWidth(weight).strokeColor(color).moveTo(x, y).lineTo(x + width, y).stroke().restore();
 }
@@ -160,20 +170,51 @@ async function renderInvoicePdf({ certificate, verificationUrl, manualVerificati
   doc.save().fillColor(GOLD).rect(0, 0, PAPER_WIDTH, 4).fill().restore();
 
   // Issuing header: who issued the invoice, on two lines. Nothing else belongs here.
-  doc.font('Helvetica-Bold').fontSize(12.5).fillColor(NAVY)
-    .text(content.organisation.name, LEFT, 46, { width: 400, characterSpacing: 1 });
+  // Both lines sit at fixed y positions, so each one is held to a single line: the organisation name
+  // shrinks until it fits, and the programme line is clipped. A wrapped line would otherwise print
+  // straight over the line underneath it, which is exactly the kind of unreadable header that makes
+  // an invoice look forged.
+  const headerWidth = 400;
+  const organisationSpacing = 1;
+  const organisationSize = fitFontSize(doc, content.organisation.name, {
+    sizes: [12.5, 12, 11.5, 11, 10.5, 10, 9.5],
+    width: headerWidth,
+    characterSpacing: organisationSpacing,
+  });
+  doc.font('Helvetica-Bold').fontSize(organisationSize).fillColor(NAVY).text(content.organisation.name, LEFT, 46, {
+    width: headerWidth,
+    characterSpacing: organisationSpacing,
+    lineBreak: false,
+  });
   const identityLine = content.organisation.constituency
     ? `${content.organisation.programme}  |  ${content.organisation.constituency}`
     : content.organisation.programme;
-  doc.font('Helvetica').fontSize(8.6).fillColor(MUTED)
-    .text(identityLine, LEFT, 64, { width: 400 });
+  const identitySize = fitFontSize(doc, identityLine, {
+    sizes: [8.6, 8.2, 7.8, 7.4, 7],
+    width: headerWidth,
+    font: 'Helvetica',
+  });
+  doc.font('Helvetica').fontSize(identitySize).fillColor(MUTED)
+    .text(identityLine, LEFT, 64, { width: headerWidth, height: 10, ellipsis: true });
   hr(doc, 84, { color: NAVY, weight: 1.1 });
 
-  // Document title on the left, the four facts that identify the document on the right.
-  doc.font('Helvetica-Bold').fontSize(18).fillColor(NAVY_DEEP)
-    .text(content.title, LEFT, 98, { width: 300, characterSpacing: 0.7 });
+  // Document title on the left, the four facts that identify the document on the right. The title
+  // stops short of the facts column and the subtitle is clipped, so the two fixed baselines below
+  // stay clear of every other element on the page.
+  const titleWidth = 288;
+  const titleSpacing = 0.7;
+  const titleSize = fitFontSize(doc, content.title, {
+    sizes: [18, 17, 16, 15, 14, 13],
+    width: titleWidth,
+    characterSpacing: titleSpacing,
+  });
+  doc.font('Helvetica-Bold').fontSize(titleSize).fillColor(NAVY_DEEP).text(content.title, LEFT, 98, {
+    width: titleWidth,
+    characterSpacing: titleSpacing,
+    lineBreak: false,
+  });
   doc.font('Helvetica').fontSize(8.4).fillColor(MUTED)
-    .text(content.subtitle, LEFT, 124, { width: 300, lineGap: 1.4 });
+    .text(content.subtitle, LEFT, 124, { width: 280, height: 20, lineGap: 1.4, ellipsis: true });
 
   const metaX = 344;
   const metaWidth = RIGHT - metaX;

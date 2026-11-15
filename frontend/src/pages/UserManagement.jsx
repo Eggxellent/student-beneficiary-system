@@ -8,6 +8,8 @@ export default function UserManagement() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [resetLink, setResetLink] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   const loadUsers = useCallback(async () => {
     try { setUsers((await api.get('/users')).data); }
@@ -37,10 +39,41 @@ export default function UserManagement() {
     catch (err) { setError(err.response?.data?.message || 'Could not delete account.'); }
   }
 
+  // There is no mail transport, so the administrator issues the one-time link here and hands it over.
+  // Only the hash is stored server-side, which is why the link is shown once and never again.
+  async function issueResetLink(user) {
+    setError(''); setNotice(''); setResetLink(null); setCopied(false);
+    if (!window.confirm(`Issue a one-time password reset link for ${user.full_name} (${user.email})?\n\nIt expires after 30 minutes and works once.`)) return;
+    try {
+      const { data } = await api.post(`/users/${user.id}/password-reset`, {});
+      setResetLink({ ...data, url: `${window.location.origin}${data.reset_path}` });
+      setNotice(data.message);
+      await loadUsers();
+    } catch (err) { setError(err.response?.data?.message || 'Could not issue a reset link.'); }
+  }
+
+  async function copyResetLink() {
+    try {
+      await navigator.clipboard.writeText(resetLink.url);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+      setError('Copy failed. Select the link and copy it by hand.');
+    }
+  }
+
   return <div className="mx-auto max-w-6xl p-5 sm:p-8">
     <h1 className="text-2xl font-bold">User management</h1>
     {error && <p role="alert" className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {notice && <p role="status" className="mt-4 rounded border border-green-200 bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
+    {resetLink && <div className="mt-4 rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+      <p className="font-semibold">One-time reset link for {resetLink.user.full_name}</p>
+      <p className="mt-1 text-xs">Hand it to {resetLink.user.email} directly. It expires {new Date(resetLink.expires_at).toLocaleString()} and works once.</p>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <input readOnly value={resetLink.url} aria-label="One-time password reset link" onFocus={(event) => event.target.select()} className="h-10 w-full border border-amber-300 bg-white px-2 text-xs" />
+        <button type="button" onClick={copyResetLink} className="rounded border border-amber-400 px-4 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100">{copied ? 'Copied' : 'Copy link'}</button>
+      </div>
+    </div>}
     <form onSubmit={createUser} autoComplete="off" className="mt-5 grid gap-3 rounded border bg-white p-4 sm:grid-cols-2 lg:grid-cols-5">
       <label className="text-xs font-medium">Name<input name="sbms_new_user_name" autoComplete="off" placeholder="e.g. Jane Wanjiru" required minLength={2} value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} className="mt-1 h-10 w-full border px-2 text-sm placeholder:text-slate-400" /></label>
       <label className="text-xs font-medium">Email<input name="sbms_new_user_email" autoComplete="off" placeholder="name@o365.strathmore.edu" required type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="mt-1 h-10 w-full border px-2 text-sm placeholder:text-slate-400" /></label>
@@ -48,6 +81,6 @@ export default function UserManagement() {
       <label className="text-xs font-medium">Role<select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="mt-1 h-10 w-full border px-2 text-sm"><option value="field_officer">Field Officer</option><option value="admin">Admin</option></select></label>
       <button className="self-end rounded bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white">Create account</button>
     </form>
-    <div className="mt-5 overflow-x-auto rounded border bg-white"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase"><tr><th className="px-4 py-3">Name</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Created</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y">{users.map(user => <tr key={user.id}><td className="px-4 py-3 font-medium">{user.full_name}</td><td className="px-4 py-3">{user.email}</td><td className="px-4 py-3"><select aria-label={`Role for ${user.full_name}`} value={user.role} onChange={e => changeRole(user, e.target.value)} className="border px-2 py-1"><option value="field_officer">Field Officer</option><option value="admin">Admin</option></select></td><td className="px-4 py-3 text-xs">{new Date(user.created_at).toLocaleDateString()}</td><td className="px-4 py-3"><button type="button" onClick={() => deleteUser(user)} aria-label={`Delete ${user.full_name}`} className="rounded border border-red-300 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50">Delete</button></td></tr>)}</tbody></table>{users.length === 0 && <p className="p-5 text-sm text-slate-500">No accounts found.</p>}</div>
+    <div className="mt-5 overflow-x-auto rounded border bg-white"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase"><tr><th className="px-4 py-3">Name</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Created</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y">{users.map(user => <tr key={user.id}><td className="px-4 py-3 font-medium">{user.full_name}</td><td className="px-4 py-3">{user.email}</td><td className="px-4 py-3"><select aria-label={`Role for ${user.full_name}`} value={user.role} onChange={e => changeRole(user, e.target.value)} className="border px-2 py-1"><option value="field_officer">Field Officer</option><option value="admin">Admin</option></select></td><td className="px-4 py-3 text-xs">{new Date(user.created_at).toLocaleDateString()}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => issueResetLink(user)} aria-label={`Issue a password reset link for ${user.full_name}`} className="rounded border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-50">Reset password</button><button type="button" onClick={() => deleteUser(user)} aria-label={`Delete ${user.full_name}`} className="rounded border border-red-300 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50">Delete</button></div></td></tr>)}</tbody></table>{users.length === 0 && <p className="p-5 text-sm text-slate-500">No accounts found.</p>}</div>
   </div>;
 }

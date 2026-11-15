@@ -29,7 +29,7 @@ move money.** The payment/disbursement module that earlier drafts described was 
 
 | # | Feature | Purpose | How it is implemented now |
 |---|---|---|---|
-| 1 | Authentication and roles | Only authorised officers act on beneficiary data | `POST /api/auth/login`, `POST /api/auth/register` (field-officer self-service only); bcrypt cost 12; 8-hour JWT; `middleware/auth.js` verifies the token **and reloads the role from `users`** each request, so a stale claim cannot grant rights; `users.is_active` blocks suspended accounts; login rate limited |
+| 1 | Authentication and roles | Only authorised officers act on beneficiary data | One sign-in form posts to `POST /api/auth/login`, which returns the stored role; `POST /api/auth/register` (field-officer self-service only); bcrypt cost 12; 8-hour JWT; `middleware/auth.js` verifies the token **and reloads the role from `users`** each request, so a stale claim cannot grant rights; `users.is_active` blocks suspended accounts; login rate limited; a forgotten password is recovered with an administrator-issued one-time link (`POST /api/users/:id/password-reset`, `POST /api/auth/password-reset/validate`, `POST /api/auth/password-reset/complete`) because the deployment has no mail transport |
 | 2 | Student registration | Creates the beneficiary record | `POST /api/students` (field officer only), Zod validation, server-generated `qr_token` (32 random bytes, hex), QR image returned as a data URL pointing at `PUBLIC_APP_URL/verify#token=…`; duplicate screening runs **before** insert inside one transaction with an advisory lock |
 | 3 | Duplicate detection (ML) | Surfaces possible re-registrations for human review | Node spawns `ml-service/predict.py --server` as a child process and streams JSON lines over stdin/stdout (a long-lived Python process, not an HTTP microservice); six ordered features; score ≥ `ML_REVIEW_SCORE_THRESHOLD` (default 0.50) qualifies a candidate; aggregation policy `top-1` writes **at most one** `duplicate_flags` row per registration |
 | 4 | Duplicate review | A human decides, never the model | `/api/duplicate-flags` (admin only): list, `GET /:id/identifiers` (reveals UPI / birth-certificate / national ID to an admin), `PATCH /:id` decision with reviewer and reason, `POST /evaluate` (score an ad-hoc pair), `POST /scan` (re-scan existing registry); statuses `pending`, `needs_verification`, `confirmed_duplicate`, `not_duplicate` |
@@ -37,7 +37,7 @@ move money.** The payment/disbursement module that earlier drafts described was 
 | 6 | Bursary award proposal by the field officer | Recommends the amount; approval stays with the admin | `POST /api/awards` (`field_officer` only) stores `student_id`, `requested_amount` and the student's `school_code` with status `submitted`; the officer cannot approve their own proposal. No separate verification step exists |
 | 7 | Award proposal and decision | Separates proposing from approving | `POST /api/awards` (field officer; DB value `submitted`, UI wording "Proposed (awaiting approval)"); repeat proposals are gated behind a confirmation — a student whose award is `approved` (or still `submitted`) gets `409` `EXISTING_ALLOCATION` and a retry with `confirm_duplicate_allocation: true`, and `Awards.jsx` labels them "(already has a bursary)"; `PATCH /api/awards/:id/decision` (admin; `approved`/`rejected` with reason); approval refuses `submitted_by === req.user.id` |
 | 8 | Automatic certificate on approval | Produces the document at the decision | The decision transaction calls `services/certificateIssue.js`, which writes the `bursary_certificates` snapshot row, a 64-hex verification token, a human reference and an `AWARD_CERTIFICATE_ISSUED` audit row, and returns `certificate_reference` in the decision response |
-| 9 | Certificate view / print for issue | Officer hands the paper to the school | `GET /api/awards/:id/certificate` (facts + QR data URL) and `GET /api/awards/:id/certificate.pdf` (on-demand PDF, `no-store`), restricted to admins and to the officer who proposed that award (`403` otherwise; `409` if the award is no longer approved); UI `AwardCertificatePanel.jsx` on the Awards page |
+| 9 | Certificate view / print for issue | Officer hands the paper to the school | `GET /api/awards/:id/certificate` (facts + QR data URL) and `GET /api/awards/:id/certificate.pdf` (on-demand PDF, `no-store`), restricted to admins and to the officer who proposed that award (`403` otherwise; `409` if the award is no longer approved); UI `AwardCertificatePanel.jsx` on the Awards page. Header lines print on fixed baselines and shrink to fit their column (`fitFontSize` in `invoiceDocument.js`) instead of wrapping onto the line below, so a long organisation or programme name can never overlap the document title or subtitle |
 | 10 | Public certificate verification | Anyone holding the paper can check it | `POST /api/certificates/verify` accepts exactly one of `{ token }` (QR) or `{ reference }` (typed); reference normalisation (trim, upper-case, strip spaces/dashes); answers `verified` / `not_current` / `not_recognised`; 20 requests per IP per 15 minutes before the body parser; page `/verify-certificate` strips the fragment via `history.replaceState` |
 | 11 | Public student-record verification | Confirms a student record exists | `POST /api/verify` with a 64-hex token, answers `{ found }` only, no student details; page `/verify`; separate 10/15-minute limiter |
 | 12 | Dashboards | Role-specific landing surfaces | `AdminDashboard.jsx` (`/dashboard`) and `FieldOfficerDashboard.jsx` (`/field-officer`); data from `GET /api/admin/dashboard` |
@@ -45,7 +45,7 @@ move money.** The payment/disbursement module that earlier drafts described was 
 | 14 | Audit trail | Accountability for decisions | `audit_logs` written by `services/auditLog.js` for registration, duplicate decisions, eligibility, awards, verification, certificate issue, user and settings changes; `GET /api/audit-logs` (admin), page `AuditLogs.jsx` |
 | 15 | Settings | Admin-tunable duplicate threshold | `GET/PUT /api/settings/threshold` (admin) sets the three thresholds in the running process and audits the change (`ADMIN_UPDATE_DUPLICATE_THRESHOLDS`); the values are **in-memory only** — a restart restores the environment/default values. Page `Settings.jsx`; field officers cannot see the scoring formula |
 | 16 | User management | Officer accounts | `GET/POST /api/users`, `PATCH /api/users/:id/role`, `DELETE /api/users/:id` (admin only), page `UserManagement.jsx`; public admin registration disabled |
-| 17 | Notifications | Tells the right person what happened | `notifications` table; admins are notified of each proposal, the proposing officer of the decision and of certificate readiness; `GET /api/notifications`, `DELETE /api/notifications/:id` (reading a notification deletes it), `DELETE /api/notifications` (clear all), every query scoped to `req.user.id`; `NotificationBell.jsx` renders the dropdown for both roles |
+| 17 | Notifications | Tells the right person what happened | `notifications` table; admins are notified of each proposal, the proposing officer of the decision and of certificate readiness; `GET /api/notifications`, `DELETE /api/notifications/:id` (reading a notification deletes it), `DELETE /api/notifications` (clear all), every query scoped to `req.user.id`; `NotificationBell.jsx` renders the dropdown for both roles. `GET /api/notifications` also returns a derived `pending_approvals` list for administrators — students whose award is still `submitted` — which is read from `bursary_awards` on every poll and is not dismissible, so a proposal stays visible after its one-shot notification has been opened |
 | 18 | Operational endpoints | Health and readiness | `GET /api/health` (liveness) and `GET /api/ready` (checks configured database name and required tables, including `bursary_certificates` and `notifications`) |
 | 19 | Legacy beneficiary compatibility API | Keeps older records readable | `/api/beneficiaries` is **still mounted** (`backend/src/index.js`) against the legacy `beneficiaries` table created by `20261025_legacy_beneficiaries_baseline.sql`. It is not the primary workflow and must not be presented as the main beneficiary module |
 
@@ -77,12 +77,13 @@ move money.** The payment/disbursement module that earlier drafts described was 
 | Certificate issuance | Administrator opened an award and clicked "issue certificate"; the decision response carried no certificate | Certificate is written **inside the approval transaction**; the decision response returns `certificate_reference`. The manual route is now only a retry/backfill (`409` when one exists). Field officers are notified and print from `AwardCertificatePanel.jsx` |
 | Certificate reference | `SBMS-CERT-<year>-<8 uppercase hex>` (32 bits, ungrouped) | `SBMS-<year>-<4>-<4>-<3>` e.g. `SBMS-2026-K8M4-X7PQ-2RZ`; 11 symbols from a 32-character alphabet without `0 O 1 I` (≈55 bits), generated with `crypto.randomInt`, unique in the database, race-retried in a savepoint. Legacy `SBMS-CERT-…` values are still normalised and accepted for paper already in circulation |
 | Public certificate answer | Reference, period, dates, issuing authority only — explicitly **no** name, school or amount | Since the 2026-11-05 redesign it returns the facts printed on the paper: `certificate_reference`, `beneficiary_name`, `institution`, `programme`, `constituency` (null unless configured), `award_period`, `approved_amount`, `issued_at`, `award_approved_at`, `status`, `valid`, `issuing_authority`. Still never UPI, national ID, birth certificate, DOB, guardian/phone, address, documents, duplicate scores, ids or token. This is documented as a deliberate disclosure decision in `docs/bursary-certificates-2026-11-01.md` §10.5 |
-| Certificate PDF | Plain Helvetica one-page report, token URL printed as text | A4 landscape vector document (ivory paper, navy/gold rules, rosette seal that is explicitly not a coat of arms, facts grid, 84 pt QR, reference and manual page address, "approval is not payment" small print); byte-identical on re-download because `CreationDate` is pinned; signatory block only when `SBMS_SIGNATORY_NAME` is configured |
+| Certificate PDF | Plain Helvetica one-page report, token URL printed as text | A4 **portrait** bursary approval invoice (`backend/src/services/invoiceDocument.js`): ivory paper, navy/gold rules, one issuing header whose two lines each sit on a fixed baseline (the organisation name is shrunk until it fits, so a long name cannot print over the line beneath it), document number and dates, billed-to block, one line item with its total, two notes, a QR verification band and the "approval is not payment" small print; byte-identical on re-download because `CreationDate` is pinned; signatory block only when `SBMS_SIGNATORY_NAME` is configured |
 | Award wording | Status chip said "Submitted" | Stored value remains `submitted`, every user-facing surface says "Proposed (awaiting approval)"; `approved` is a decision record, never a payment |
 | Beneficiary verification | Field officer recorded `verified` / `not_found` / `needs_investigation` with an evidence reference (`POST /api/awards/:id/verification`); approval was refused unless `verification_status = 'verified'` | Stage removed: the officer registers, assesses eligibility and proposes the amount, the administrator reviews the proposal and decides. The API route, controller function, approval gate, `Awards.jsx` verify panel and the database CHECK constraint are gone; `verification_*` / `verified_*` columns and `bursary_award_verification_events` remain unused |
 | Repeat awards | A student could be proposed again after an approved award, allowing two bursaries | Repeat proposals are allowed but never silent: `POST /api/awards` returns `409` with `code: "EXISTING_ALLOCATION"` while a non-rejected award exists (`submitted` or `approved`), and `Awards.jsx` shows those students as "(already has a bursary)". The officer confirms the browser dialog and the request is retried with `confirm_duplicate_allocation: true`, which the server re-checks under a per-student advisory lock and records in the audit payload; a rejected proposal frees the student again |
 | Student QR verification | Token was created in the browser and no server verification endpoint existed | `students.qr_token` is generated server-side (`randomBytes(32).toString('hex')`), the QR encodes `PUBLIC_APP_URL/verify#token=…`, the page strips the fragment and posts to `POST /api/verify`, which answers `{ found }` only |
 | Authentication enforcement | Role taken from the JWT claim | `middleware/auth.js` reloads role and `is_active` from `users` on every request; suspended users are refused even with a valid token |
+| Sign-in and password recovery | Two separate forms posted to `POST /api/auth/login/admin` and `POST /api/auth/login/field-officer`, and a forgotten password could only be fixed by an administrator outside the system | One sign-in card posts to `POST /api/auth/login` and the UI routes on the returned role (`/admin/login` and `/field-officer/login` now redirect to `/login`). User Management issues a one-time link (`POST /api/users/:id/password-reset`); the holder opens `/reset-password`, the page validates the link (`POST /api/auth/password-reset/validate`) and sets a new password (`POST /api/auth/password-reset/complete`). Only a SHA-256 hash of the token is stored, the link works once, expires after 30 minutes, and issuing a fresh link retires the previous one. No mail transport exists by design: the administrator copies the link and hands it over |
 | Reports | Plain tabular PDF | Styled multi-section document (commit `4c9606e`); field officers no longer see the scoring formula (commit `dc4b949`); section toggles are labelled (`d39ca0c`) |
 | Deployment target | `render.yaml` Blueprint and `docs/deployment.md` describe Render (API Docker service + static site + Render Postgres) | Deployed target is **Azure** (Container Apps + App Service F1 + PostgreSQL Flexible Server). `render.yaml` and `docs/deployment.md` remain in the repository as an unused alternative and must not be described as the live deployment |
 | ML integration in registration | Aborts registration with `503 DUPLICATE_SCREENING_UNAVAILABLE` if screening fails (unchanged), compares against every existing student (unchanged) | Same, plus the `top-1` aggregation; candidate blocking / top-k retrieval is still **NOT IMPLEMENTED**, so registration remains O(N²) over the registry and `POST /api/duplicate-flags/scan` is likewise a full scan |
@@ -208,7 +209,7 @@ certificate for the same award is refused (`award_id` is `UNIQUE`).
 ### 5.7 Field Officer downloads the certificate for issuance — IMPLEMENTED
 
 `AwardCertificatePanel.jsx` (opened from `/awards`) calls `GET /api/awards/:id/certificate` for the
-facts and QR image, and `GET /api/awards/:id/certificate.pdf` for the printable A4 landscape document.
+facts and QR image, and `GET /api/awards/:id/certificate.pdf` for the printable A4 portrait approval invoice.
 Access is limited to the proposing officer and administrators; any other officer gets `403`, and an
 award no longer approved returns `409`.
 
@@ -220,7 +221,21 @@ award no longer approved returns `409`.
 | `/verify-certificate` QR → `POST /api/certificates/verify` `{ token }` | 64-hex certificate token | `verified` (with printed facts plus `payments` tracking: recorded / cleared / outstanding), `not_current` (award changed or no longer approved; reference only), `not_recognised` |
 | `/verify-certificate` manual → same endpoint `{ reference }` | Typed reference (`SBMS-2026-K8M4-X7PQ-2RZ`; case, spaces and dashes forgiven) | Same three answers through the same handler |
 
-### 5.9 Planned / proposed but **NOT IMPLEMENTED**
+### 5.9 Administrator-issued password reset — IMPLEMENTED
+
+There is no mail transport, so recovery is a hand-over. An administrator opens **User Management**,
+issues a reset link for one active account and passes it to the holder. The server stores only the
+SHA-256 of the 64-character token, retires any earlier unused link for that account, records
+`ADMIN_ISSUE_PASSWORD_RESET` in the audit log and returns the token once so it can be copied. The
+holder opens `/reset-password?token=…`; the page calls `POST /api/auth/password-reset/validate` to
+show which masked address is being reset, then `POST /api/auth/password-reset/complete` with the new
+password. Consuming the link and writing the new `password_hash` happen in one statement, so a replay
+or an expired link (30 minutes) is refused with `410` and the old password keeps working. The account
+signs in afterwards through the single sign-in form.
+
+---
+
+### 5.10 Planned / proposed but **NOT IMPLEMENTED**
 
 Candidate blocking or approximate nearest-neighbour retrieval to replace O(N²) screening; retraining
 on adjudicated (human-reviewed) pairs; certificate revocation; e-mail/SMS delivery of notifications;
@@ -354,6 +369,23 @@ loopback test database (`node scripts/migrate.js apply --confirm-sbms-test`) and
 `tests/workflow.test.js` raises its hook budget to 300 s because registration screens each new student
 against the whole registry, which a long-lived local database makes slow.
 
+### 7.1a Results measured on 2026-11-15 (working tree, branch `fix/sbms-completion-work`)
+
+| Check | Command | Result |
+|---|---|---|
+| Backend Jest | `backend/.env.test` loaded, then `npx jest --runInBand --silent tests` | **30 suites / 224 tests — 30/30 suites passed, 224/224 tests passed** against `sbms_test` with `20261115_password_reset_tokens.sql` applied |
+| Password reset only | `npx jest tests/passwordReset.test.js --runInBand` | **6/6 passed** (issue/authorise + stored hash + issuer + 30-minute window, single use, supersede, expiry, invalid and malformed tokens, single sign-in role) |
+| Frontend build | `npm run build --prefix frontend` | **exit 0**, built in 8.51 s |
+
+The 2026-11-15 run needed two environment changes the earlier command did not: `JWT_SECRET` must be
+set to a value of at least 32 bytes (the app refuses to sign tokens otherwise, and every authenticated
+request fails with `500`), and `sbms_test` must have `20261115_password_reset_tokens.sql` applied
+(`node scripts/migrate.js apply --confirm-sbms-test`). `tests/bursaryCertificates.test.js` asserted a
+landscape `MediaBox` for the award PDF, but the document that endpoint produces has been the A4
+portrait approval invoice since the invoice rename; the assertion now matches the portrait page.
+`npx jest` without the `tests` path also picks up the `node --test` files under `backend/test/`, which
+Jest cannot run, so those six suites report "failed to run" - run the documented command instead.
+
 ### 7.2 Earlier verified results (historical, still valid for the commit named)
 
 | Date | Commit | Result |
@@ -432,7 +464,7 @@ Paths are under `docs/final-documentation-content/`. Line numbers refer to the v
 | Certificate narrative | Certificate "issued from a panel by an administrator" | Certificate is issued inside the approval transaction; the panel is the officer's download/print surface; `POST /api/awards/:id/certificate` is retry/backfill only |
 | Duplicate-detection section | "every candidate pair ≥ threshold creates a flag" | `top-1-corroborated` aggregation: at most one case per registration, and only on decisive evidence (exact identifier, or two independent fields agreeing); `top-1` and `all` exist only as comparison modes |
 | Notifications | Absent from the chapter | Add a subsection: table, categories, role targeting, dedupe key, read state, polling, bell component and its tests |
-| Test evidence tables | 21 suites / 128 tests; 24 suites / 151 tests | Current: 27 suites / 175 tests — 24 suites / 154 tests pass, 3 suites / 21 tests blocked by the un-migrated test database (§7.1). State the blockage honestly |
+| Test evidence tables | 21 suites / 128 tests; 24 suites / 151 tests | Current: 30 suites / 224 tests, all passing (§7.1a) — do not quote the older, lower totals as current |
 | Frontend build evidence | Module counts 2,002 / 2,006 | Re-measure; the verified statement for this commit is "exit 0, 11.67 s" |
 | Screenshots | Disbursements page, "Submitted" status chips, old bell, old certificate layout, `SBMS-CERT-…` reference | Replace with current `/awards`, `/duplicate-review`, bell dropdown, new certificate PDF and `/verify-certificate` result |
 | ML evaluation subsection | Figures from `raw_pairs.csv` (98.61% F1) or the research dataset model (0.875 F1) | Use the deployed model's synthetic holdout metrics (§6.4), the false-positive baseline (§6.5) and the limitations (§6.7) |
@@ -453,9 +485,9 @@ Paths are under `docs/final-documentation-content/`. Line numbers refer to the v
 
 ## 9. Rules for Claude when rewriting the chapters
 
-1. **Tense discipline.** Present tense only for §1 and §5.1–§5.8. Everything in §5.9 is future or
+1. **Tense discipline.** Present tense only for §1 and §5.1–§5.9. Everything in §5.10 is future or
    proposed. Nothing about payments exists in any tense except "removed" or "future work".
-2. **Numbers.** Quote test totals as "27 suites / 175 tests, all passing" and name the database they ran
+2. **Numbers.** Quote test totals as "30 suites / 224 tests, all passing" (2026-11-15, §7.1a) and name the database they ran
    against (`sbms_test`, with both 2026-11-11 migrations applied). Quote ML metrics with the word
    *synthetic* and the threshold (0.5).
 3. **Two QR codes.** Student QR proves record existence only. Certificate QR (or typed reference)
@@ -479,6 +511,10 @@ Paths are under `docs/final-documentation-content/`. Line numbers refer to the v
 git rev-parse HEAD; git rev-parse --abbrev-ref HEAD; git status --porcelain
 
 # backend tests (load backend/.env.test first; do not print its values)
+# JWT_SECRET must be a value of at least 32 bytes, otherwise every signed-token flow answers 500
+$env:JWT_SECRET = '<local value of at least 32 bytes>'
+# the loopback test database needs every pending migration, including 20261115_password_reset_tokens.sql:
+node scripts/migrate.js apply --confirm-sbms-test
 npx jest --runInBand --silent tests
 
 # ML suite

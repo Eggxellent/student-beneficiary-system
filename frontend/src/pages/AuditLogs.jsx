@@ -17,6 +17,8 @@ const actionLabels = {
   ELIGIBILITY_CALCULATED: "Eligibility assessed",
   GENERATE_REPORT: "Report generated",
   ADMIN_UPDATE_DUPLICATE_THRESHOLDS: "Duplicate thresholds changed",
+  ADMIN_ISSUE_PASSWORD_RESET: "Password reset link issued",
+  USER_PASSWORD_RESET: "Password changed with reset link",
 };
 
 const resourceLabels = {

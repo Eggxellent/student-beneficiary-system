@@ -27,10 +27,10 @@ export function AuthProvider({ children }) {
     }).finally(() => setAuthLoading(false));
   }, [token]);
 
-  async function login(email, password, role) {
-    const loginPath = role === "admin" ? "/auth/login/admin" : role === "field_officer" ? "/auth/login/field-officer" : null;
-    if (!loginPath) throw new Error("Choose the correct sign-in page for your account.");
-    const response = await api.post(loginPath, {
+  async function login(email, password) {
+    // One sign-in endpoint for every account: the stored role decides the workspace after this
+    // returns. The old role-specific paths still exist for API clients but the UI no longer asks.
+    const response = await api.post("/auth/login", {
       email,
       password,
     });

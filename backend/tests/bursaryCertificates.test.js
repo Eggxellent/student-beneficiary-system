@@ -252,10 +252,11 @@ describe("Bursary award certificates", () => {
     expect(pdf.body.subarray(0, 4).toString()).toBe("%PDF");
     expect(pdf.body.length).toBeGreaterThan(5000);
 
-    // One A4 landscape page: the printed certificate must not spill onto a second sheet.
+    // One A4 page: the document an approved award produces is the approval invoice, which is set in
+    // portrait, and the printed copy must not spill onto a second sheet.
     const raw = pdf.body.toString("latin1");
     expect((raw.match(/\/Type \/Page[^s]/g) || [])).toHaveLength(1);
-    expect(raw).toContain("MediaBox [0 0 841.89 595.28]");
+    expect(raw).toContain("MediaBox [0 0 595.28 841.89]");
     expect(raw).not.toMatch(/\/URI/);
 
     // A reprint of the same certificate is the same document, byte for byte.

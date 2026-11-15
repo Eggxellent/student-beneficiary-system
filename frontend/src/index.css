@@ -352,22 +352,6 @@
   transition: --login-accent 280ms ease, --login-highlight 280ms ease, --login-tint 280ms ease, --login-glow 280ms ease, --login-panel-border 280ms ease;
 }
 
-.sbms-login-screen[data-theme="admin"] {
-  --login-accent: #173d35;
-  --login-highlight: #c8a45d;
-  --login-tint: rgb(23 61 53 / 10%);
-  --login-glow: rgb(23 61 53 / 22%);
-  --login-panel-border: rgb(200 164 93 / 48%);
-}
-
-.sbms-login-screen[data-theme="field_officer"] {
-  --login-accent: #276c66;
-  --login-highlight: #83b5a1;
-  --login-tint: rgb(39 108 102 / 11%);
-  --login-glow: rgb(39 108 102 / 20%);
-  --login-panel-border: rgb(131 181 161 / 52%);
-}
-
 .sbms-login-screen::before {
   position: absolute;
   z-index: -1;
@@ -394,10 +378,6 @@
 .sbms-login-panel--leaving {
   animation: sbms-login-exit 200ms ease-in both;
   pointer-events: none;
-}
-
-.sbms-login-panel--chooser {
-  width: min(100%, 640px);
 }
 
 .sbms-login-brand {
@@ -456,117 +436,6 @@
 .sbms-login-submit:focus-visible {
   outline: 3px solid var(--login-highlight);
   outline-offset: 3px;
-}
-
-.sbms-login-choices {
-  position: relative;
-  animation: sbms-login-content-in 420ms 160ms both;
-}
-
-.sbms-login-choice {
-  position: relative;
-  display: flex;
-  min-height: 92px;
-  align-items: center;
-  gap: 15px;
-  border: 1px solid rgb(23 61 53 / 18%);
-  border-radius: 10px;
-  padding: 20px;
-  background: rgb(255 255 255 / 19%);
-  color: var(--login-accent);
-  text-decoration: none;
-  transition: transform 280ms cubic-bezier(.2, .75, .25, 1), border-color 280ms ease, background-color 280ms ease, box-shadow 280ms ease, color 280ms ease;
-}
-
-.sbms-login-choice::after {
-  position: absolute;
-  right: 14px;
-  bottom: 0;
-  left: 14px;
-  height: 3px;
-  border-radius: 3px 3px 0 0;
-  background: var(--login-highlight);
-  content: '';
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 280ms ease;
-}
-
-.sbms-login-choice:hover {
-  transform: translateY(-3px);
-  border-color: var(--login-accent);
-  background-color: var(--login-tint);
-  box-shadow: 0 10px 25px var(--login-glow);
-}
-
-.sbms-login-choice:active:not([aria-disabled="true"]) {
-  transform: translateY(0) scale(.99);
-}
-
-.sbms-login-choice[data-role="admin"] {
-  --login-accent: #173d35;
-  --login-highlight: #c8a45d;
-  --login-tint: rgb(23 61 53 / 12%);
-  --login-glow: rgb(23 61 53 / 22%);
-}
-
-.sbms-login-choice[data-role="field_officer"] {
-  --login-accent: #276c66;
-  --login-highlight: #83b5a1;
-  --login-tint: rgb(39 108 102 / 12%);
-  --login-glow: rgb(39 108 102 / 22%);
-}
-
-.sbms-login-choice[data-selected="true"] {
-  border-color: var(--login-accent);
-  background: var(--login-tint);
-  box-shadow: 0 10px 25px var(--login-glow);
-  transform: translateY(-2px);
-}
-
-.sbms-login-choice[data-selected="true"]::after {
-  transform: scaleX(1);
-}
-
-.sbms-login-choice:focus-visible {
-  outline: 3px solid var(--login-highlight);
-  outline-offset: 3px;
-  border-color: var(--login-accent);
-  box-shadow: 0 0 0 5px var(--login-glow);
-}
-
-.sbms-login-choice-icon {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
-  place-items: center;
-  border-radius: 12px;
-  background: var(--login-tint);
-  color: var(--login-accent);
-  transition: transform 280ms ease, color 280ms ease, background-color 280ms ease;
-}
-
-.sbms-login-choice[data-selected="true"] .sbms-login-choice-icon {
-  color: var(--login-highlight);
-  background: var(--login-accent);
-  transform: scale(1.04);
-}
-
-.sbms-login-choice-arrow {
-  flex: 0 0 auto;
-  margin-left: auto;
-  opacity: .55;
-  transform: translateX(-4px);
-  transition: opacity 260ms ease, transform 260ms ease, color 260ms ease;
-}
-
-.sbms-login-choice:hover .sbms-login-choice-arrow,
-.sbms-login-choice:focus-visible .sbms-login-choice-arrow,
-.sbms-login-choice[data-selected="true"] .sbms-login-choice-arrow {
-  opacity: 1;
-  transform: translateX(0);
-  color: var(--login-accent);
 }
 
 .sbms-login-submit {
@@ -679,21 +548,15 @@
   .sbms-login-screen::before,
   .sbms-login-panel,
   .sbms-login-panel--leaving,
-  .sbms-login-brand,
-  .sbms-login-choices {
+  .sbms-login-brand {
     animation: none;
   }
 
   .sbms-login-panel input,
-  .sbms-login-choice,
   .sbms-login-submit,
   .sbms-login-back,
-  .sbms-login-choice:focus-visible,
   .sbms-login-screen,
-  .sbms-login-panel,
-  .sbms-login-choice::after,
-  .sbms-login-choice-icon,
-  .sbms-login-choice-arrow {
+  .sbms-login-panel {
     transition: none;
   }
 
@@ -705,3 +568,320 @@
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Single staff sign-in and password reset.
+   Structure follows the split card: the form sits on the surface colour, and a deep-forest panel
+   carries the welcome message and illustration. Colours come from the system palette (forest
+   #173d35, deep #0f2c26, gold #c8a45d, sage tints) so the page reads as the same product as the
+   rest of the app, not a bolted-on portal.
+   --------------------------------------------------------------------------------------------- */
+.sbms-auth-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.02fr);
+  width: min(100%, 1000px);
+  overflow: hidden;
+  border-radius: 22px;
+  background: var(--sbms-surface);
+  box-shadow: 0 30px 80px rgb(7 24 20 / 42%);
+  animation: sbms-login-enter 480ms cubic-bezier(.2, .75, .25, 1) both;
+}
+
+.sbms-auth-form {
+  padding: clamp(26px, 4.4vw, 46px);
+  background: var(--sbms-surface);
+}
+
+.sbms-auth-heading {
+  margin: 0 0 6px;
+  color: var(--sbms-forest);
+  font-size: clamp(24px, 3vw, 30px);
+  font-weight: 780;
+  letter-spacing: -.02em;
+  line-height: 1.15;
+}
+
+.sbms-auth-subtitle {
+  margin: 0 0 22px;
+  color: var(--sbms-muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.sbms-auth-forgot-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 18px;
+}
+
+.sbms-auth-forgot {
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--sbms-forest);
+  font-size: 12.5px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.sbms-auth-forgot:hover {
+  color: #0f2c26;
+}
+
+.sbms-auth-forgot:focus-visible {
+  outline: 2px solid var(--sbms-gold);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.sbms-auth-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 22px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--sbms-border);
+  color: var(--sbms-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.sbms-auth-note svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--sbms-gold);
+}
+
+.sbms-auth-form input:focus-visible {
+  outline: 3px solid var(--sbms-gold);
+  outline-offset: 2px;
+}
+
+.sbms-auth-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 18px;
+  padding: clamp(26px, 4.4vw, 46px);
+  background:
+    radial-gradient(120% 90% at 88% 6%, rgb(200 164 93 / 22%) 0%, transparent 58%),
+    linear-gradient(158deg, #1b463c 0%, #173d35 46%, #0f2c26 100%);
+  color: #f4f8f5;
+  overflow: hidden;
+}
+
+.sbms-auth-hero::before {
+  position: absolute;
+  top: -90px;
+  right: -70px;
+  width: 240px;
+  height: 240px;
+  border-radius: 46% 54% 58% 42%;
+  background: rgb(255 255 255 / 7%);
+  content: '';
+}
+
+.sbms-auth-hero::after {
+  position: absolute;
+  bottom: -120px;
+  left: -60px;
+  width: 260px;
+  height: 260px;
+  border-radius: 52% 48% 40% 60%;
+  background: rgb(200 164 93 / 13%);
+  content: '';
+}
+
+.sbms-auth-hero-copy,
+.sbms-auth-hero-art {
+  position: relative;
+  z-index: 1;
+}
+
+.sbms-auth-hero-title {
+  margin: 0 0 10px;
+  color: #fff;
+  font-size: clamp(22px, 2.5vw, 29px);
+  font-weight: 760;
+  letter-spacing: -.02em;
+  line-height: 1.2;
+}
+
+.sbms-auth-hero-text {
+  margin: 0;
+  max-width: 32ch;
+  color: rgb(240 247 243 / 78%);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sbms-auth-hero-art {
+  width: 100%;
+  max-width: 360px;
+  align-self: center;
+  height: auto;
+}
+
+@media (max-width: 880px) {
+  .sbms-auth-card {
+    grid-template-columns: minmax(0, 1fr);
+    width: min(100%, 480px);
+  }
+
+  .sbms-auth-hero {
+    order: -1;
+    padding: 24px 26px;
+  }
+
+  .sbms-auth-hero-art {
+    display: none;
+  }
+}
+
+
+/* Reset page reuses the glass panel, one column and a comfortable reading width. */
+.sbms-login-panel--narrow {
+  width: min(100%, 470px);
+}
+
+/* The "Back to sign in" action on the reset page is a link styled as the primary button. */
+.sbms-login-panel a.sbms-login-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+/* "Forgot password?" dialog: explains that an administrator issues the link, and accepts the link
+   or token the account holder was handed. */
+.sbms-auth-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(7 24 20 / 62%);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  animation: sbms-auth-fade 180ms ease both;
+}
+
+.sbms-auth-dialog {
+  width: min(100%, 470px);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  padding: clamp(22px, 4vw, 30px);
+  border: 1px solid var(--sbms-border);
+  border-radius: 16px;
+  background: var(--sbms-surface);
+  color: var(--sbms-text);
+  box-shadow: 0 26px 70px rgb(7 24 20 / 38%);
+  animation: sbms-login-enter 240ms cubic-bezier(.2, .75, .25, 1) both;
+}
+
+.sbms-auth-dialog h2 {
+  margin: 0 0 10px;
+  color: var(--sbms-forest);
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -.01em;
+}
+
+.sbms-auth-dialog-icon {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 14px;
+  place-items: center;
+  border-radius: 12px 12px 12px 4px;
+  background: rgb(200 164 93 / 18%);
+  color: #8a6a24;
+}
+
+.sbms-auth-dialog-icon--alert {
+  background: rgb(185 28 28 / 12%);
+  color: #991b1b;
+}
+
+.sbms-auth-steps {
+  margin: 0 0 20px;
+  padding-left: 20px;
+  color: var(--sbms-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sbms-auth-steps li + li {
+  margin-top: 6px;
+}
+
+.sbms-auth-dialog-error {
+  margin: 8px 0 0;
+  color: #991b1b;
+  font-size: 12.5px;
+}
+
+.sbms-auth-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.sbms-auth-dialog-primary,
+.sbms-auth-dialog-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.sbms-auth-dialog-primary {
+  border: 0;
+  background: var(--sbms-forest);
+  color: #fff;
+}
+
+.sbms-auth-dialog-primary:hover {
+  background: #0f2c26;
+}
+
+.sbms-auth-dialog-secondary {
+  border: 1px solid var(--sbms-border);
+  background: transparent;
+  color: var(--sbms-forest);
+}
+
+.sbms-auth-dialog-secondary:hover {
+  background: var(--sbms-sage);
+}
+
+.sbms-auth-dialog-primary:focus-visible,
+.sbms-auth-dialog-secondary:focus-visible {
+  outline: 3px solid var(--sbms-gold);
+  outline-offset: 2px;
+}
+
+@keyframes sbms-auth-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sbms-auth-card,
+  .sbms-auth-dialog,
+  .sbms-auth-dialog-backdrop {
+    animation: none;
+  }
+}
+

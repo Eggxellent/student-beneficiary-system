@@ -1,3 +1,4 @@
+const zlib = require('zlib');
 const { invoiceContent, renderInvoicePdf } = require('../src/services/invoiceDocument');
 
 // Rendering inside jest is slow: the QR encoder works pixel by pixel, and jest's module sandbox
@@ -121,6 +122,39 @@ describe('Invoice content', () => {
   });
 });
 
+// The header prints on a fixed grid, so two lines only stay readable if they keep separate
+// baselines. Reading the drawn baselines back out of the compressed content stream is the only way
+// to prove that from the bytes a caller actually receives.
+function drawnText(pdf) {
+  const content = [];
+  for (const part of pdf.toString('latin1').split('endstream')) {
+    const marker = part.lastIndexOf('stream');
+    if (marker === -1) continue;
+    try {
+      const body = part.slice(marker + 6).replace(/^\r?\n/, '');
+      content.push(zlib.inflateSync(Buffer.from(body, 'latin1'), { finishFlush: zlib.constants.Z_SYNC_FLUSH }).toString('latin1'));
+    } catch {
+      // Image streams carry no text.
+    }
+  }
+
+  const runs = [];
+  for (const block of content.join('\n').match(/BT[\s\S]*?ET/g) || []) {
+    const position = block.match(/([\d.-]+) ([\d.-]+) Tm/);
+    if (!position) continue;
+    const text = (block.match(/<([0-9A-Fa-f\s]+)>/g) || [])
+      .map((hex) => Buffer.from(hex.slice(1, -1).replace(/\s+/g, ''), 'hex').toString('latin1'))
+      .join('');
+    if (text.trim()) runs.push({ y: Number(position[2]), text });
+  }
+  return runs;
+}
+
+function baselinesOf(pdf, match) {
+  const found = drawnText(pdf).filter((run) => match(run.text));
+  return [...new Set(found.map((run) => run.y))];
+}
+
 describe('Invoice PDF', () => {
   test('is a single A4 portrait page with the QR code embedded as an image', async () => {
     const pdf = await render();
@@ -165,5 +199,31 @@ describe('Invoice PDF', () => {
     const raw = pdf.toString('latin1');
 
     expect((raw.match(/\/Type \/Page[^s]/g) || [])).toHaveLength(1);
+  });
+
+  test('keeps each header line on its own baseline, even with a long programme line', async () => {
+    // The reported defect: the organisation name and the document title wrapped onto a second line
+    // that printed straight over the programme line and the subtitle. Each header line now holds to
+    // a single baseline, shrinking to fit rather than wrapping.
+    const pdf = await render({
+      identity: {
+        programme: 'Kenya CDF bursary programme',
+        constituency: 'Student beneficiary records | Bursary award approvals',
+      },
+    });
+
+    const organisation = baselinesOf(pdf, (text) => text === 'STUDENT BENEFICIARY MANAGEMENT SYSTEM');
+    const programme = baselinesOf(pdf, (text) => text.startsWith('Kenya CDF bursary programme'));
+    const title = baselinesOf(pdf, (text) => text === 'BURSARY APPROVAL INVOICE');
+    const subtitle = baselinesOf(pdf, (text) => text.startsWith('Official record of an approved bursary award'));
+
+    expect(organisation).toHaveLength(1);
+    expect(programme).toHaveLength(1);
+    expect(title).toHaveLength(1);
+    expect(subtitle).toHaveLength(1);
+
+    // A programme line that no longer fits is clipped, never wrapped on top of its neighbour.
+    expect(organisation[0] - programme[0]).toBeGreaterThan(10);
+    expect(title[0] - subtitle[0]).toBeGreaterThan(15);
   });
 });

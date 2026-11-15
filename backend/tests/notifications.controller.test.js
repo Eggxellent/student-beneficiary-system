@@ -6,6 +6,7 @@ const controller = require('../src/controllers/notifications.controller');
 const userId = 'ce05b86e-f645-4ed9-8772-a954a77f1664';
 const otherUserId = 'a0b1c2d3-0000-4000-8000-000000000000';
 const notificationId = '0b0b0b0b-1111-4222-8333-444444444444';
+const awardId = '1c1c1c1c-2222-4333-8444-555555555555';
 
 function makeResponse() {
   return {
@@ -40,6 +41,46 @@ describe('notifications API (isolated; no database)', () => {
     expect(pool.query.mock.calls[0][0]).toContain('WHERE user_id = $1');
     expect(pool.query.mock.calls[1][1]).toEqual([userId]);
   });
+
+  // A proposal is still waiting after its one-shot notification has been opened and deleted, so the
+  // administrator's queue is derived from the awards table and cannot be cleared away.
+  test('an administrator also receives the students still awaiting a decision', async () => {
+    const award = {
+      id: awardId,
+      student_name: 'Amina Wanjiku',
+      requested_amount: '45000.00',
+      created_at: '2026-11-14T09:00:00.000Z',
+    };
+    pool.query.mockImplementation(async (statement) => {
+      if (statement.includes('FROM bursary_awards a')) return { rows: [award] };
+      if (statement.includes("status = 'submitted'")) return { rows: [{ count: 7 }] };
+      if (statement.includes('COUNT(*)')) return { rows: [{ count: 2 }] };
+      return { rows: [] };
+    });
+
+    const res = makeResponse();
+    await controller.list(makeRequest({ user: { id: userId, role: 'admin' } }), res, jest.fn());
+
+    expect(res.body.unread_count).toBe(2);
+    expect(res.body.pending_approval_count).toBe(7);
+    expect(res.body.pending_approvals).toEqual([{ ...award, link: '/awards' }]);
+    const pendingCall = pool.query.mock.calls.find(([statement]) => statement.includes('FROM bursary_awards a'));
+    expect(pendingCall[0]).toContain("WHERE a.status = 'submitted'");
+    // The panel shows a few rows; the count is what says how many students are actually waiting.
+    expect(pendingCall[1]).toEqual([5]);
+  });
+
+  test('a field officer gets no pending-approval list and no extra awards query', async () => {
+    pool.query.mockResolvedValue({ rows: [] });
+
+    const res = makeResponse();
+    await controller.list(makeRequest({ user: { id: userId, role: 'field_officer' } }), res, jest.fn());
+
+    expect(res.body.pending_approvals).toEqual([]);
+    expect(res.body.pending_approval_count).toBe(0);
+    expect(pool.query.mock.calls).toHaveLength(2);
+  });
+
 
   test('clamps the requested page size instead of trusting the caller', async () => {
     pool.query.mockResolvedValue({ rows: [] });

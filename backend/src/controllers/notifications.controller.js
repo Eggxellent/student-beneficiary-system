@@ -3,6 +3,22 @@ const pool = require('../config/db');
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
+const AWARDS_PATH = '/awards';
+
+// The panel shows a handful of waiting students; `pending_approval_count` is what tells the
+// administrator how many are actually in the queue, and the Awards page lists the rest.
+const PENDING_APPROVALS_LIMIT = 5;
+
+// Work that is still waiting cannot be "read" away. A proposal stays in `submitted` after the
+// `award_submitted` row has been opened and deleted, so the pending list is derived from
+// `bursary_awards` on every read instead of being a one-shot notification row.
+const PENDING_APPROVALS_SQL = `
+  SELECT a.id, s.full_name AS student_name, a.requested_amount, a.created_at
+  FROM bursary_awards a
+  JOIN students s ON s.id = a.student_id
+  WHERE a.status = 'submitted'
+  ORDER BY a.created_at ASC
+  LIMIT $1`;
 
 // Every statement below filters on `user_id = req.user.id`. That is the whole authorisation
 // model: a notification row belongs to exactly one recipient, so a field officer cannot read an
@@ -12,11 +28,17 @@ const MAX_LIMIT = 50;
 // There is no read state. Reading a notification deletes it (see `dismiss`), so everything in the
 // list is something the recipient has not opened yet, and the badge count is simply the number of
 // rows this user owns.
+//
+// One exception: an administrator's pending queue. A proposer's `award_submitted` row disappears
+// when it is opened, but the proposal it pointed at is still waiting for a decision. Those rows are
+// therefore derived from `bursary_awards` on every read (`pending_approvals`) and are not deletable;
+// they clear themselves when the award is decided, voided or otherwise leaves `submitted`.
 async function list(req, res, next) {
   try {
     const requested = Number.parseInt(req.query.limit, 10);
     const limit = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), MAX_LIMIT) : DEFAULT_LIMIT;
-    const [items, total] = await Promise.all([
+    const isAdmin = req.user?.role === 'admin';
+    const [items, total, pending, pendingTotal] = await Promise.all([
       pool.query(
         `SELECT id, category, title, body, link, reference_id, created_at
          FROM notifications
@@ -26,10 +48,22 @@ async function list(req, res, next) {
         [req.user.id, limit]
       ),
       pool.query('SELECT COUNT(*)::int AS count FROM notifications WHERE user_id = $1', [req.user.id]),
+      // A field officer proposed the award and already knows it is waiting, so the derived list is
+      // administrator-only and costs them nothing.
+      isAdmin
+        ? pool.query(PENDING_APPROVALS_SQL, [PENDING_APPROVALS_LIMIT])
+        : Promise.resolve({ rows: [] }),
+      isAdmin
+        ? pool.query("SELECT COUNT(*)::int AS count FROM bursary_awards WHERE status = 'submitted'")
+        : Promise.resolve({ rows: [] }),
     ]);
     res.json({
       notifications: items.rows,
       unread_count: Number(total.rows[0]?.count || 0),
+      // Students whose award is submitted and awaiting an administrator decision. `link` is added
+      // here so the client treats them like any other row when navigating.
+      pending_approvals: pending.rows.map((row) => ({ ...row, link: AWARDS_PATH })),
+      pending_approval_count: Number(pendingTotal.rows[0]?.count || 0),
       limit,
     });
   } catch (error) {
