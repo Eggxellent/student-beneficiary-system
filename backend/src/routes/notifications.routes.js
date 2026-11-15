@@ -7,9 +7,11 @@ router.use(authenticateToken);
 
 // No role guard: the row's owner is the permission. What a user receives is decided when the
 // notification is written (administrators for proposals, the proposing officer for decisions and
-// certificates), so every authenticated user may read their own list and nothing else.
+// certificates), so every authenticated user may read and clear their own list and nothing else.
 router.get('/', controller.list);
-router.post('/read-all', controller.markAllRead);
-router.patch('/:id/read', controller.markRead);
+// Reading is removal: the row is deleted once the recipient opens it, and `DELETE /` clears the
+// whole list for that user only.
+router.delete('/', controller.clearAll);
+router.delete('/:id', controller.dismiss);
 
 module.exports = router;

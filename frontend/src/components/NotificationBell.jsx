@@ -101,32 +101,31 @@ export default function NotificationBell({ tone = "light" }) {
     ? "text-white/80 hover:bg-white/10 hover:text-white"
     : "text-slate-500 hover:bg-slate-100 hover:text-slate-800";
 
-  async function markAllRead() {
-    if (!unread) return;
+  // Reading a notification consumes it: the API deletes the row, so the panel drops it from the
+  // list instead of restyling it, and "clear all" empties the panel. There is no read history to
+  // load because nothing read is stored.
+  async function clearAll() {
+    if (!items.length) return;
     const previousItems = items;
     const previousUnread = unread;
-    const now = new Date().toISOString();
-    setItems((current) => current.map((item) => ({ ...item, read_at: item.read_at || now })));
+    setItems([]);
     setUnread(0);
     try {
-      await api.post("/notifications/read-all");
+      await api.delete("/notifications");
     } catch {
       setItems(previousItems);
       setUnread(previousUnread);
-      setError("Could not mark notifications as read.");
+      setError("Could not clear notifications.");
     }
   }
 
   async function openNotification(item) {
     setOpen(false);
-    // The click marks the row read and then leaves the panel: the destination is the point of the
-    // notification, and a stale badge is the only thing a second click would achieve.
-    if (!item.read_at) {
-      const now = new Date().toISOString();
-      setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, read_at: now } : entry)));
-      setUnread((current) => Math.max(0, current - 1));
-      api.patch(`/notifications/${item.id}/read`).catch(() => load());
-    }
+    // The click deletes the row and then leaves the panel: the destination is the point of the
+    // notification, and a notification that has been read has nothing left to show.
+    setItems((current) => current.filter((entry) => entry.id !== item.id));
+    setUnread((current) => Math.max(0, current - 1));
+    api.delete(`/notifications/${item.id}`).catch(() => load());
     if (item.link) navigate(item.link);
   }
 
@@ -159,11 +158,11 @@ export default function NotificationBell({ tone = "light" }) {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Notifications</p>
             <button
               type="button"
-              onClick={markAllRead}
-              disabled={!unread}
+              onClick={clearAll}
+              disabled={!items.length}
               className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-semibold text-[#245747] transition hover:bg-slate-50 disabled:cursor-default disabled:text-slate-300"
             >
-              <CheckCheck size={13} aria-hidden="true" /> Mark all as read
+              <CheckCheck size={13} aria-hidden="true" /> Clear all
             </button>
           </div>
 
@@ -186,25 +185,23 @@ export default function NotificationBell({ tone = "light" }) {
                 {items.map((item) => {
                   const style = CATEGORY_STYLE[item.category] || FALLBACK_STYLE;
                   const { Icon } = style;
-                  const isUnread = !item.read_at;
+                  // Every row in this list is still waiting: opening it deletes it.
                   return (
                     <li key={item.id}>
                       <button
                         type="button"
                         onClick={() => openNotification(item)}
-                        className={`flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition hover:bg-slate-50 ${isUnread ? "bg-[#FBF7EC]" : "bg-white"}`}
+                        className="flex w-full items-start gap-2.5 bg-[#FBF7EC] px-3 py-2.5 text-left transition hover:bg-slate-50"
                       >
                         <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${style.tone}`}>
                           <Icon size={14} aria-hidden="true" />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="flex items-start justify-between gap-2">
-                            <span className={`truncate text-xs ${isUnread ? "font-semibold text-slate-900" : "font-medium text-slate-700"}`}>
+                            <span className="truncate text-xs font-semibold text-slate-900">
                               {item.title}
                             </span>
-                            {isUnread && (
-                              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#C8A45D]" aria-label="Unread" />
-                            )}
+                            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#C8A45D]" aria-hidden="true" />
                           </span>
                           <span className="mt-0.5 block truncate text-[11px] text-slate-500">{item.body}</span>
                           <span className="mt-0.5 block text-[10px] uppercase tracking-wide text-slate-400">

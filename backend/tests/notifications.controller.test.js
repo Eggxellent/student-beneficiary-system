@@ -51,36 +51,40 @@ describe('notifications API (isolated; no database)', () => {
     expect(pool.query.mock.calls[2][1]).toEqual([userId, 20]);
   });
 
-  test('marks a notification read only when the row belongs to the caller', async () => {
-    pool.query.mockResolvedValueOnce({ rows: [{ id: notificationId, read_at: '2026-11-11T08:00:00Z' }] });
+  test('dismisses a notification only when the row belongs to the caller', async () => {
+    pool.query.mockResolvedValueOnce({ rows: [{ id: notificationId }] });
     const owned = makeResponse();
-    await controller.markRead(makeRequest({ params: { id: notificationId } }), owned, jest.fn());
+    await controller.dismiss(makeRequest({ params: { id: notificationId } }), owned, jest.fn());
     expect(owned.statusCode).toBe(200);
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('AND user_id = $2'), [notificationId, userId]);
+    expect(owned.body).toEqual({ removed: notificationId });
+    const [statement, params] = pool.query.mock.calls[0];
+    // A read notification is deleted, never flagged as read and kept.
+    expect(statement).toContain('DELETE FROM notifications');
+    expect(statement).not.toContain('read_at');
+    expect(params).toEqual([notificationId, userId]);
 
     pool.query.mockResolvedValueOnce({ rows: [] });
     const foreign = makeResponse();
-    await controller.markRead(makeRequest({ params: { id: notificationId } }), foreign, jest.fn());
+    await controller.dismiss(makeRequest({ params: { id: notificationId } }), foreign, jest.fn());
     expect(foreign.statusCode).toBe(404);
     expect(foreign.body.message).toBe('Notification not found.');
   });
 
   test('rejects a malformed id without touching the database', async () => {
     const res = makeResponse();
-    await controller.markRead(makeRequest({ params: { id: 'not-a-uuid' } }), res, jest.fn());
+    await controller.dismiss(makeRequest({ params: { id: 'not-a-uuid' } }), res, jest.fn());
     expect(res.statusCode).toBe(404);
     expect(pool.query).not.toHaveBeenCalled();
   });
 
-  test('marks every unread row for the caller and nobody else', async () => {
+  test('clears every row for the caller and nobody else', async () => {
     pool.query.mockResolvedValueOnce({ rowCount: 3 });
     const res = makeResponse();
-    await controller.markAllRead(makeRequest(), res, jest.fn());
-    expect(res.body).toEqual({ updated: 3 });
-    expect(pool.query).toHaveBeenCalledWith(
-      expect.stringContaining('WHERE user_id = $1 AND read_at IS NULL'),
-      [userId],
-    );
-    expect(pool.query.mock.calls[0][1]).not.toContain(otherUserId);
+    await controller.clearAll(makeRequest(), res, jest.fn());
+    expect(res.body).toEqual({ removed: 3 });
+    const [statement, params] = pool.query.mock.calls[0];
+    expect(statement).toContain('DELETE FROM notifications WHERE user_id = $1');
+    expect(params).toEqual([userId]);
+    expect(params).not.toContain(otherUserId);
   });
 });

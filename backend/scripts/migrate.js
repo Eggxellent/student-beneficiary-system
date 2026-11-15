@@ -23,6 +23,7 @@ const MIGRATION_ORDER = Object.freeze([
   '20261111_notifications.sql',
   '20261111_remove_award_verification_gate.sql',
   '20261112_award_annual_restriction.sql',
+  '20261113_notifications_dismiss_on_read.sql',
 ]);
 
 const MANUAL_MIGRATIONS = Object.freeze([
