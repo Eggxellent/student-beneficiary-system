@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { ArrowRight, Eye, EyeOff, KeyRound, ShieldCheck } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, KeyRound } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 // Reset links are handed over by an administrator as a URL, but people paste whatever they were
@@ -37,9 +37,6 @@ function HeroPanel() {
     <aside className="sbms-auth-hero">
       <div className="sbms-auth-hero-copy">
         <h2 className="sbms-auth-hero-title">Welcome to the<br />student beneficiary system</h2>
-        <p className="sbms-auth-hero-text">
-          Register students, screen duplicates and issue bursary awards from one audited record.
-        </p>
       </div>
       <svg className="sbms-auth-hero-art" viewBox="0 0 320 220" role="img" aria-hidden="true" focusable="false">
         <circle cx="262" cy="44" r="34" fill="rgb(200 164 93 / 28%)" />
@@ -129,12 +126,11 @@ export default function Login() {
 
   return (
     <>
-      <main className="sbms-login-screen">
+      <main className="sbms-login-screen sbms-login-screen--split">
         <section className="sbms-auth-card">
           <div className="sbms-auth-form">
             <Brand />
             <h1 className="sbms-auth-heading">Sign in</h1>
-            <p className="sbms-auth-subtitle">Use your work account. Administrators and field officers sign in here.</p>
 
             {error && (
               <div className="sbms-login-error mb-4 p-3 rounded" role="alert">
@@ -198,11 +194,6 @@ export default function Login() {
                 <span aria-live="polite">{loading ? "Signing in..." : "Sign in"}</span>
               </button>
             </form>
-
-            <p className="sbms-auth-note">
-              <ShieldCheck size={15} aria-hidden="true" />
-              Accounts are created by an administrator. There is no sign-up: ask your administrator for access.
-            </p>
           </div>
 
           <HeroPanel />

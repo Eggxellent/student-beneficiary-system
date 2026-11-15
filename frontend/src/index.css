@@ -571,25 +571,45 @@
 
 /* ---------------------------------------------------------------------------------------------
    Single staff sign-in and password reset.
-   Structure follows the split card: the form sits on the surface colour, and a deep-forest panel
-   carries the welcome message and illustration. Colours come from the system palette (forest
-   #173d35, deep #0f2c26, gold #c8a45d, sage tints) so the page reads as the same product as the
-   rest of the app, not a bolted-on portal.
+   The sign-in page is a full-height split: the form sits on a deep-forest panel on the left, and
+   the right panel carries the welcome message and illustration on top of the landscape photograph,
+   so the wording reads against the image. The reset page keeps the narrow glass panel. Colours come
+   from the system palette (forest #173d35, deep #0f2c26, gold #c8a45d, sage tints).
    --------------------------------------------------------------------------------------------- */
+/* Sign-in owns the whole viewport; the reset page keeps the padded, centred screen. */
+.sbms-login-screen--split {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+  place-items: stretch;
+  background-image: none;
+  background-color: #0d2721;
+}
+
+.sbms-login-screen--split::before {
+  display: none;
+}
+
 .sbms-auth-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.02fr);
-  width: min(100%, 1000px);
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+  width: 100%;
+  max-width: 100%;
+  min-height: 100vh;
+  min-height: 100svh;
   overflow: hidden;
-  border-radius: 22px;
   background: var(--sbms-surface);
-  box-shadow: 0 30px 80px rgb(7 24 20 / 42%);
-  animation: sbms-login-enter 480ms cubic-bezier(.2, .75, .25, 1) both;
 }
 
 .sbms-auth-form {
-  padding: clamp(26px, 4.4vw, 46px);
-  background: var(--sbms-surface);
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(28px, 3.4vw, 60px) clamp(24px, 4vw, 64px);
+  background:
+    radial-gradient(130% 80% at 4% 0%, rgb(200 164 93 / 16%) 0%, transparent 56%),
+    linear-gradient(158deg, #1d4a3f 0%, #173d35 46%, #0d2721 100%);
+  color: rgb(240 247 243 / 80%);
 }
 
 .sbms-auth-heading {
@@ -610,8 +630,8 @@
 
 .sbms-auth-forgot-row {
   display: flex;
-  justify-content: flex-end;
-  margin: 0 0 18px;
+  justify-content: flex-start;
+  margin: 0 0 20px;
 }
 
 .sbms-auth-forgot {
@@ -659,40 +679,110 @@
   outline-offset: 2px;
 }
 
+/* The dark form panel needs its own light-on-forest treatment; the reset page keeps the defaults. */
+.sbms-auth-form .sbms-login-brand {
+  margin-bottom: clamp(24px, 6vh, 56px);
+  color: #f4f8f5;
+}
+
+.sbms-auth-form .sbms-login-brand-mark {
+  background: var(--sbms-gold);
+  color: #12312a;
+}
+
+.sbms-auth-form .sbms-auth-heading {
+  margin-bottom: 22px;
+  color: #fff;
+  font-size: clamp(26px, 2.6vw, 34px);
+}
+
+.sbms-auth-form label {
+  color: rgb(240 247 243 / 72%);
+}
+
+.sbms-auth-form .sbms-login-input {
+  border-color: rgb(255 255 255 / 22%);
+  background: rgb(255 255 255 / 8%);
+  color: #f6faf7;
+}
+
+.sbms-auth-form .sbms-login-input::placeholder {
+  color: rgb(240 247 243 / 40%);
+}
+
+.sbms-auth-form .sbms-login-input:focus {
+  border-color: var(--sbms-gold);
+  box-shadow: 0 0 0 3px rgb(200 164 93 / 22%);
+}
+
+.sbms-auth-form .sbms-login-password-toggle {
+  color: rgb(240 247 243 / 62%);
+}
+
+.sbms-auth-form .sbms-login-password-toggle:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 12%);
+}
+
+.sbms-auth-form .sbms-auth-forgot {
+  color: #e7d3a6;
+}
+
+.sbms-auth-form .sbms-auth-forgot:hover {
+  color: #fff;
+}
+
+.sbms-auth-form .sbms-login-submit {
+  background: var(--sbms-gold);
+  color: #10261f;
+}
+
+.sbms-auth-form .sbms-login-submit:hover:not(:disabled) {
+  background: #d8b872;
+  box-shadow: 0 12px 26px rgb(0 0 0 / 30%);
+}
+
+.sbms-auth-form .sbms-login-error {
+  border-color: rgb(248 113 113 / 42%);
+  background: rgb(127 29 29 / 48%);
+  color: #fee2e2;
+}
+
+/* The sign-in panel animates in; reduced motion shows the finished state straight away. */
+@media (prefers-reduced-motion: reduce) {
+  .sbms-auth-form .sbms-login-brand,
+  .sbms-auth-form .sbms-auth-heading,
+  .sbms-auth-form .sbms-login-field,
+  .sbms-auth-form .sbms-login-password,
+  .sbms-auth-form .sbms-login-input,
+  .sbms-auth-form .sbms-login-submit {
+    animation: none;
+  }
+}
+
 .sbms-auth-hero {
   position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 18px;
-  padding: clamp(26px, 4.4vw, 46px);
-  background:
-    radial-gradient(120% 90% at 88% 6%, rgb(200 164 93 / 22%) 0%, transparent 58%),
-    linear-gradient(158deg, #1b463c 0%, #173d35 46%, #0f2c26 100%);
+  gap: 22px;
+  padding: clamp(30px, 3.6vw, 62px);
+  background-color: #173d35;
+  background-image:
+    linear-gradient(196deg, rgb(11 34 29 / 76%) 0%, rgb(11 34 29 / 28%) 46%, rgb(8 28 24 / 88%) 100%),
+    url('/images/sbms-landscape.jpg');
+  background-position: center;
+  background-size: cover;
   color: #f4f8f5;
   overflow: hidden;
 }
 
+/* Warm glow lifts the illustration off the photograph without washing out the image. */
 .sbms-auth-hero::before {
   position: absolute;
-  top: -90px;
-  right: -70px;
-  width: 240px;
-  height: 240px;
-  border-radius: 46% 54% 58% 42%;
-  background: rgb(255 255 255 / 7%);
+  inset: 0;
   content: '';
-}
-
-.sbms-auth-hero::after {
-  position: absolute;
-  bottom: -120px;
-  left: -60px;
-  width: 260px;
-  height: 260px;
-  border-radius: 52% 48% 40% 60%;
-  background: rgb(200 164 93 / 13%);
-  content: '';
+  background: radial-gradient(92% 68% at 84% 88%, rgb(200 164 93 / 24%) 0%, transparent 62%);
 }
 
 .sbms-auth-hero-copy,
@@ -702,42 +792,53 @@
 }
 
 .sbms-auth-hero-title {
-  margin: 0 0 10px;
-  color: #fff;
-  font-size: clamp(22px, 2.5vw, 29px);
-  font-weight: 760;
-  letter-spacing: -.02em;
-  line-height: 1.2;
-}
-
-.sbms-auth-hero-text {
   margin: 0;
-  max-width: 32ch;
-  color: rgb(240 247 243 / 78%);
-  font-size: 13px;
-  line-height: 1.6;
+  max-width: 18ch;
+  color: #fff;
+  font-size: clamp(28px, 3.4vw, 46px);
+  font-weight: 780;
+  letter-spacing: -.03em;
+  line-height: 1.08;
+  text-shadow: 0 2px 26px rgb(4 20 17 / 36%);
 }
 
 .sbms-auth-hero-art {
-  width: 100%;
-  max-width: 360px;
-  align-self: center;
+  width: min(100%, 460px);
   height: auto;
+  align-self: flex-end;
+  filter: drop-shadow(0 22px 44px rgb(4 20 17 / 44%));
 }
 
 @media (max-width: 880px) {
   .sbms-auth-card {
     grid-template-columns: minmax(0, 1fr);
-    width: min(100%, 480px);
+    min-height: 100vh;
+    min-height: 100svh;
   }
 
   .sbms-auth-hero {
     order: -1;
-    padding: 24px 26px;
+    justify-content: flex-end;
+    min-height: 34vh;
+    min-height: 34svh;
+    padding: 28px 24px;
+  }
+
+  .sbms-auth-hero-title {
+    font-size: clamp(24px, 6.4vw, 32px);
   }
 
   .sbms-auth-hero-art {
     display: none;
+  }
+
+  .sbms-auth-form {
+    justify-content: flex-start;
+    padding: 30px 24px 36px;
+  }
+
+  .sbms-auth-form .sbms-login-brand {
+    margin-bottom: 28px;
   }
 }
 
