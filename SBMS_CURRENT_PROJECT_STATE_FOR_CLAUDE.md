@@ -104,7 +104,7 @@ move money.** The payment/disbursement module that earlier drafts described was 
 | Schema management | Numbered SQL migrations applied by an operator; `npm run migrate` only targets loopback `sbms_test`; `npm run db:bootstrap-empty` provisions a confirmed-empty database atomically (schema + migrations + bcrypt initial admin) | `backend/scripts/migrate.js`, `bootstrap-production-schema.js`, `README.md` §Database operations |
 | ML service | Python 3.11 virtual environment: XGBoost 3.2.0, scikit-learn 1.9.0, pandas 3.0.5, jellyfish 1.2.1, joblib 1.6.0; artifact `ml-service/model/xgb_duplicate_model.joblib` | Invoked by the API as a **child process** (`predict.py --server`) exchanging JSON lines on stdin/stdout, 30 s timeout, one long-lived process per API instance. It is not a separate HTTP service and is not containerised separately |
 | Integrations | **None external.** No SMS, e-mail, payment-gateway, identity-provider or NG-CDF/government API integration exists | `backend/src/services/` contains only audit, certificate document/issue/reference, database readiness/startup, duplicate aggregation/check, eligibility, ML review, notifications, report document, student format. Notifications are in-app only |
-| Deployment | Azure: Container Apps `ca-sbms-api` (API image `ghcr.io/eggxellent/sbms-api:<commit-sha>`, `minReplicas 0`), App Service F1 `sbms-web` (`https://sbms-web.azurewebsites.net`) for the built frontend, PostgreSQL Flexible Server `pg-sbms`, budget `budget-sbms`; CI workflow `.github/workflows/publish-api-image.yml` builds and pushes the image | Verified live: `ca-sbms-api` provisioning `Succeeded`, running, image tag `4c9606ec9beb42e2a6a1b90fea51340578323918` (older than HEAD `d229c62`) |
+| Deployment | Azure: Container Apps `ca-sbms-api` (API image `ghcr.io/eggxellent/sbms-api:<commit-sha>`, `minReplicas 0`), App Service F1 `sbms-web` (`https://sbms-web.azurewebsites.net`) for the built frontend, PostgreSQL Flexible Server `pg-sbms`, budget `budget-sbms`; CI workflow `.github/workflows/publish-api-image.yml` builds and pushes the image | Verified live 2026-11-15: `ca-sbms-api` revision `ca-sbms-api--latest` `Healthy`/`Running` on image tag `896ee1255aa4e3c27a6981a9454feda88044c3ec` (workflow run for that commit succeeded); `sbms-web` zip-deployed the same commit and serves `assets/index-GOfkCZ_y.js`, whose bundle contains `Decisive fields`, `Payment tracking` and `no_payment` and no longer contains `Guardian identifier` |
 | Deployment alternative (not live) | `render.yaml` and `docs/deployment.md` describe a Render Blueprint | Present but unused; do not present as the current deployment |
 
 **Deployment position (important for Chapter 5):** the deployed API image is commit `4c9606e`. The two
@@ -376,8 +376,8 @@ Do not cite 21/128 or 24/151 as the current totals; they predate the notificatio
 
 | Resource | Observed |
 |---|---|
-| Container App `ca-sbms-api` | provisioning `Succeeded`, `Running`, image `ghcr.io/eggxellent/sbms-api:4c9606ec9beb42e2a6a1b90fea51340578323918` |
-| App Service `sbms-web` (F1) | `https://sbms-web.azurewebsites.net` (per `docs/azure-deployment-log-2026-10-31.md`; not re-queried) |
+| Container App `ca-sbms-api` | revision `ca-sbms-api--latest`, `Healthy`, `Running`, image `ghcr.io/eggxellent/sbms-api:896ee1255aa4e3c27a6981a9454feda88044c3ec` |
+| App Service `sbms-web` (F1) | `https://sbms-web.azurewebsites.net` serves `assets/index-GOfkCZ_y.js` (commit `896ee12`); `/duplicate-review` returns 200 |
 | PostgreSQL Flexible Server `pg-sbms` (B1MS) | database `sbms`; schema state not queried (out of scope for this document) |
 | Budget | `budget-sbms`; recorded idle cost ≈ $4.42/month |
 
