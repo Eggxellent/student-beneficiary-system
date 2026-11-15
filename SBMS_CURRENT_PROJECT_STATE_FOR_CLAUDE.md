@@ -209,7 +209,7 @@ award no longer approved returns `409`.
 | Path | Input | Answer |
 |---|---|---|
 | `/verify` → `POST /api/verify` | 64-hex student token from the QR fragment | `{ found: true/false }` only; proves a record exists, says nothing about eligibility, award or payment |
-| `/verify-certificate` QR → `POST /api/certificates/verify` `{ token }` | 64-hex certificate token | `verified` (with printed facts), `not_current` (award changed or no longer approved; reference only), `not_recognised` |
+| `/verify-certificate` QR → `POST /api/certificates/verify` `{ token }` | 64-hex certificate token | `verified` (with printed facts plus `payments` tracking: recorded / cleared / outstanding), `not_current` (award changed or no longer approved; reference only), `not_recognised` |
 | `/verify-certificate` manual → same endpoint `{ reference }` | Typed reference (`SBMS-2026-K8M4-X7PQ-2RZ`; case, spaces and dashes forgiven) | Same three answers through the same handler |
 
 ### 5.9 Planned / proposed but **NOT IMPLEMENTED**
