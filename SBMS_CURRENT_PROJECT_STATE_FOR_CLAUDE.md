@@ -101,18 +101,22 @@ move money.** The payment/disbursement module that earlier drafts described was 
 | Validation | Zod schemas per endpoint, cross-field refinements (e.g. a `verified` outcome needs an evidence reference) | controllers |
 | Security | bcrypt cost 12, 8-hour JWT, `requireRole` middleware, role reloaded from the database per request, `is_active` flag, CORS allowlist (`CORS_ORIGINS`), body-size limit, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, per-IP rate limits (login 10/15 min, student verification 10/15 min, certificate verification 20/15 min), sanitised error handler | `backend/src/middleware/` |
 | Database | PostgreSQL 17.11 locally; Azure Database for PostgreSQL Flexible Server (B1MS, 32 GiB) in the deployed environment, database `sbms` | `docs/azure-deployment-log-2026-10-31.md` §1; connection via `DATABASE_URL` with `sslmode=require` |
-| Live tables | `users`, `students`, `duplicate_flags`, `duplicate_review_events`, `bursary_awards`, `bursary_award_verification_events`, `bursary_certificates`, `audit_logs`, `notifications`, plus the legacy `beneficiaries` table | migrations `20261019_*` … `20261111_notifications.sql`; `backend/src/db/schema.sql` is a **historical baseline** and must not be executed directly. Threshold settings are held in process memory, not in a table |
+| Live tables | `users`, `students`, `duplicate_flags`, `duplicate_review_events`, `bursary_awards`, `bursary_award_verification_events`, `bursary_certificates`, `audit_logs`, `notifications`, `password_reset_tokens`, plus the legacy `beneficiaries` table | migrations `20261019_*` … `20261111_notifications.sql`; `backend/src/db/schema.sql` is a **historical baseline** and must not be executed directly. Threshold settings are held in process memory, not in a table |
 | Schema management | Numbered SQL migrations applied by an operator; `npm run migrate` only targets loopback `sbms_test`; `npm run db:bootstrap-empty` provisions a confirmed-empty database atomically (schema + migrations + bcrypt initial admin) | `backend/scripts/migrate.js`, `bootstrap-production-schema.js`, `README.md` §Database operations |
 | ML service | Python 3.11 virtual environment: XGBoost 3.2.0, scikit-learn 1.9.0, pandas 3.0.5, jellyfish 1.2.1, joblib 1.6.0; artifact `ml-service/model/xgb_duplicate_model.joblib` | Invoked by the API as a **child process** (`predict.py --server`) exchanging JSON lines on stdin/stdout, 30 s timeout, one long-lived process per API instance. It is not a separate HTTP service and is not containerised separately |
 | Integrations | **None external.** No SMS, e-mail, payment-gateway, identity-provider or NG-CDF/government API integration exists | `backend/src/services/` contains only audit, certificate document/issue/reference, database readiness/startup, duplicate aggregation/check, eligibility, ML review, notifications, report document, student format. Notifications are in-app only |
-| Deployment | Azure: Container Apps `ca-sbms-api` (API image `ghcr.io/eggxellent/sbms-api:<commit-sha>`, `minReplicas 0`), App Service F1 `sbms-web` (`https://sbms-web.azurewebsites.net`) for the built frontend, PostgreSQL Flexible Server `pg-sbms`, budget `budget-sbms`; CI workflow `.github/workflows/publish-api-image.yml` builds and pushes the image | Verified live 2026-11-15: `ca-sbms-api` revision `ca-sbms-api--latest` `Healthy`/`Running` on image tag `896ee1255aa4e3c27a6981a9454feda88044c3ec` (workflow run for that commit succeeded); `sbms-web` zip-deployed the same commit and serves `assets/index-GOfkCZ_y.js`, whose bundle contains `Decisive fields`, `Payment tracking` and `no_payment` and no longer contains `Guardian identifier` |
+| Deployment | Azure: Container Apps `ca-sbms-api` (API image `ghcr.io/eggxellent/sbms-api:<commit-sha>`, `minReplicas 0`), App Service F1 `sbms-web` (`https://sbms-web.azurewebsites.net`) for the built frontend, PostgreSQL Flexible Server `pg-sbms`, budget `budget-sbms`; CI workflow `.github/workflows/publish-api-image.yml` builds and pushes the image | Verified live 2026-11-15: `ca-sbms-api` revision `ca-sbms-api--latest` `Healthy`/`Running` on image tag `6b597befacad7fca42a98577a51540edcc3b42f4` (workflow run for that commit succeeded); `sbms-web` zip-deployed the same commit and serves `assets/index-DZiibs58.js` |
 | Deployment alternative (not live) | `render.yaml` and `docs/deployment.md` describe a Render Blueprint | Present but unused; do not present as the current deployment |
 
-**Deployment position (important for Chapter 5):** the deployed API image is commit `4c9606e`. The two
-notification commits (`9fbf701`, `d229c62`) are pushed to `origin/fix/sbms-completion-work` but are
-**not** deployed, and the `notifications` migration has **not** been applied to the Azure database
-(`UNVERIFIED` by direct query, because this document was prepared without touching the deployed
-system; the local `sbms_test` database definitely lacks it — see §7).
+**Deployment position (important for Chapter 5):** the deployed API image is commit `6b597be`, rolled
+into `ca-sbms-api` on 2026-11-15. That release carries the one sign-in form, administrator-issued
+password reset links, the pending-approval bell and the approval invoice header. The
+`20261115_password_reset_tokens.sql` migration was applied to the Azure database the same day and
+recorded in `sbms_schema_migrations`, so the reset endpoints have their table; `notifications` matches
+`20261113_notifications_dismiss_on_read.sql` (the table exists and has no `read_at` column).
+Operator check against the live service: `POST /api/auth/password-reset/validate` answered `200` with
+a masked address for a row the operator inserted and then removed, and `410` for a bogus token. No
+password was changed and no account holds an unused reset link.
 
 
 ---
