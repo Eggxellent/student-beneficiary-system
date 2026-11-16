@@ -70,8 +70,7 @@ Consequences for the report:
 
 - The pipeline is **build-and-publish**, not CI-with-tests and not CD.
 - No run history is verifiable from this host (`gh` is not installed); the Actions tab is the only source.
-- `render.yaml` still exists at HEAD. Render is abandoned; the file is dead configuration and should be described
-  as such rather than as the deployment mechanism.
+- No alternative hosting configuration is kept in the repository; the Azure topology above is the only deployment described.
 
 ## 5. Deployment is behind HEAD — the most important new finding
 
@@ -124,7 +123,7 @@ Findings in this document define or resolve these IDs of `FINAL_GAP_AND_AUTHOR_D
 | G-22 | **Closed** — `PYTHON_EXECUTABLE` proves the predictor runs inside the API container, not as a separate service |
 | G-29 | **New** — the deployed API image is `a3714f8`, nine commits behind HEAD `cca0625`; certificates are absent live |
 | G-31 | **New** — the only workflow is `workflow_dispatch` build-and-publish: no tests, no deploy step, no post-deploy probe |
-| G-32 | **New** — `render.yaml` is dead configuration; no Render service exists |
+| G-32 | **Closed** — the unused alternative-hosting blueprint was deleted from the repository on 2026-11-16 |
 | G-33 | **New** — hand-rolled security headers only; no CSP, no `helmet` |
 | G-34 | **New** — no threshold env vars, so code defaults apply; runtime changes are audited but not durable |
 | G-36 | **New** — `gh` unavailable, so PR/CI history cannot be evidenced |

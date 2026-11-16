@@ -50,7 +50,7 @@ capture. Number them as Chapter 5 figures and caption them `local build, HEAD cc
 
 | Fig | Type | Must encode | Verdict |
 | --- | --- | --- | --- |
-| 4.24 | Physical deployment | Browser → `https://sbms-web.azurewebsites.net` (App Service, plan `asp-sbms-web`, **F1 Free**, Windows, `alwaysOn: false`); SPA calls `https://ca-sbms-api.ambitiousstone-f2de8f67.uaenorth.azurecontainerapps.io` (Container App, external ingress, port 5000, **0–1 replicas**, revision `ca-sbms-api--latest`, image `ghcr.io/eggxellent/sbms-api:a3714f8…`); Container App → PostgreSQL Flexible Server `pg-sbms` v16, Burstable B1ms, 32 GB, 7-day backup, same region; GitHub Actions (`workflow_dispatch`) → GHCR → Container App; zip deploy → App Service. **Do not draw Render.** | **REDRAW** |
+| 4.24 | Physical deployment | Browser → `https://sbms-web.azurewebsites.net` (App Service, plan `asp-sbms-web`, **F1 Free**, Windows, `alwaysOn: false`); SPA calls `https://ca-sbms-api.ambitiousstone-f2de8f67.uaenorth.azurecontainerapps.io` (Container App, external ingress, port 5000, **0–1 replicas**, revision `ca-sbms-api--latest`, image `ghcr.io/eggxellent/sbms-api:a3714f8…`); Container App → PostgreSQL Flexible Server `pg-sbms` v16, Burstable B1ms, 32 GB, 7-day backup, same region; GitHub Actions (`workflow_dispatch`) → GHCR → Container App; zip deploy → App Service. | **REDRAW** |
 
 Caption that must accompany 4.24: "The deployed API image is built from commit `a3714f8`; the repository HEAD at the
 time of writing is `cca0625`."

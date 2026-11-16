@@ -2,7 +2,7 @@
 
 **Prepared:** 2026-11-02
 **Revision described:** `fix/sbms-completion-work` @ `d6b5032`
-**Sources read:** `docs/azure-deployment-log-2026-10-31.md`, `docs/azure-deployment-plan-2026-10-30.md` §11-§12, `docs/deployment.md`, `docs/database-recovery-rehearsal-2026-10-31.md`, `docs/bursary-certificates-2026-11-01.md` §9, `Dockerfile`, `.github/workflows/publish-api-image.yml`, `render.yaml`.
+**Sources read:** `docs/azure-deployment-log-2026-10-31.md`, `docs/azure-deployment-plan-2026-10-30.md` §11-§12, `docs/deployment.md`, `docs/database-recovery-rehearsal-2026-10-31.md`, `docs/bursary-certificates-2026-11-01.md` §9, `Dockerfile`, `.github/workflows/publish-api-image.yml`, `deploy/azure/`.
 
 ---
 
@@ -13,7 +13,7 @@
 | Local development | Authoring and manual checks | Node 22 API on port 5000, Vite frontend on port 4174, Python 3.11 ML subprocess | Local PostgreSQL 17, database `student_beneficiary_system` | Working; the ML virtual environment must exist |
 | Local disposable test | Automated suites | Jest and native runners against the same machine | `sbms_test` on loopback, role `sbms_test_runner` | Working; the guard refuses any other target |
 | Deployment (demonstration) | Live end-to-end checks and the capstone demonstration | Azure Container Apps for the API, Azure App Service F1 for the frontend, Azure Database for PostgreSQL Flexible Server | `sbms` on `pg-sbms.postgres.database.azure.com` | Live and verified 2026-10-31, brought back up 2026-11-01 |
-| Render blueprint | Abandoned target | `render.yaml` remains in the repository | — | Superseded by Azure; kept only as history |
+| Superseded hosting target | Removed 2026-11-16 | No unused hosting blueprint remains in the repository | — | Azure is the only deployment target |
 
 The deployment is a **demonstration instance**, not a production service. It has one administrator path, demonstration data, no monitoring stack and no backup schedule. That description belongs in Chapter Five wherever the deployment is discussed.
 

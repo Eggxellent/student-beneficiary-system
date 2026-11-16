@@ -46,7 +46,7 @@ app.use((req, res, next) => {
 });
 app.use(cors({ origin: (origin, callback) => callback(null, allowedOrigins.has(origin)) }));
 
-// Behind a reverse proxy (Azure App Service, Container Apps, Render) every request arrives
+// Behind a reverse proxy (Azure App Service, Azure Container Apps) every request arrives
 // from the proxy's address, so a per-IP limit keyed on the socket would put all public users
 // in one bucket. Operators set TRUST_PROXY_HOPS to the number of trusted proxies in front of
 // the API; the default of 0 keeps the direct-socket behaviour that local runs and tests rely

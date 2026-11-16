@@ -39,7 +39,6 @@ Any statement in the chapters that cannot be tied to this commit must name a dif
 | --- | --- | --- |
 | `docs/verification.md` | States that no controller calls the prediction function and that controllers use their own scoring. That is false at this revision: `students.controller.js:69` calls `scorePairs` through `duplicateCheck.js` | Mark superseded; do not cite (G-08, G-23) |
 | `docs/uat-test-plan.md` | Reports five `PASS` results with no participants, and contains the same stale claim about the predictor | Reclassify as an author walkthrough or withdraw; do not present as user acceptance (G-07, G-24) |
-| `render.yaml` | Describes an abandoned deployment target | Cite only as history |
 | The 2026-10-27 `FINAL_TEST_REPORT` generation | Superseded by the 2026-10-31 and 2026-11-01 runs | Never cite; the file itself says so |
 | `ML_RELIABILITY_REPORT.md` Random Forest figures | Describe a candidate the application never loads | Cite only as research comparison |
 | `docs/azure-deployment-plan-2026-10-30.md` early sections | Some early architecture options were superseded by decision A2/D8 | Cite §12 (current) and the deployment log instead |

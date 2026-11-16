@@ -62,7 +62,7 @@
 | --- | --- | --- |
 | `.github/workflows/publish-api-image.yml` | `workflow_dispatch` only; build and push to GHCR; **no tests, no deploy step** | Azure §4, G-31 |
 | `Dockerfile` (repository root) | Python virtualenv and `ml-service/` copied into the API image | Azure §3.1 |
-| `render.yaml` | dead configuration; no Render service exists | Azure §4, G-32 |
+| (deleted 2026-11-16) | unused alternative-hosting blueprint, removed from the repository | Azure §4, G-32 |
 | `.gitignore` | still ignores `ml-service/model/*.joblib`, yet two artefacts are tracked | G-27 |
 | `docs/database-recovery-rehearsal-2026-10-31.md` | local restore rehearsal; not a hosted drill | Ch.5 §5.4.5, G-19 |
 

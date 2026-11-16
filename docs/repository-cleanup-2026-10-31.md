@@ -26,7 +26,7 @@ A file was only put on the deletion list after **all** of the following came bac
    `Dockerfile` and `.dockerignore` were checked for runtime use.
 6. There is **no CI** in the repository (`.github` does not exist), so no workflow can reference any
    of these files. That is itself a Phase 1 finding, closed in Phase 3.
-7. Deployment surface (`Dockerfile`, `.dockerignore`, `render.yaml`, `docs/deployment.md`) checked.
+7. Deployment surface (`Dockerfile`, `.dockerignore`, `docs/deployment.md`, `deploy/azure/`) checked.
 
 Sizes are on-disk numbers from this checkout, not guesses.
 
@@ -108,12 +108,12 @@ These look removable and are not. Each reason was checked, not assumed.
 | `ml-service/model/research/rf_attachment_style_candidate.joblib` | Research artifact named in the model evidence. Keep. |
 | `ml-service/experiments/febrl_record_linkage/**` (15 files) | Abandoned *branch experiment*, but it is cited as evidence and is the independent-evaluation basis. Deleting it would delete evidence, which the rules forbid. Keep, and keep it out of the image (`.dockerignore` already does). |
 | `ml-service/{compare_models_on_holdout, evaluate_adversarial_format_scenarios, evaluate_independent_dataset, generate_variable_pairs, test_predictions}.py` | Evidence generators: not imported by the service, but they reproduce the numbers the capstone reports. Keep. |
-| `backend/scripts/inspect-render-db.js` | Render-era read-only diagnostic (`SELECT` only), unreferenced. Kept on purpose: it is a working read-only DB inspector and will be used to verify the Azure database in Phase 4. |
+| `backend/scripts/inspect-db.js` | Read-only diagnostic (`SELECT` only), unreferenced. Kept on purpose: it is a working read-only DB inspector and will be used to verify the Azure database in Phase 4. |
 | `backend/scripts/cleanup-legacy-school-data.js` | Destructive but documented operator for legacy school-data cleanup, cited in `PRODUCTION_DATABASE_RECOVERY_AUDIT`, dry-run-guarded. Deleting an audited operator is worse than keeping it. |
 | `backend/migrations/**` (12), `backend/schema.sql`, `backend/scripts/bootstrap-production-schema.js` | **Migrations and schema are explicitly protected**, and bootstrap is the only script that creates a usable production database (schema + every migration + first admin). |
 | `.env.example`, `backend/.env.example`, `frontend/.env.example` | Environment templates — protected. |
 | `Dockerfile`, `.dockerignore` | Required for the Azure container deployment. |
-| `render.yaml`, `docs/deployment.md`, Render notes | Superseded but still valid configuration and part of the deployment record; deployment configuration is protected. Azure equivalents are **added** in Phase 3, not substituted. |
+| `docs/deployment.md`, deployment notes | Deployment record; deployment configuration is protected. The Azure configuration lives in `deploy/azure/` and supersedes any earlier hosting plan. |
 | `docs/*.md` (≈ 30 files) | Capstone documentation is protected; overlaps are mapped in §4.1 instead of deleted. |
 | `frontend/public/images/**` | Referenced by `index.html` / `src` (favicon, logo). Checked. |
 | `backend/test/**`, `backend/tests/**`, `ml-service/test_*.py` | Tests — protected. |
@@ -124,7 +124,7 @@ These look removable and are not. Each reason was checked, not assumed.
 | --- | --- | --- |
 | Handover | `SBMS_PROJECT_HANDOVER_2026-10.md` (current), `SYSTEM_HANDOVER.md` (earlier) | Keep both; the newer one supersedes the older and says so. |
 | Test results | `FINAL_TEST_REPORT.md` (current), `tests-report-2026-10-31.md`, `TEST_REPORT.md`, `PHASE6_TEST_REPORT.md` | Keep; each is a dated measurement record. Phase 6 appends, never replaces. |
-| Deployment | `deployment.md` (Render), `azure-deployment-plan-2026-10-30.md`, `DEPLOYMENT.md` | Keep; the Azure plan is additive. |
+| Deployment | `deployment.md`, `azure-deployment-plan-2026-10-30.md`, `DEPLOYMENT.md` | Keep; `deployment.md` describes only the Azure topology. |
 | Database | `database-recovery-rehearsal-2026-10-31.md`, `PRODUCTION_DATABASE_RECOVERY_AUDIT.md` | Keep; rehearsal and audit are distinct evidence. |
 
 ## 5. Verification plan for the cleanup (runs on approval)
@@ -289,8 +289,8 @@ Each of the three documents remains recoverable from Git history at `f3686ec`:
 | `docs/REMEDIATION_PROGRESS.md` | Still linked from `README.md:124`; it is the audit trail of the 346-account deactivation. |
 | `docs/uat-test-plan.md` | UAT has not been executed; the plan is still the script for it. |
 | `docs/ml_compatibility_report.md` | The detailed evidence that the 10-feature research model is incompatible with the 6-feature production predictor; not repeated in full anywhere else. |
-| `docs/deployment.md`, `render.yaml` | Protected deployment record (see §2.2 of this document). |
-| `backend/scripts/inspect-render-db.js`, `backend/scripts/cleanup-legacy-school-data.js` | Kept on purpose in the first pass, see the table at the end of §2. |
+| `docs/deployment.md` | Protected deployment record (see §2.2 of this document). |
+| `backend/scripts/inspect-db.js`, `backend/scripts/cleanup-legacy-school-data.js` | Kept on purpose in the first pass, see the table at the end of §2. |
 | `ml-service/data/raw_pairs.pre_realistic_backup.csv` | Referenced by `ml-service/improve_raw_pairs.py:17`, `data/raw_pairs_metadata.json` and `ml-service/RETRAINING_EVALUATION.md:9`. |
 | `.neon`, `backend/.neon` | 112 B / 44 B CLI state files holding a Neon org/project id. Ignored by Git and unused by any code, but they are external-account pointers, not repository content, so they were left for the owner to remove. |
 | `node_modules/`, `ml-service/.venv/`, `frontend/dist/` | Installed dependencies and the current production build; reinstalling/rebuilding is a separate, slower operation. |

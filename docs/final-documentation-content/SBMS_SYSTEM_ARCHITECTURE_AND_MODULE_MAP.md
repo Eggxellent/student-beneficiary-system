@@ -162,7 +162,6 @@ Several controllers also issue SQL directly (awards, duplicate flags, eligibilit
 | --- | --- | --- |
 | `beneficiaries` router, model and table | Mounted and reachable; not used by any page | A legacy module retained for compatibility |
 | `auth.controller.register` and `registerSchema` | Unreachable behind a 410 route | Dead code, not a feature |
-| `render.yaml` | Superseded by Azure | Historical artefact |
 | `disbursements.status` | Legacy duplicate of `payment_status` | Kept in step, not authoritative |
 | `duplicate_flags.probability` | Legacy column name for an uncalibrated score | Documented by a column comment |
 | Random Forest research artifact | Never loaded by the application | Research candidate only |

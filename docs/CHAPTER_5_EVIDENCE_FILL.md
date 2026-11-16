@@ -58,7 +58,7 @@ node --test backend/test/databaseBootstrap.node.test.js backend/test/databaseSta
 
 An older test report records 79/79 backend tests and a frontend build on another checkout/revision (`experiment/febrl-record-linkage`, `22435ec…`, dated 2026-10-27). Do not attribute those results to commit `dabfa1b` without rerunning the tests on that exact revision. Earlier ML Python tests were recorded as 10/10 and research-helper tests as 7/7, but they also need an explicit revision link before being used as current results.
 
-The Render API was previously reported live with `/api/health` returning `{"status":"ok"}`; that is only liveness. A supplied Admin-login diagnostic recorded PostgreSQL code `42P01` at `auth.model.js:4:20`. The current Render schema query was blocked by its IP allowlist, so current tables and live login are unverified. No production migration, successful Admin login, end-to-end test, user acceptance study, or latency benchmark is verified in this evidence.
+An earlier deployment target was reported live with `/api/health` returning `{"status":"ok"}`; that is only liveness. A supplied Admin-login diagnostic recorded PostgreSQL code `42P01` at `auth.model.js:4:20`. The schema query against that target was blocked by its IP allowlist, so current tables and live login are unverified. No production migration, successful Admin login, end-to-end test, user acceptance study, or latency benchmark is verified in this evidence.
 
 ## Items the author must still supply
 
@@ -66,7 +66,7 @@ The Render API was previously reported live with `/api/health` returning `{"stat
 2. Redacted screenshots for registration, invalid input, login outcomes, duplicate review, QR verification, awards/disbursement, dashboard and PDF export. Use only synthetic data. Do not claim phone-camera scanning unless actually tested.
 3. Current branch/commit under test, repository link, accessible-source confirmation, and a test report tied to that revision. The local feature branch is not a deployed revision.
 4. A safe, disposable PostgreSQL test database and actual DB-backed test results. Do not use the hosted or ordinary development database as a test target.
-5. A current authorized metadata result for the Render database, followed by explicit approval before any production initialization. Do not put a dump, database URL, password, JWT, or personal record into the thesis or chat.
+5. A current authorized metadata result for the deployed database, followed by explicit approval before any production initialization. Do not put a dump, database URL, password, JWT, or personal record into the thesis or chat.
 6. The actual model artifact hash from the thesis run, training generator/source and label definition, split seed, leakage-check output, and baseline result (or a statement that no baseline was run).
 7. User-acceptance participants, roles, count, tasks and findings—or state that no user study was conducted and mark NFR-06 unverified.
 8. Actual performance workload, measurements and environment—or state that performance testing was not run.

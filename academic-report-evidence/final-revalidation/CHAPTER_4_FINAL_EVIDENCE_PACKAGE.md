@@ -32,7 +32,7 @@
 | 4.5.1–4.5.8 Interface design | 14 React pages, 3 shared components | `frontend/src/pages`, `components` | OK | Screenshots must match `SBMS_SCREENSHOT_INSERTION_CHECKLIST.md` |
 | 4.6 Schema | **12 tables** with columns, constraints, indexes | `schema.sql` + 6 migration tables; all 12 confirmed live | OK (correct 13→12) | — |
 | 4.6.1 Migration policy | forward-only with one `.down.sql` | 15 files in `db/migrations/` | OK | Note that only one migration has a rollback file |
-| 4.7 Physical deployment | Azure Container App (API) + App Service (SPA) + PostgreSQL Flexible Server | `AZURE_DEPLOYMENT_VERIFICATION.md` §1–§3 | **CORRECTION REQUIRED** | Remove Render as the deployment target; `render.yaml` is dead config. Add region, SKUs (F1 / B1ms / 0–1 replicas) |
+| 4.7 Physical deployment | Azure Container App (API) + App Service (SPA) + PostgreSQL Flexible Server | `AZURE_DEPLOYMENT_VERIFICATION.md` §1–§3 | **CORRECTION REQUIRED** | Remove the alternative hosting target from the narrative; no such configuration remains in the repository. Add region, SKUs (F1 / B1ms / 0–1 replicas) |
 | 4.8 Summary | scope met with declared exceptions | catalogue §3 | OK | — |
 
 ## 2. Figures (4.1–4.24)
@@ -46,7 +46,7 @@ screenshots, and three of them must be retaken (see the checklist).
 
 1. "A Random Forest classifier is used" — it is XGBoost (FR-31 deviation).
 2. "Four similarity features" — there are six; national ID is *not* one of them.
-3. "The system is deployed on Render" — Render was abandoned; `render.yaml` is dead configuration.
+3. "The system is deployed on an alternative host" — that host was never used for the system; its configuration has been deleted from the repository.
 4. "The ML service runs as a separate microservice" — it runs as a Python child process inside the API container.
 5. "Certificates are available to users" — the feature exists at HEAD but is absent from the deployed image.
 6. "The score is a calibrated probability" — the API itself returns `score_is_calibrated_probability: false`.
@@ -82,5 +82,5 @@ text describing the registration form, the identifier set or the certificate ent
 | G-04 | Figures 4.13–4.23 need screenshots |
 | G-21 | Figure 4.11 must show XGBoost and six features, not Random Forest and four |
 | G-29 | Figure 4.24 must state that the deployed image is `a3714f8`, and the certificate entity must not be drawn as live |
-| G-32 | `render.yaml` must not appear in any deployment figure |
+| G-32 | no alternative hosting configuration may appear in any deployment figure |
 

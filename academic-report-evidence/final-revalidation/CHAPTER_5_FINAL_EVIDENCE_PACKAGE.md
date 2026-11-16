@@ -10,7 +10,7 @@
 | 5.2.1 Hardware | development and test machine | host facts recorded in `CURRENT_REPOSITORY_STATE.md` | OK |
 | 5.2.2 Software and versions | Node/Express, React/Vite, Python/XGBoost, PostgreSQL 16 | `backend/package.json`, `frontend/package.json`, `ml-service/requirements.txt`, live server version 16 | OK |
 | 5.2.3 Tooling | git, jest, `node --test`, `unittest`, vite, az CLI | commands in `SBMS_TEST_EVIDENCE_CATALOGUE.md` §1 | OK |
-| 5.2.4 Deployment environment | Azure Container App + App Service F1 + PostgreSQL Flexible B1ms, images from GHCR | `AZURE_DEPLOYMENT_VERIFICATION.md` §1–§4 | **CORRECTION**: drop Render; add that the workflow is manual `workflow_dispatch` and does not deploy |
+| 5.2.4 Deployment environment | Azure Container App + App Service F1 + PostgreSQL Flexible B1ms, images from GHCR | `AZURE_DEPLOYMENT_VERIFICATION.md` §1–§4 | **CORRECTION**: add that the workflow is manual `workflow_dispatch` and does not deploy |
 | 5.3.1 Code organisation | 14 controllers, 12 routers, 10 services, 8 middleware, 14 pages | directory counts | OK |
 | 5.3.2 Auth and access control | bcrypt 12, JWT 8 h, DB-role checks, rate limits, hardened headers | `auth.controller.js`, `middleware/*`, `index.js:33-47` | OK (headers are hand-rolled; no CSP) |
 | 5.3.3 Student management | registration, five schools, QR token, identifiers incl. UPI/birth certificate/national ID | `students.controller.js`; `730a62e`, `9fc14df` | OK — but **screenshots of the current form must be retaken**; the form gained fields after `d6b5032` |
@@ -83,7 +83,7 @@ Use `SBMS_SCREENSHOT_INSERTION_CHECKLIST.md`. Two rules that follow from this pa
 1. Classifier name and feature count (XGBoost / six features).
 2. Backend test total and the commit it was measured at.
 3. Certificate feature: implemented and tested, **not deployed**.
-4. Render removed from the deployment narrative; `render.yaml` described as dead configuration.
+4. The deployment narrative names only the Azure topology; no alternative hosting configuration exists in the repository.
 5. ML service described as an in-container Python child process, not a microservice.
 6. Any UAT sentence reclassified as "not conducted" rather than "passed".
 

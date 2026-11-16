@@ -265,7 +265,7 @@ synthetic results as **synthetic**, with §4.3's arithmetic as the headline limi
 
 ## 7. New blocker found: the repo cannot bootstrap the database it requires
 
-This is almost certainly the same class of failure as the Render `42P01` ("users table
+This is almost certainly the same class of failure as the earlier `42P01` ("users table
 missing"), and it will recur on Azure unless fixed first.
 
 | Fact | Evidence |
@@ -287,7 +287,7 @@ disbursements cannot be demonstrated. `schema.sql` is not a complete install scr
    regenerated single schema) and a `npm run db:init` script.
 3. Add an automated test that creates a scratch database, applies the install path, and
    asserts `READINESS_QUERY` returns zero missing tables. This is the only way to stop a
-   repeat of Render.
+   repeat of that failure.
 4. Do this against `sbms_test` only. Never against an existing database with real rows.
 
 ---
@@ -312,7 +312,7 @@ Order is deliberate: correctness → data → deployment → documentation. Do n
 
 ## 9. Azure: cost-first decision framework
 
-The previous target was Render; the new target is Azure. Nothing has been provisioned.
+The deployment target is Azure, provisioned by the scripts in `deploy/azure/`.
 **No price in this section is asserted as fact — every figure must be checked in the Azure
 pricing calculator for the chosen region before anything is created.**
 
@@ -758,7 +758,7 @@ State of `sbms_test` used for this run: 12 public tables, 2 active admin account
    `.github/workflows/deployment-build.yml` from `codex/render-deployment` onto `dev`.
 2. **No branch protection** on `dev` or `main`. Recommend requiring the build workflow
    once it is on `dev`, so `main` stability is enforced rather than remembered.
-3. **Draft PR #8** (`codex/render-deployment` -> `dev`, "Prepare SBMS for Render
+3. **Draft PR #8** (`codex/render-deployment` -> `dev`, "Prepare SBMS for
    deployment") is still open and predates the switch to Azure. It should be closed or
    re-scoped, but that is the owner's call and it was not touched.
 4. The local `dev` worktree and two sibling worktrees carry uncommitted changes. They are

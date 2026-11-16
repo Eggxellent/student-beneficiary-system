@@ -251,7 +251,7 @@ done and no browser result is claimed.
 | "QR verification native tests — BLOCKED, `Cannot find module 'qrcode'`" | **Resolved**: 5/5 pass |
 | "Backend DB integration/smoke suite — NOT RUN" | **Resolved**: Jest runs against real `sbms_test`; live HTTP smoke passes |
 | "Local isolated backup restore — BLOCKED, `fe_sendauth`" | **Resolved**: dump and restore rehearsed; see `docs/database-recovery-rehearsal-2026-10-31.md` |
-| "Render Blueprint validation" | **Superseded**: the target is Azure (Phase 6 research) |
+| "Hosting blueprint validation" | **Superseded**: the target is Azure (Phase 6 research) |
 | "Docker image build/runtime — BLOCKED" | **Unchanged**: engine still unavailable |
 
 Two environment quirks carry over and are cosmetic: PowerShell surfaces a child process's stderr as

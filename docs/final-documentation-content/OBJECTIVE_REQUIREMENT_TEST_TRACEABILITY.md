@@ -89,7 +89,7 @@ read side by side without reconciling numbers.
 | NFR-13 registration serialisation | advisory lock in `students.controller.js:68` | Every registration test passes through the lock; no test asserts isolation | **P** (lock present; no concurrency assertion; gap G-12) |
 | NFR-14 usability | `AppLayout.jsx`; screen components | `browser-smoke` (behaviour, not usability) | **P** (renders and behaves; no usability study; gap G-06) |
 | NFR-15 maintainability | shared feature module; ordered migrations; three test frameworks | Builds and suites | **V** |
-| NFR-16 cost envelope | `render.yaml`; deployment log | Deployment record | **P** (configuration recorded; no billed month reconciled) |
+| NFR-16 cost envelope | `Dockerfile`; deployment log | Deployment record | **P** (configuration recorded; no billed month reconciled) |
 | NFR-17 human oversight | role-gated decision endpoints | `workflow.test.js` check 11 | **V** |
 | NFR-18 recovery | `docs/database-recovery-rehearsal-2026-10-31.md` | Rehearsal record | **P** (no schedule; gap G-19) |
 | NFR-19 browser compatibility | SPA over HTTPS | Chrome only | **P** (gap G-16) |

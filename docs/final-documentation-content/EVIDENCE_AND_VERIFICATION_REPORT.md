@@ -59,7 +59,6 @@ written are the six documents in this folder.
 | Artefact loading, version hashing, `predict_pairs` | `ml-service/predict.py:14-98` |
 | Container build, inference gate, no CUDA, no secrets | `Dockerfile:1-48` |
 | Image publication gates | `.github/workflows/publish-api-image.yml` |
-| Deployment topology (Render equivalent, documented for reference) | `render.yaml` |
 
 ---
 
