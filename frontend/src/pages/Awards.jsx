@@ -69,6 +69,11 @@ export default function Awards() {
   // Collapsed by default for both roles: the page opens as a short list of section headers instead of
   // a long scroll. The count in the header still shows how many awards match the current filter.
   const [awardsOpen, setAwardsOpen] = useState(false);
+  // The administrator's decision needs the assessment the field officer actually saved, so the
+  // selected award is reloaded with its eligibility assessment and duplicate state.
+  const [reviewDetail, setReviewDetail] = useState(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState("");
 
   async function loadData() {
     setLoading(true);
@@ -87,6 +92,27 @@ export default function Awards() {
   }
 
   useEffect(() => { loadData(); }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin || !decisionForm.award_id) {
+      setReviewDetail(null);
+      setReviewError("");
+      setReviewLoading(false);
+      return undefined;
+    }
+    let active = true;
+    setReviewLoading(true);
+    setReviewError("");
+    api.get(`/awards/${decisionForm.award_id}`)
+      .then(({ data }) => { if (active) setReviewDetail(data); })
+      .catch((err) => {
+        if (!active) return;
+        setReviewDetail(null);
+        setReviewError(err.response?.data?.message || "Unable to load the saved eligibility assessment.");
+      })
+      .finally(() => { if (active) setReviewLoading(false); });
+    return () => { active = false; };
+  }, [isAdmin, decisionForm.award_id]);
 
   const pendingAwards = awards.filter((award) => award.status === "submitted");
   // One bursary per student per calendar year. A proposal or an approval occupies the year; a
@@ -273,6 +299,37 @@ export default function Awards() {
                 <button disabled={saving} className={`w-fit ${primary}`}>Save decision</button>
               </form>
             )}
+            {showDecision && decisionForm.award_id && (
+              <section className="mt-4 rounded border border-slate-300 bg-slate-50 p-4" aria-live="polite">
+                <h3 className="text-sm font-semibold text-slate-900">Saved eligibility assessment</h3>
+                {reviewLoading && <p className="mt-1 text-sm text-slate-500">Loading the saved assessment…</p>}
+                {reviewError && <p className="mt-1 text-sm text-red-700" role="alert">{reviewError}</p>}
+                {!reviewLoading && reviewDetail && (
+                  <>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {reviewDetail.student.full_name} · Student identifier {reviewDetail.student.upi || "not recorded"} · Record {shortId(reviewDetail.student.id)}
+                    </p>
+                    {reviewDetail.student.duplicate_of_student_id && (
+                      <p className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                        This record is marked as a duplicate of {reviewDetail.student.duplicate_of_student_name || shortId(reviewDetail.student.duplicate_of_student_id)}. A duplicate record cannot receive a bursary; only the canonical record can.
+                      </p>
+                    )}
+                    {reviewDetail.duplicate_case?.status === "confirmed_duplicate" && !reviewDetail.duplicate_case.resolution && (
+                      <p className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                        A confirmed duplicate case for this student is not yet resolved. Approval stays blocked until an administrator resolves it on Duplicate Review.
+                      </p>
+                    )}
+                    {reviewDetail.eligibility ? (
+                      <EligibilityReview detail={reviewDetail} />
+                    ) : (
+                      <p className="mt-2 rounded border border-slate-300 bg-white p-2 text-sm text-slate-700">
+                        No eligibility assessment is saved for this student. The recommendation cannot be shown, and it was not recalculated here.
+                      </p>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
           </div>
         </section>
       )}
@@ -425,4 +482,44 @@ export default function Awards() {
 }
 
 
+
+function EligibilityReview({ detail }) {
+  const assessment = detail.eligibility;
+  const range = assessment.recommended_range || {};
+  return (
+    <>
+      <div className="mt-3 flex flex-wrap items-end gap-4">
+        <p>
+          <span className="block text-[11px] uppercase tracking-wide text-slate-500">Proposed amount</span>
+          <span className="text-lg font-bold text-slate-900">{money(detail.award.requested_amount)}</span>
+        </p>
+        <p>
+          <span className="block text-[11px] uppercase tracking-wide text-slate-500">Recommended range</span>
+          <span className="text-lg font-semibold text-slate-800">
+            {range.min == null ? "Not configured" : `${money(range.min)} – ${money(range.max)}`}
+          </span>
+        </p>
+        <span className={`rounded border px-2 py-0.5 text-xs font-semibold ${range.provisional ? "border-amber-400 bg-amber-100 text-amber-900" : "border-green-400 bg-green-100 text-green-900"}`}>
+          {range.provisional ? "Provisional recommendation" : "Officially configured range"}
+        </span>
+      </div>
+      <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+        <div className="flex justify-between gap-3"><dt className="text-slate-500">Eligibility score</dt><dd className="font-medium">{assessment.score}/100</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-slate-500">Category</dt><dd className="font-medium capitalize">{assessment.category}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-slate-500">Fee balance</dt><dd className="font-medium">{money(assessment.fee_balance)}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-slate-500">Household income</dt><dd className="font-medium">{money(assessment.household_income)}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-slate-500">Vulnerability</dt><dd className="font-medium capitalize">{assessment.vulnerability_status}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-slate-500">Siblings in school</dt><dd className="font-medium">{assessment.siblings_in_school}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-slate-500">Previous bursary</dt><dd className="font-medium capitalize">{assessment.prior_bursary_history}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-slate-500">Assessment date</dt><dd className="font-medium">{new Date(assessment.assessed_at).toLocaleString()}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-slate-500">Assessed by</dt><dd className="font-medium">{assessment.assessed_by_name || "Not recorded"}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-slate-500">Source</dt><dd className="font-medium">{assessment.recorded_via === "audit_log_backfill" ? "Reconstructed from the audit log" : "Field officer assessment form"}</dd></div>
+      </dl>
+      <p className="mt-2 text-xs text-slate-600">{range.source}</p>
+      <p className="mt-1 text-xs text-slate-600">
+        A recommendation is not an approval. Enter the approved amount yourself; it may differ from the proposed and the recommended amounts.
+      </p>
+    </>
+  );
+}
 

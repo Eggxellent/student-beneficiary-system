@@ -11,5 +11,6 @@ router.get('/:id/identifiers', requireRole('admin'), controller.revealIdentifier
 router.post('/evaluate', requireRole('admin'), controller.evaluate);
 router.post('/scan', requireRole('admin'), controller.scanExisting);
 router.patch('/:id', requireRole('admin'), controller.update);
+router.post('/:id/resolution', requireRole('admin'), controller.resolve);
 
 module.exports = router;

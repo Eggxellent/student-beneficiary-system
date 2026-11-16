@@ -65,6 +65,7 @@ async function list(req, res, next) {
   try {
     const { rows } = await pool.query(
       `SELECT a.*, s.full_name AS student_name, s.upi,
+              s.duplicate_of_student_id AS student_duplicate_of_student_id,
               proposer.full_name AS submitted_by_name,
               decider.full_name AS decided_by_name,
               voider.full_name AS voided_by_name,
@@ -83,12 +84,109 @@ async function list(req, res, next) {
        LEFT JOIN LATERAL (${OPEN_REPORT_SQL.replace('$1', 'a.id')}) report ON TRUE
        LEFT JOIN LATERAL (
          SELECT COUNT(*) AS open_count FROM duplicate_flags f
+         LEFT JOIN duplicate_resolutions resolved ON resolved.duplicate_flag_id = f.id
          WHERE (f.student_id = a.student_id OR f.matched_student_id = a.student_id)
-           AND f.status IN ('pending', 'needs_verification', 'confirmed_duplicate')
+           AND (f.status IN ('pending', 'needs_verification')
+                OR (f.status = 'confirmed_duplicate' AND resolved.id IS NULL))
        ) duplicates ON TRUE
        ORDER BY a.created_at DESC`
     );
     res.json({ awards: rows });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// The administrator's decision has to be informed by the eligibility assessment that was actually
+// saved for this student. It is read from the database in one query and never recalculated here; if
+// no assessment exists the response says so instead of inventing one.
+async function detail(req, res, next) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.*, s.full_name AS student_name, s.upi, s.school_code,
+              s.duplicate_of_student_id AS student_duplicate_of_student_id,
+              duplicate.full_name AS duplicate_of_student_name,
+              e.score AS eligibility_score, e.category AS eligibility_category,
+              e.fee_balance, e.household_income, e.vulnerability_status,
+              e.siblings_in_school, e.prior_bursary_history,
+              e.recommended_min, e.recommended_max, e.recommended_currency,
+              e.recommendation_provisional, e.recommendation_source, e.recorded_via,
+              e.assessed_at, e.assessed_by_name,
+              c.id AS duplicate_case_id, c.status AS duplicate_case_status,
+              r.id AS duplicate_resolution_id, r.reason AS duplicate_resolution_reason,
+              r.resolved_at AS duplicate_resolution_at,
+              resolver.full_name AS duplicate_resolved_by_name,
+              r.canonical_student_id, r.duplicate_student_id
+       FROM bursary_awards a
+       JOIN students s ON s.id = a.student_id
+       LEFT JOIN students duplicate ON duplicate.id = s.duplicate_of_student_id
+       LEFT JOIN LATERAL (
+         SELECT ea.*, assessor.full_name AS assessed_by_name
+         FROM eligibility_assessments ea
+         LEFT JOIN users assessor ON assessor.id = ea.assessed_by
+         WHERE ea.student_id = a.student_id
+         ORDER BY ea.assessed_at DESC, ea.created_at DESC
+         LIMIT 1
+       ) e ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT f.id, f.status FROM duplicate_flags f
+         WHERE f.student_id = a.student_id OR f.matched_student_id = a.student_id
+         ORDER BY f.created_at DESC
+         LIMIT 1
+       ) c ON TRUE
+       LEFT JOIN duplicate_resolutions r ON r.duplicate_flag_id = c.id
+       LEFT JOIN users resolver ON resolver.id = r.resolved_by
+       WHERE a.id = $1`,
+      [req.params.id]
+    );
+    const award = rows[0];
+    if (!award) return res.status(404).json({ message: 'Award not found.' });
+
+    const eligibility = award.assessed_at ? {
+      score: award.eligibility_score,
+      max_score: 100,
+      category: award.eligibility_category,
+      fee_balance: Number(award.fee_balance),
+      household_income: Number(award.household_income),
+      vulnerability_status: award.vulnerability_status,
+      siblings_in_school: award.siblings_in_school,
+      prior_bursary_history: award.prior_bursary_history,
+      recommended_range: {
+        currency: award.recommended_currency,
+        min: award.recommended_min == null ? null : Number(award.recommended_min),
+        max: award.recommended_max == null ? null : Number(award.recommended_max),
+        provisional: award.recommendation_provisional,
+        source: award.recommendation_source,
+      },
+      recorded_via: award.recorded_via,
+      assessed_at: award.assessed_at,
+      assessed_by_name: award.assessed_by_name,
+    } : null;
+
+    res.json({
+      award,
+      student: {
+        id: award.student_id,
+        full_name: award.student_name,
+        upi: award.upi,
+        school_code: award.school_code,
+        duplicate_of_student_id: award.student_duplicate_of_student_id,
+        duplicate_of_student_name: award.duplicate_of_student_name,
+      },
+      eligibility,
+      duplicate_case: award.duplicate_case_id ? {
+        id: award.duplicate_case_id,
+        status: award.duplicate_case_status,
+        resolution: award.duplicate_resolution_id ? {
+          id: award.duplicate_resolution_id,
+          canonical_student_id: award.canonical_student_id,
+          duplicate_student_id: award.duplicate_student_id,
+          reason: award.duplicate_resolution_reason,
+          resolved_at: award.duplicate_resolution_at,
+          resolved_by_name: award.duplicate_resolved_by_name,
+        } : null,
+      } : null,
+    });
   } catch (error) {
     next(error);
   }
@@ -103,12 +201,21 @@ async function create(req, res, next) {
   try {
     await client.query('BEGIN');
     const student = await client.query(
-      'SELECT id, full_name, school_code FROM students WHERE id = $1 FOR UPDATE',
+      'SELECT id, full_name, school_code, duplicate_of_student_id FROM students WHERE id = $1 FOR UPDATE',
       [parsed.data.student_id]
     );
     if (!student.rows.length) {
       await client.query('ROLLBACK');
       return res.status(404).json({ message: 'Student not found.' });
+    }
+    // A record already resolved as a duplicate never receives its own award.
+    if (student.rows[0].duplicate_of_student_id) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'DUPLICATE_RECORD',
+        message: 'This student record is marked as a duplicate of another record. Propose the bursary against the canonical record instead; a duplicate record cannot receive an award.',
+        canonical_student_id: student.rows[0].duplicate_of_student_id,
+      });
     }
     if (!student.rows[0].school_code) {
       await client.query('ROLLBACK');
@@ -124,9 +231,10 @@ async function create(req, res, next) {
     // arrive at once, because the INSERT is the only place both transactions can collide.
     const awardYear = currentAwardYear();
     const existing = await client.query(
-      `SELECT id, status, approved_amount, requested_amount, submitted_by, award_year, created_at
+      `SELECT id, student_id, status, approved_amount, requested_amount, submitted_by, award_year, created_at
        FROM bursary_awards
-       WHERE student_id = $1 AND award_year = $2 AND status IN ('submitted', 'approved')
+       WHERE student_id IN (SELECT id FROM students WHERE id = $1 OR duplicate_of_student_id = $1)
+         AND award_year = $2 AND status IN ('submitted', 'approved')
        ORDER BY created_at DESC LIMIT 1`,
       [parsed.data.student_id, awardYear]
     );
@@ -227,16 +335,47 @@ async function decide(req, res, next) {
       return res.status(409).json({ message: 'The officer who proposed an award cannot approve it. A different authorised officer must decide.' });
     }
     if (decision === 'approved') {
+      const studentsForDuplicateCheck = await client.query(
+        'SELECT duplicate_of_student_id FROM students WHERE id = $1',
+        [award.student_id]
+      );
+      // A record resolved as a duplicate can never receive its own award; only the canonical record
+      // the administrator designated may proceed.
+      if (studentsForDuplicateCheck.rows[0]?.duplicate_of_student_id) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          code: 'DUPLICATE_RECORD',
+          message: 'This student record is marked as a duplicate of another record. Only the canonical record can receive a bursary.',
+        });
+      }
       const duplicates = await client.query(
-        `SELECT id FROM duplicate_flags
-         WHERE (student_id = $1 OR matched_student_id = $1)
-           AND status IN ('pending', 'needs_verification', 'confirmed_duplicate')
+        `SELECT f.id FROM duplicate_flags f
+         LEFT JOIN duplicate_resolutions resolved ON resolved.duplicate_flag_id = f.id
+         WHERE (f.student_id = $1 OR f.matched_student_id = $1)
+           AND (f.status IN ('pending', 'needs_verification')
+                OR (f.status = 'confirmed_duplicate' AND resolved.id IS NULL))
          LIMIT 1`,
         [award.student_id]
       );
       if (duplicates.rows.length) {
         await client.query('ROLLBACK');
         return res.status(409).json({ message: 'Resolve duplicate review cases before approving this award.' });
+      }
+      // The annual rule spans the resolved identity: a record resolved as a duplicate of this
+      // student cannot hold a second bursary for the same year.
+      const conflicting = await client.query(
+        `SELECT a.id FROM bursary_awards a
+         WHERE a.id <> $1 AND a.award_year = $2 AND a.status IN ('submitted', 'approved')
+           AND a.student_id IN (SELECT id FROM students WHERE duplicate_of_student_id = $3)
+         LIMIT 1`,
+        [award.id, award.award_year, award.student_id]
+      );
+      if (conflicting.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          code: 'RESOLVED_DUPLICATE_AWARD_EXISTS',
+          message: 'A student record resolved as a duplicate of this student already has a bursary for this calendar year. One bursary per student per year applies across the resolved records; reject or void the other award first.',
+        });
       }
     }
     // The student row is read once for both outcomes: the approver needs the full record for the
@@ -501,4 +640,4 @@ async function voidAward(req, res, next) {
   }
 }
 
-module.exports = { create, decide, list, reportError, correct, voidAward };
+module.exports = { create, decide, detail, list, reportError, correct, voidAward };

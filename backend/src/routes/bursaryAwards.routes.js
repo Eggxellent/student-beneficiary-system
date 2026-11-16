@@ -7,6 +7,8 @@ const requireRole = require('../middleware/requireRole');
 const router = express.Router();
 router.use(authenticateToken);
 router.get('/', requireRole('admin', 'field_officer'), controller.list);
+// The administrator's review screen reads the saved eligibility assessment for one award.
+router.get('/:id', requireRole('admin'), controller.detail);
 router.post('/', requireRole('field_officer'), controller.create);
 router.patch('/:id/decision', requireRole('admin'), controller.decide);
 

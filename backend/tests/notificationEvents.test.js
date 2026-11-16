@@ -29,7 +29,7 @@ function setupClient({ award, decisionRows, notificationError } = {}) {
     release: jest.fn(),
     query: jest.fn(async (sql) => {
       if (/SELECT \* FROM bursary_awards/.test(sql)) return { rows: [award] };
-      if (/SELECT id, full_name, school_code FROM students/.test(sql)) {
+      if (/SELECT id, full_name, school_code, duplicate_of_student_id FROM students/.test(sql)) {
         return { rows: [{ id: studentId, full_name: 'Test Learner', school_code: 'Nairobi School' }] };
       }
       if (/SELECT full_name, upi, school_code FROM students/.test(sql)) {

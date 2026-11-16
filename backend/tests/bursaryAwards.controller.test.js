@@ -41,6 +41,9 @@ function setupDecisionClient({ duplicateRows = [], awardStatus = 'submitted', su
     query: jest.fn(async (sql) => {
       if (/SELECT \* FROM bursary_awards/.test(sql)) return { rows: [award] };
       if (/FROM duplicate_flags/.test(sql)) return { rows: duplicateRows };
+      // The annual-conflict lookup joins students as a subquery; answer it before the plain
+      // student lookup so an empty conflict result is not mistaken for a student row.
+      if (/FROM bursary_awards a/.test(sql)) return { rows: [] };
       if (/FROM students/.test(sql)) return { rows: [{ full_name: 'Test Learner', upi: 'TEST-UPI', school_code: 'Nairobi School' }] };
       if (/INSERT INTO bursary_certificates/.test(sql)) return { rows: [certificate] };
       if (/UPDATE bursary_awards/.test(sql)) return { rows: [{ ...award, status: 'approved', approved_amount: 25000, decided_by: actorId }] };
@@ -76,8 +79,10 @@ describe('bursary award proposals (isolated; no database)', () => {
       release: jest.fn(),
       query: jest.fn(async (sql) => {
         if (/INSERT INTO bursary_awards/.test(sql)) return { rows: [created] };
-        if (/FROM students/.test(sql)) return { rows: [{ id: studentId, full_name: 'Test Learner', school_code: 'Nairobi School' }] };
+        // Order matters: the annual-award lookup embeds a students subquery, so match the award
+        // query before the plain student lookup.
         if (/FROM bursary_awards/.test(sql)) return { rows: existingAward ? [existingAward] : [] };
+        if (/FROM students/.test(sql)) return { rows: [{ id: studentId, full_name: 'Test Learner', school_code: 'Nairobi School' }] };
         return { rows: [] };
       }),
     };

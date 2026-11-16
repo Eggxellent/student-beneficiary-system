@@ -51,7 +51,7 @@ async function calculate(req, res, next) {
            eligibility_category = $2,
            eligibility_assessed_at = NOW()
        WHERE id = $3
-       RETURNING id, full_name, upi, school_code`,
+       RETURNING id, full_name, upi, school_code, eligibility_assessed_at`,
       [assessment.score, assessment.category, student_id]
     );
 
@@ -60,6 +60,35 @@ async function calculate(req, res, next) {
     }
 
     const student = result.rows[0];
+
+    // The administrator's award review reads the assessment that produced this score, so the
+    // inputs and the recommended range are stored alongside it. This is a record of what the
+    // officer submitted, not a recalculation.
+    await pool.query(
+      `INSERT INTO eligibility_assessments (
+         student_id, score, category, fee_balance, household_income, vulnerability_status,
+         siblings_in_school, prior_bursary_history, recommended_min, recommended_max,
+         recommended_currency, recommendation_provisional, recommendation_source,
+         recorded_via, assessed_by, assessed_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'eligibility_form', $14, $15)`,
+      [
+        student.id,
+        assessment.score,
+        assessment.category,
+        fee_balance,
+        household_income,
+        vulnerability_status,
+        siblings_in_school,
+        prior_bursary_history,
+        assessment.recommended_range.min,
+        assessment.recommended_range.max,
+        assessment.recommended_range.currency,
+        assessment.recommended_range.provisional,
+        assessment.recommended_range.source,
+        req.user.id || req.user.sub,
+        student.eligibility_assessed_at,
+      ]
+    );
 
     try {
       await logAudit(req.user.id, 'ELIGIBILITY_CALCULATED', 'students', student.id, {

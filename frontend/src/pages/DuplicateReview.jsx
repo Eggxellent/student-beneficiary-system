@@ -75,6 +75,11 @@ export default function DuplicateReview() {
   const [revealed, setRevealed] = useState({});
   const [revealing, setRevealing] = useState(false);
   const [revealError, setRevealError] = useState("");
+  // Resolving a confirmed case is a separate administrator action from the review decision: the
+  // canonical record is chosen explicitly and a reason is required.
+  const [canonicalChoice, setCanonicalChoice] = useState("");
+  const [resolutionReason, setResolutionReason] = useState("");
+  const [resolving, setResolving] = useState(false);
   const fetchCases = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -125,11 +130,37 @@ export default function DuplicateReview() {
 
   const selected = cases.find((item) => item.id === selectedId);
 
+  async function submitResolution(event) {
+    event.preventDefault();
+    if (!selected || !canonicalChoice || resolutionReason.trim().length < 5) return;
+    setResolving(true);
+    setError("");
+    try {
+      const { data } = await api.post(`/duplicate-flags/${selected.id}/resolution`, {
+        canonical_student_id: canonicalChoice,
+        reason: resolutionReason.trim(),
+      });
+      const awardWarning = data.duplicate_open_awards?.length
+        ? ` ${data.duplicate_open_awards.length} open award record${data.duplicate_open_awards.length === 1 ? "" : "s"} remain on the duplicate record; they cannot be approved and must be rejected or voided explicitly.`
+        : "";
+      setNotice(`${data.message}${awardWarning}`);
+      setCanonicalChoice("");
+      setResolutionReason("");
+      await fetchCases();
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not resolve this duplicate case.");
+    } finally {
+      setResolving(false);
+    }
+  }
+
   // Identifiers arrive masked so the queue itself cannot leak them. This reveal is a separate,
   // audited request that returns the full values for the case currently open.
   useEffect(() => {
     setRevealed({});
     setRevealError("");
+    setCanonicalChoice("");
+    setResolutionReason("");
   }, [selectedId]);
 
   async function revealIdentifiers() {
@@ -226,11 +257,43 @@ export default function DuplicateReview() {
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {selected.students.map((student) => {
               const shown = revealed[student.reference] || student;
-              return <article key={student.reference} className="rounded border border-slate-200 p-4"><h3 className="font-semibold">{student.full_name}</h3><p className="mb-3 text-xs text-slate-500">Case reference: {student.reference}</p><dl className="space-y-2 text-sm">{identityRows(shown).map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b border-slate-100 pb-1"><dt className="text-slate-500">{label}</dt><dd className="text-right font-medium">{value || "Unavailable"}</dd></div>)}</dl></article>;
+              return <article key={student.reference} className="rounded border border-slate-200 p-4"><h3 className="font-semibold">{student.full_name}{student.duplicate_of_student_id && <span className="ml-2 rounded border border-amber-400 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Marked duplicate</span>}</h3><p className="mb-3 text-xs text-slate-500">Case reference: {student.reference}</p><dl className="space-y-2 text-sm">{identityRows(shown).map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b border-slate-100 pb-1"><dt className="text-slate-500">{label}</dt><dd className="text-right font-medium">{value || "Unavailable"}</dd></div>)}</dl></article>;
             })}
           </div>
           <section className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Decisive fields</h3><p className="mt-1 text-xs text-slate-500">Only fields whose similarity cleared the threshold, plus every UPI, birth-certificate and national-ID comparison. A shared name, date of birth or school proves nothing: none of them is unique.</p><dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{visibleEvidence(selected.evidence).map(([key, label, value]) => <div key={key} className="flex justify-between gap-3"><dt>{label}</dt><dd className="font-medium capitalize">{value}</dd></div>)}</dl>{selected.exact_identifier_matches.length > 0 && <p className="mt-3 text-sm font-semibold text-slate-800">Exact match: {selected.exact_identifier_matches.join(", ")}. Verify it; this is not proof of misconduct.</p>}</section>
           <section className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Review history</h3>{selected.history.length ? <ol className="mt-2 space-y-3">{selected.history.map((event) => <li key={event.id} className="border-l-2 border-slate-300 pl-3 text-sm"><p className="font-medium">{prettyStatus(event.decision)} · {event.reviewer_name}</p><p className="text-slate-700">Reason: {event.reason}</p>{event.notes && <p className="text-slate-600">Notes: {event.notes}</p>}<time className="text-xs text-slate-500">{formatDate(event.created_at)}</time></li>)}</ol> : <p className="mt-2 text-sm text-slate-500">No previous review actions.</p>}</section>
+          {isAdmin && selected.status === "confirmed_duplicate" && (selected.resolution ? (
+            <section className="mt-5 rounded border border-green-300 bg-green-50 p-4">
+              <h3 className="font-semibold text-green-900">Duplicate case resolved</h3>
+              <p className="mt-2 text-sm text-green-900">Canonical record: <strong>{selected.students.find((student) => student.reference === selected.resolution.canonical_student_id)?.full_name || selected.resolution.canonical_student_id}</strong></p>
+              <p className="text-sm text-green-900">Duplicate record: <strong>{selected.students.find((student) => student.reference === selected.resolution.duplicate_student_id)?.full_name || selected.resolution.duplicate_student_id}</strong></p>
+              <p className="mt-2 text-sm text-slate-700">Reason: {selected.resolution.reason}</p>
+              <p className="mt-1 text-xs text-slate-600">{selected.resolution.resolved_by_name || "An administrator"} · {formatDate(selected.resolution.resolved_at)}</p>
+              <p className="mt-2 text-xs text-slate-700">Only the canonical record can receive a bursary. The duplicate record stays in the database, marked as a duplicate, for audit and history.</p>
+            </section>
+          ) : (
+            <form onSubmit={submitResolution} className="mt-5 rounded border border-amber-300 bg-amber-50 p-4">
+              <h3 className="font-semibold text-amber-900">Resolve this confirmed duplicate</h3>
+              <p className="mt-1 text-xs text-amber-900">Choose which record stays canonical. The other record is marked as a duplicate and can never receive a bursary; nothing is deleted or merged. Both records are kept.</p>
+              <fieldset className="mt-3">
+                <legend className="text-sm font-medium text-slate-800">Canonical student record <span aria-hidden="true">*</span></legend>
+                {selected.students.map((student) => (
+                  <label key={student.reference} className="mt-2 flex items-start gap-2 rounded border border-slate-300 bg-white p-2 text-sm">
+                    <input type="radio" name="canonical-record" value={student.reference} checked={canonicalChoice === student.reference} onChange={(event) => setCanonicalChoice(event.target.value)} className="mt-1" />
+                    <span>
+                      <span className="font-semibold text-slate-900">{student.full_name}</span>
+                      <span className="block text-xs text-slate-600">UPI {student.upi || "unavailable"} · Date of birth {student.date_of_birth || "unavailable"} · School {student.school_code || "unavailable"}</span>
+                      <span className="block text-xs text-slate-500">Case reference: {student.reference}</span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+              <label className="mt-3 block text-sm font-medium">Resolution reason <span aria-hidden="true">*</span>
+                <textarea required minLength={5} maxLength={2000} rows={3} value={resolutionReason} onChange={(event) => setResolutionReason(event.target.value)} className="mt-1 w-full border border-slate-300 p-2" placeholder="Which documents confirmed this record as the legitimate student?" />
+              </label>
+              <button type="submit" disabled={resolving || !canonicalChoice || resolutionReason.trim().length < 5} className="mt-3 rounded bg-slate-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{resolving ? "Saving…" : "Save resolution"}</button>
+            </form>
+          ))}
           {isAdmin && ['pending', 'needs_verification'].includes(selected.status) && <form onSubmit={submitDecision} className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Decision</h3><div className="mt-3 grid gap-3 sm:grid-cols-3"><button type="button" onClick={() => setDecision("confirmed_duplicate")} aria-pressed={decision === "confirmed_duplicate"} className={`rounded border px-3 py-2 text-sm ${decision === "confirmed_duplicate" ? "border-slate-800 bg-slate-100 font-semibold" : "border-slate-300"}`}>Confirmed duplicate</button><button type="button" onClick={() => setDecision("not_duplicate")} aria-pressed={decision === "not_duplicate"} className={`rounded border px-3 py-2 text-sm ${decision === "not_duplicate" ? "border-slate-800 bg-slate-100 font-semibold" : "border-slate-300"}`}>Not a duplicate</button><button type="button" onClick={() => setDecision("needs_verification")} aria-pressed={decision === "needs_verification"} className={`rounded border px-3 py-2 text-sm ${decision === "needs_verification" ? "border-slate-800 bg-slate-100 font-semibold" : "border-slate-300"}`}>Needs verification</button></div><label className="mt-4 block text-sm font-medium">Reason <span aria-hidden="true">*</span><textarea required minLength={5} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className="mt-1 w-full border border-slate-300 p-2" placeholder="What did you verify, and why?" /></label><label className="mt-3 block text-sm font-medium">Notes<textarea maxLength={4000} value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} className="mt-1 w-full border border-slate-300 p-2" /></label><button type="submit" disabled={saving || reason.trim().length < 5} className="mt-3 rounded bg-slate-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving…" : "Save decision"}</button></form>}
         </section>
       </div>}

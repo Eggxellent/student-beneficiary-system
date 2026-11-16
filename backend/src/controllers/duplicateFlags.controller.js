@@ -16,6 +16,13 @@ const decisionSchema = z.object({
   notes: z.string().trim().max(4000).optional().default(''),
 });
 
+// Resolution is separate from the review decision: the administrator names which of the two
+// records stays canonical. There is no default, and the reason is mandatory.
+const resolutionSchema = z.object({
+  canonical_student_id: z.string().uuid(),
+  reason: z.string().trim().min(5).max(2000),
+});
+
 function normalized(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
@@ -119,9 +126,17 @@ function toReviewCase(row) {
     reason,
     exact_identifier_matches: exactIdentifiers,
     students: [
-      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code, school_code: first.school_code, guardian_contact: maskIdentifier(first.primary_phone), upi: maskIdentifier(first.upi), birth_certificate_number: maskIdentifier(first.birth_certificate_number), national_id_number: maskIdentifier(first.national_id_number) },
-      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code, school_code: second.school_code, guardian_contact: maskIdentifier(second.primary_phone), upi: maskIdentifier(second.upi), birth_certificate_number: maskIdentifier(second.birth_certificate_number), national_id_number: maskIdentifier(second.national_id_number) },
+      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code, school_code: first.school_code, guardian_contact: maskIdentifier(first.primary_phone), upi: maskIdentifier(first.upi), birth_certificate_number: maskIdentifier(first.birth_certificate_number), national_id_number: maskIdentifier(first.national_id_number), duplicate_of_student_id: row.student_duplicate_of || null },
+      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code, school_code: second.school_code, guardian_contact: maskIdentifier(second.primary_phone), upi: maskIdentifier(second.upi), birth_certificate_number: maskIdentifier(second.birth_certificate_number), national_id_number: maskIdentifier(second.national_id_number), duplicate_of_student_id: row.matched_duplicate_of || null },
     ],
+    resolution: row.resolution_id ? {
+      id: row.resolution_id,
+      canonical_student_id: row.resolution_canonical_student_id,
+      duplicate_student_id: row.resolution_duplicate_student_id,
+      reason: row.resolution_reason,
+      resolved_at: row.resolution_resolved_at,
+      resolved_by_name: row.resolution_resolved_by_name || null,
+    } : null,
     evidence: {
       name: fieldEvidence(first.full_name, second.full_name, 'name', features.jaro_winkler || 0),
       date_of_birth: features.dob_match >= 1 ? 'matches' : features.dob_match > 0 ? `similar (${Math.round(features.dob_match * 100)}%)` : fieldEvidence(first.date_of_birth, second.date_of_birth),
@@ -305,6 +320,14 @@ async function list(req, res, next) {
               s2.birth_certificate_number AS matched_birth_certificate_number,
               s2.national_id_number AS matched_national_id_number,
               s2.primary_phone AS matched_guardian_contact,
+              s1.duplicate_of_student_id AS student_duplicate_of,
+              s2.duplicate_of_student_id AS matched_duplicate_of,
+              dfr.id AS resolution_id,
+              dfr.canonical_student_id AS resolution_canonical_student_id,
+              dfr.duplicate_student_id AS resolution_duplicate_student_id,
+              dfr.reason AS resolution_reason,
+              dfr.resolved_at AS resolution_resolved_at,
+              resolver.full_name AS resolution_resolved_by_name,
               s1.date_of_birth IS NOT DISTINCT FROM s2.date_of_birth AS date_of_birth_match,
               s1.school_code IS NOT DISTINCT FROM s2.school_code AS school_match,
               s1.guardian_id IS NOT DISTINCT FROM s2.guardian_id AS guardian_match,
@@ -312,6 +335,8 @@ async function list(req, res, next) {
        FROM duplicate_flags df
        JOIN students s1 ON df.student_id = s1.id
        JOIN students s2 ON df.matched_student_id = s2.id
+       LEFT JOIN duplicate_resolutions dfr ON dfr.duplicate_flag_id = df.id
+       LEFT JOIN users resolver ON resolver.id = dfr.resolved_by
        WHERE ($1 = 'all' OR ($1 = 'open' AND df.status IN ('pending', 'needs_verification'))
               OR ($1 = 'not_duplicate' AND df.status IN ('not_duplicate', 'cleared'))
               OR ($1 NOT IN ('all', 'open', 'not_duplicate') AND df.status = $1))
@@ -508,4 +533,121 @@ async function update(req, res, next) {
   }
 }
 
-module.exports = { evaluate, list, revealIdentifiers, scanExisting, update };
+// Confirming a duplicate must not freeze the legitimate record out of the bursary workflow. This
+// endpoint lets an administrator name the canonical record and mark the other one as its duplicate.
+// Both rows are kept with their awards, assessments, notifications and audit history; nothing is
+// merged, transferred or deleted, and unresolved cases keep blocking award approval.
+async function resolve(req, res, next) {
+  const validation = resolutionSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(400).json({ message: 'Select the canonical student record and provide a reason of at least 5 characters.' });
+  }
+  const actorId = req.user.id || req.user.sub;
+  const { canonical_student_id: canonicalId, reason } = validation.data;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Serialise every resolution attempt for this case, so two administrators cannot designate
+    // opposite canonical records at the same time.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`sbms.duplicate.resolution.${req.params.id}`]);
+    const flagResult = await client.query('SELECT * FROM duplicate_flags WHERE id = $1 FOR UPDATE', [req.params.id]);
+    const flag = flagResult.rows[0];
+    if (!flag) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Duplicate case not found.' });
+    }
+    if (flag.status !== 'confirmed_duplicate') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'Only a case confirmed as a duplicate can be resolved. Record the review decision first.' });
+    }
+    const pair = [flag.student_id, flag.matched_student_id];
+    if (!pair.includes(canonicalId)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'The canonical record must be one of the two student records in this duplicate case.' });
+    }
+    const duplicateId = pair.find((id) => id !== canonicalId);
+    // A stable lock order over both student rows keeps resolution and award approval from
+    // interleaving on the same records.
+    const students = await client.query(
+      `SELECT id, full_name, upi, duplicate_of_student_id FROM students
+       WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`,
+      [[...pair].sort()]
+    );
+    if (students.rows.length !== 2) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'Both student records in this case are required to resolve it.' });
+    }
+    const canonical = students.rows.find((row) => row.id === canonicalId);
+    const duplicate = students.rows.find((row) => row.id === duplicateId);
+    if (canonical.duplicate_of_student_id) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'That record is itself marked as a duplicate. Designate the canonical record instead.' });
+    }
+    if (duplicate.duplicate_of_student_id) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'The other record is already marked as a duplicate. Review its existing resolution before changing it.' });
+    }
+    const existing = await client.query(
+      'SELECT id FROM duplicate_resolutions WHERE duplicate_flag_id = $1',
+      [flag.id]
+    );
+    if (existing.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'This duplicate case is already resolved.' });
+    }
+    const marked = await client.query(
+      `UPDATE students
+       SET duplicate_of_student_id = $1, duplicate_marked_at = NOW(), duplicate_marked_by = $2
+       WHERE id = $3 AND duplicate_of_student_id IS NULL
+       RETURNING id, full_name, upi`,
+      [canonical.id, actorId, duplicate.id]
+    );
+    if (!marked.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'The duplicate record was resolved by another request. Reload the case.' });
+    }
+    const resolution = await client.query(
+      `INSERT INTO duplicate_resolutions
+         (duplicate_flag_id, canonical_student_id, duplicate_student_id, reason, resolved_by)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [flag.id, canonical.id, duplicate.id, reason, actorId]
+    );
+    await client.query('UPDATE duplicate_flags SET updated_at = NOW() WHERE id = $1', [flag.id]);
+    // An award already attached to the duplicate record is reported, never moved. The administrator
+    // has to reject or void it explicitly; approval stays blocked while it is open.
+    const duplicateAwards = await client.query(
+      `SELECT id, status, award_year, requested_amount, approved_amount
+       FROM bursary_awards WHERE student_id = $1 AND status IN ('submitted', 'approved')
+       ORDER BY created_at DESC`,
+      [duplicate.id]
+    );
+    await client.query(
+      `INSERT INTO audit_logs (user_id, action, table_name, record_id, details)
+       VALUES ($1, 'DUPLICATE_CASE_RESOLVED', 'duplicate_flags', $2, $3)`,
+      [actorId, flag.id, {
+        canonical_student_id: canonical.id,
+        duplicate_student_id: duplicate.id,
+        reason,
+        model_version: flag.model_version,
+        model_score: flag.probability,
+        duplicate_open_awards: duplicateAwards.rows.map((award) => award.id),
+      }]
+    );
+    await client.query('COMMIT');
+    res.status(201).json({
+      message: `${duplicate.full_name} is now recorded as a duplicate of ${canonical.full_name}. Only the canonical record can receive a bursary.`,
+      resolution: resolution.rows[0],
+      canonical_student: { id: canonical.id, full_name: canonical.full_name, upi: canonical.upi },
+      duplicate_student: { id: duplicate.id, full_name: duplicate.full_name, upi: duplicate.upi },
+      duplicate_open_awards: duplicateAwards.rows,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { evaluate, list, revealIdentifiers, resolve, scanExisting, update };
+
