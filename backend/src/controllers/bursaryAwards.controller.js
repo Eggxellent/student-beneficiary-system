@@ -86,7 +86,10 @@ async function list(req, res, next) {
        LEFT JOIN LATERAL (
          SELECT COUNT(*) AS open_count FROM duplicate_flags f
          LEFT JOIN duplicate_resolutions resolved ON resolved.duplicate_flag_id = f.id
-         WHERE (f.student_id = a.student_id OR f.matched_student_id = a.student_id)
+         WHERE (f.student_id = a.student_id OR f.matched_student_id = a.student_id
+                -- A case opened against the application that produced this student counts too.
+                OR EXISTS (SELECT 1 FROM student_applications sa
+                            WHERE sa.id = f.application_id AND sa.verified_student_id = a.student_id))
            AND (f.status IN ('pending', 'needs_verification')
                 OR (f.status = 'confirmed_duplicate' AND resolved.id IS NULL))
        ) duplicates ON TRUE
@@ -132,6 +135,8 @@ async function detail(req, res, next) {
        LEFT JOIN LATERAL (
          SELECT f.id, f.status FROM duplicate_flags f
          WHERE f.student_id = a.student_id OR f.matched_student_id = a.student_id
+            OR EXISTS (SELECT 1 FROM student_applications sa
+                        WHERE sa.id = f.application_id AND sa.verified_student_id = a.student_id)
          ORDER BY f.created_at DESC
          LIMIT 1
        ) c ON TRUE
@@ -349,6 +354,8 @@ async function decide(req, res, next) {
           message: 'This student record is marked as a duplicate of another record. Only the canonical record can receive a bursary.',
         });
       }
+      // Legacy student-subject cases only: application-subject cases are gated below, where the
+      // documented administrator override applies.
       const duplicates = await client.query(
         `SELECT f.id FROM duplicate_flags f
          LEFT JOIN duplicate_resolutions resolved ON resolved.duplicate_flag_id = f.id
@@ -360,7 +367,10 @@ async function decide(req, res, next) {
       );
       if (duplicates.rows.length) {
         await client.query('ROLLBACK');
-        return res.status(409).json({ message: 'Resolve duplicate review cases before approving this award.' });
+        return res.status(409).json({
+          code: 'DUPLICATE_REVIEW_OPEN',
+          message: 'Resolve duplicate review cases before approving this award.',
+        });
       }
       // Guardian-led applications can be verified by an administrator while a high-priority case is
       // still open (the documented override). The same conflict must not silently reach a payment, so
