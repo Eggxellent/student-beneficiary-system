@@ -105,18 +105,21 @@ move money.** The payment/disbursement module that earlier drafts described was 
 | Schema management | Numbered SQL migrations applied by an operator; `npm run migrate` only targets loopback `sbms_test`; `npm run db:bootstrap-empty` provisions a confirmed-empty database atomically (schema + migrations + bcrypt initial admin) | `backend/scripts/migrate.js`, `bootstrap-production-schema.js`, `README.md` §Database operations |
 | ML service | Python 3.11 virtual environment: XGBoost 3.2.0, scikit-learn 1.9.0, pandas 3.0.5, jellyfish 1.2.1, joblib 1.6.0; artifact `ml-service/model/xgb_duplicate_model.joblib` | Invoked by the API as a **child process** (`predict.py --server`) exchanging JSON lines on stdin/stdout, 30 s timeout, one long-lived process per API instance. It is not a separate HTTP service and is not containerised separately |
 | Integrations | **None external.** No SMS, e-mail, payment-gateway, identity-provider or NG-CDF/government API integration exists | `backend/src/services/` contains only audit, certificate document/issue/reference, database readiness/startup, duplicate aggregation/check, eligibility, ML review, notifications, report document, student format. Notifications are in-app only |
-| Deployment | Azure: Container Apps `ca-sbms-api` (API image `ghcr.io/eggxellent/sbms-api:<commit-sha>`, `minReplicas 0`), App Service F1 `sbms-web` (`https://sbms-web.azurewebsites.net`) for the built frontend, PostgreSQL Flexible Server `pg-sbms`, budget `budget-sbms`; CI workflow `.github/workflows/publish-api-image.yml` builds and pushes the image | Verified live 2026-11-15: `ca-sbms-api` revision `ca-sbms-api--latest` `Healthy`/`Running` on image tag `6b597befacad7fca42a98577a51540edcc3b42f4` (workflow run for that commit succeeded); `sbms-web` zip-deployed the same commit and serves `assets/index-DZiibs58.js` |
+| Deployment | Azure: Container Apps `ca-sbms-api` (API image `ghcr.io/eggxellent/sbms-api:<commit-sha>`, `minReplicas 0`), App Service F1 `sbms-web` (`https://sbms-web.azurewebsites.net`) for the built frontend, PostgreSQL Flexible Server `pg-sbms`, budget `budget-sbms`; CI workflow `.github/workflows/publish-api-image.yml` builds and pushes the image | Verified live 2026-11-16: `ca-sbms-api` revision `ca-sbms-api--latest` `Healthy`/`Running` on image tag `8f34ba2b14a58d411d69390e686b49ff5a4fb783`; `sbms-web` zip-deployed the same source revision and serves `assets/index-Da8s7gC1.js` |
 | Deployment alternative (not live) | none | No alternative hosting configuration is kept; anything that contradicts the Azure topology in `docs/deployment.md` is stale |
 
-**Deployment position (important for Chapter 5):** the deployed API image is commit `6b597be`, rolled
-into `ca-sbms-api` on 2026-11-15. That release carries the one sign-in form, administrator-issued
+**Deployment position (important for Chapter 5):** the deployed API image is commit `8f34ba2`, rolled
+into `ca-sbms-api` on 2026-11-16. That release carries the saved eligibility assessments, the
+duplicate-resolution action, the contained sign-in card, the one sign-in form, administrator-issued
 password reset links, the pending-approval bell and the approval invoice header. The
-`20261115_password_reset_tokens.sql` migration was applied to the Azure database the same day and
-recorded in `sbms_schema_migrations`, so the reset endpoints have their table; `notifications` matches
+`20261115_eligibility_assessments_and_duplicate_resolution.sql` migration was applied to the Azure
+database the same day and recorded in `sbms_schema_migrations` (16 rows), so
+`eligibility_assessments`, `duplicate_resolutions` and the `students.duplicate_of_student_id` columns
+exist live; three historical assessments were backfilled from `audit_logs`. `notifications` matches
 `20261113_notifications_dismiss_on_read.sql` (the table exists and has no `read_at` column).
-Operator check against the live service: `POST /api/auth/password-reset/validate` answered `200` with
-a masked address for a row the operator inserted and then removed, and `410` for a bogus token. No
-password was changed and no account holds an unused reset link.
+Operator check against the live service: `GET /api/health` and `GET /api/ready` both answer `200`, and
+`GET /api/awards`, `/api/duplicate-flags` and `/api/students` answer `401` without a token, so the new
+routes are mounted rather than missing.
 
 
 ---
