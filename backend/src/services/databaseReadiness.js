@@ -3,6 +3,7 @@
 const REQUIRED_TABLES = Object.freeze([
   'users',
   'students',
+  'student_applications',
   'beneficiaries',
   'duplicate_flags',
   'duplicate_review_events',

@@ -22,6 +22,7 @@ describe('Database schema readiness', () => {
       'duplicate_flags',
       'duplicate_review_events',
       'reports',
+      'student_applications',
       'students',
       'users',
     ]);
