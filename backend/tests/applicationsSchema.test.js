@@ -137,6 +137,28 @@ describe('Guardian-led application schema', () => {
     );
   });
 
+  // duplicate_flags_case_kind_check: an application case names the application and a matched
+  // student; the legacy registration case names the registering student. Never both, so every
+  // reader can decide the subject from the row alone.
+  test('a case cannot name both a student and an application as its subject', async () => {
+    const student = await client.query('SELECT id FROM students LIMIT 1');
+    const app = await insertApplication('schema-test-both');
+    await expectRefused(
+      `INSERT INTO duplicate_flags (student_id, application_id, matched_student_id, probability, status)
+       VALUES ($1, $2, $1, 0.7, 'pending')`,
+      [student.rows[0].id, app.rows[0].id],
+      '23514',
+    );
+  });
+
+  test('the submission guard index exists', async () => {
+    const { rows } = await client.query(
+      `SELECT indexdef FROM pg_indexes
+        WHERE indexname = 'student_applications_guardian_child_idx'`,
+    );
+    expect(rows).toHaveLength(1);
+  });
+
   test('review events record the reviewing stage', async () => {
     const student = await client.query('SELECT id FROM students LIMIT 1');
     const app = await insertApplication('schema-test-stage');

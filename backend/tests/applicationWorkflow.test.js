@@ -13,6 +13,14 @@ jest.mock('../src/services/mlDuplicateReview', () => {
 });
 const { scorePairs } = require('../src/services/mlDuplicateReview');
 
+// The workflow, not the aggregation policy, is what this suite tests. The seeded candidate is
+// deliberately a different child with its own identifier, so the P3-2 namespace check at
+// verification stays quiet (that check has its own suite). Such a near miss is suppressed by the
+// default `top-1-corroborated` policy, so this suite selects `top-1`: one case per submission,
+// named by the forced score. The policy itself is covered by tests/duplicateAggregation.test.js.
+const originalAggregationPolicy = process.env.DUPLICATE_AGGREGATION_POLICY;
+process.env.DUPLICATE_AGGREGATION_POLICY = 'top-1';
+
 const state = {
   employeeIds: [],
   applicationIds: [],
@@ -62,16 +70,23 @@ async function loginAs(role) {
 }
 
 async function submitWithCase(body, score = 0.96) {
+  // The seeded candidate is deliberately a different child: only the score marks it, so no
+  // identifier is shared with the application and the P3-2 namespace check at verification stays
+  // out of the way of these workflow assertions (that check has its own suite).
+  const candidateUpi = `UPI-WF-EXISTING-${uniqueSuffix()}`;
   const { rows } = await pool.query(
     `INSERT INTO students (full_name, date_of_birth, school_code, upi)
      VALUES ($1, $2, $3, $4) RETURNING id`,
-    [body.full_name, body.date_of_birth, body.school_code, body.upi],
+    ['Existing Candidate Child', '2009-09-09', body.school_code, candidateUpi],
   );
   state.studentIds.push(rows[0].id);
 
+  // Every other candidate scores zero, so the case this suite follows is always the seeded one.
   scorePairs.mockImplementation(async (pairs) => ({
     model_version: 'test-model',
-    results: pairs.map(() => ({ score, features: { full_name_similarity: 1 } })),
+    results: pairs.map((pair) => (pair.second.upi === candidateUpi
+      ? { score, features: { full_name_similarity: 1 } }
+      : { score: 0, features: { full_name_similarity: 0 } })),
   }));
 
   const submitted = await request(app).post('/api/applications').send(body);
@@ -87,6 +102,7 @@ async function submitWithCase(body, score = 0.96) {
     applicationId: submitted.body.application.id,
     caseId: cases[0].id,
     matchedStudentId: cases[0].matched_student_id,
+    matchedStudentUpi: candidateUpi,
   };
 }
 
@@ -98,6 +114,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (originalAggregationPolicy === undefined) delete process.env.DUPLICATE_AGGREGATION_POLICY;
+  else process.env.DUPLICATE_AGGREGATION_POLICY = originalAggregationPolicy;
   if (state.applicationIds.length) {
     await pool.query('DELETE FROM audit_logs WHERE table_name = $1 AND record_id = ANY($2::uuid[])', [
       'student_applications', state.applicationIds,
@@ -193,7 +211,7 @@ describe('Guardian application workflow', () => {
 
   test('verification creates the student with the assessment submitted at the visit', async () => {
     const body = applicationBody();
-    const { applicationId, matchedStudentId } = await submitWithCase(body);
+    const { applicationId, matchedStudentId, matchedStudentUpi } = await submitWithCase(body);
 
     // The case is cleared by the administrator, so nothing is open at verification.
     await request(app)
@@ -235,7 +253,7 @@ describe('Guardian application workflow', () => {
       .set('Authorization', `Bearer ${state.tokens.field_officer}`);
     expect(detailByOfficer.status).toBe(200);
     expect(detailByOfficer.body.application.upi).toBe(body.upi);
-    expect(detailByOfficer.body.duplicate_cases[0].matched_upi).toBe(body.upi);
+    expect(detailByOfficer.body.duplicate_cases[0].matched_upi).toBe(matchedStudentUpi);
   });
 
   test('an open high-priority case blocks the field officer, and the administrator override is audited', async () => {
@@ -295,8 +313,15 @@ describe('Guardian application workflow', () => {
     expect(verification.status).toBe(409);
     expect(verification.body.code).toBe('DUPLICATE_APPLICATION');
 
+    // Verification was refused, so the application never became a student record: no row carries
+    // the application's identifier, and the matched record is untouched.
     const { rows } = await pool.query('SELECT count(*)::int AS total FROM students WHERE upi = $1', [body.upi]);
-    expect(rows[0].total).toBe(1);
+    expect(rows[0].total).toBe(0);
+    const { rows: matched } = await pool.query(
+      'SELECT count(*)::int AS total FROM students WHERE id = $1',
+      [matchedStudentId],
+    );
+    expect(matched[0].total).toBe(1);
   });
 
   test('approval is blocked by the same open case and needs an audited override', async () => {

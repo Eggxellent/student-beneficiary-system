@@ -79,11 +79,40 @@ const verifySchema = z.object({
 });
 
 /**
+ * Advisory-lock keys for one submission.
+ *
+ * The guardian triple is the product rule: one guardian resubmitting the same child in a day is a
+ * duplicate request, not a second child. The child keys are the half of that guarantee the guardian
+ * triple cannot see: the form is public, so a mother and a father can submit the same child from two
+ * phones, and the submission that decides "duplicate" must run after a lock that both of them share
+ * (docs/phase3-duplicate-schema-review.md section 7.2).
+ *
+ * The composite name/date-of-birth/school key only serialises; it never rejects a submission on its
+ * own, because two different children can share a name and a birthday. Identifier keys are taken only
+ * for identifiers actually present, and the list is sorted so every transaction takes the same keys
+ * in the same order: two submissions can never deadlock against each other.
+ */
+function submissionLockKeys(data) {
+  const keys = [
+    `sbms.application.submission:${data.guardian_phone}|${data.full_name.toLowerCase()}|${data.date_of_birth}`,
+    `sbms.application.child:name_dob_school:${data.full_name.toLowerCase()}|${data.date_of_birth}|${data.school_code}`,
+  ];
+  if (data.upi) keys.push(`sbms.application.child:upi:${data.upi}`);
+  if (data.birth_certificate_number) keys.push(`sbms.application.child:birth_certificate:${data.birth_certificate_number}`);
+  if (data.national_id_number) keys.push(`sbms.application.child:national_id:${data.national_id_number}`);
+  return keys.sort();
+}
+
+/**
  * Public submission.
  *
  * The insert commits before screening runs, so a slow or unavailable predictor can never cost a
  * guardian their application. Screening is then a separate transaction that records either cases or
  * an explicit `screening_failure_code`.
+ *
+ * Both pre-checks run inside the insert transaction and after the advisory locks: a read that
+ * happens before the lock is what makes two simultaneous submissions both insert
+ * (docs/phase3-duplicate-schema-review.md sections 2.1 and 7.4).
  */
 async function submit(req, res, next) {
   let client;
@@ -94,28 +123,53 @@ async function submit(req, res, next) {
     }
     const data = validation.data;
 
-    // The same guardian resubmitting the same child in a day is a duplicate request, not a second
-    // child. Answer with a pointer to tracking instead of opening a second case file.
-    const { rows: recent } = await pool.query(
-      `SELECT id FROM student_applications
-        WHERE guardian_phone = $1 AND lower(full_name) = lower($2) AND date_of_birth = $3
-          AND created_at > NOW() - INTERVAL '24 hours'
-        LIMIT 1`,
-      [data.guardian_phone, data.full_name, data.date_of_birth],
-    );
-    if (recent[0]) {
-      return res.status(409).json({
-        message: 'An application for this child was already submitted in the last 24 hours. Use the tracking code to follow its progress.',
-        code: 'APPLICATION_ALREADY_SUBMITTED',
-      });
-    }
-
     const trackingCode = generateTrackingCode();
     const payload = { ...data, submitted_via: 'public_form' };
     let application;
     client = await pool.connect();
     try {
       await client.query('BEGIN');
+      // Locks first, reads second. The pre-checks only protect anything when the deciding read
+      // happens after the lock, because a read that runs first can be overtaken by another insert.
+      for (const key of submissionLockKeys(data)) {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key]);
+      }
+
+      const { rows: recent } = await client.query(
+        `SELECT id FROM student_applications
+          WHERE guardian_phone = $1 AND lower(full_name) = lower($2) AND date_of_birth = $3
+            AND created_at > NOW() - INTERVAL '24 hours'
+          LIMIT 1`,
+        [data.guardian_phone, data.full_name, data.date_of_birth],
+      );
+      if (recent[0]) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          message: 'An application for this child was already submitted in the last 24 hours. Use the tracking code to follow its progress.',
+          code: 'APPLICATION_ALREADY_SUBMITTED',
+        });
+      }
+
+      // One child, one application, whichever guardian submits it. An identifier match is not a
+      // heuristic, so this refuses even a legitimate-looking second submission; the office can find
+      // the existing application by the identifier the guardian just typed.
+      const { rows: sameChild } = await client.query(
+        `SELECT id FROM student_applications
+          WHERE created_at > NOW() - INTERVAL '24 hours'
+            AND (($1::text IS NOT NULL AND upi = $1)
+              OR ($2::text IS NOT NULL AND birth_certificate_number = $2)
+              OR ($3::text IS NOT NULL AND national_id_number = $3))
+          LIMIT 1`,
+        [data.upi || null, data.birth_certificate_number || null, data.national_id_number || null],
+      );
+      if (sameChild[0]) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          message: 'An application for this child was already submitted in the last 24 hours, possibly by another guardian. Contact the bursary office with the child\'s UPI or birth certificate number to follow it.',
+          code: 'APPLICATION_ALREADY_SUBMITTED',
+        });
+      }
+
       const { rows } = await client.query(
         `INSERT INTO student_applications
            (tracking_code_hash, submitted_payload, guardian_name, guardian_phone, guardian_email,
@@ -595,6 +649,58 @@ async function verify(req, res, next) {
       }
     }
 
+    // P3-2: verification is the step that creates a student row, so it is the last place a child can
+    // be registered twice. The model score is advisory; this match is exact — an identifier, or name
+    // plus date of birth plus school — and therefore deterministic
+    // (docs/phase3-duplicate-schema-review.md section 7.5).
+    const { rows: matchingStudents } = await client.query(
+      `SELECT s.id, s.duplicate_of_student_id,
+              (s.upi IS NOT NULL AND s.upi = a.upi) AS upi_match,
+              (s.birth_certificate_number IS NOT NULL AND s.birth_certificate_number = a.birth_certificate_number) AS birth_certificate_match,
+              (s.national_id_number IS NOT NULL AND s.national_id_number = a.national_id_number) AS national_id_match,
+              (lower(s.full_name) = lower(a.full_name) AND s.date_of_birth = a.date_of_birth
+                AND s.school_code = a.school_code) AS name_dob_school_match
+         FROM student_applications a
+         JOIN students s ON (
+                (a.upi IS NOT NULL AND s.upi = a.upi)
+             OR (a.birth_certificate_number IS NOT NULL AND s.birth_certificate_number = a.birth_certificate_number)
+             OR (a.national_id_number IS NOT NULL AND s.national_id_number = a.national_id_number)
+             OR (lower(s.full_name) = lower(a.full_name) AND s.date_of_birth = a.date_of_birth
+                 AND s.school_code = a.school_code)
+         )
+        WHERE a.id = $1
+        ORDER BY s.created_at ASC
+        LIMIT 1`,
+      [application.id],
+    );
+    const matchingStudent = matchingStudents[0] || null;
+    const matchedFields = matchingStudent
+      ? [
+        matchingStudent.upi_match && 'upi',
+        matchingStudent.birth_certificate_match && 'birth_certificate_number',
+        matchingStudent.national_id_match && 'national_id_number',
+        matchingStudent.name_dob_school_match && 'name_date_of_birth_school',
+      ].filter(Boolean)
+      : [];
+
+    if (matchingStudent && !parsed.data.override_reason) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'DUPLICATE_STUDENT_EXISTS',
+        message: 'An existing student record matches this application. Review that record, or have an administrator record an override reason.',
+        existing_student_id: matchingStudent.id,
+        canonical_student_id: matchingStudent.duplicate_of_student_id || matchingStudent.id,
+        matched_fields: matchedFields,
+      });
+    }
+    if (matchingStudent && req.user.role !== 'admin') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        code: 'OVERRIDE_NOT_PERMITTED',
+        message: 'Only an administrator may verify an application that matches an existing student record.',
+      });
+    }
+
     const actorId = req.user.id || req.user.sub;
     const student = await studentModel.create({
       full_name: application.full_name,
@@ -653,6 +759,9 @@ async function verify(req, res, next) {
       recommendation_provisional: assessment.recommended_range.provisional,
       duplicate_override: Boolean(parsed.data.override_reason),
       override_reason: parsed.data.override_reason || null,
+      duplicate_student_override: Boolean(matchingStudent && parsed.data.override_reason),
+      matched_student_id: matchingStudent ? matchingStudent.id : null,
+      matched_fields: matchedFields,
     }, client);
     await client.query('COMMIT');
 
@@ -681,6 +790,7 @@ module.exports = {
   verify,
   generateTrackingCode,
   hashTrackingCode,
+  submissionLockKeys,
   applicationSchema,
 };
 
