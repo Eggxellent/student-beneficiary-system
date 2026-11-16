@@ -192,8 +192,8 @@ or about an application, never both". It belongs in the same new migration as §
 | Location | Predicate | Impact of `student_id = NULL` |
 | --- | --- | --- |
 | `applications.controller.js:227,252,364,417,482,511,575` | `f.application_id = …` | unaffected — these are the application's own views |
-| `bursaryAwards.controller.js:87-92` | `f.student_id = X OR f.matched_student_id = X` | **behaviour change**: an open application case blocks the *matched* student's award. Intended — the claim must be resolved before money moves — and it is the rule registration cases already impose |
-| `bursaryAwards.controller.js:132-137` | latest case for the student | an application case can now be the case shown on that award; `resolution_*` stays empty because `duplicate_resolutions` is student-pair only |
+| `bursaryAwards.controller.js:86-95` | `f.student_id = X OR f.matched_student_id = X OR the application that produced X` | **behaviour change**: an open application case counts against the verified student's award. Implemented with `EXISTS (student_applications sa WHERE sa.id = f.application_id AND sa.verified_student_id = X)`, so a case whose subject is an application is not invisible to the award list |
+| `bursaryAwards.controller.js:135-143` | latest case for the student, same three-way predicate | an application case can now be the case shown on that award; `resolution_*` stays empty because `duplicate_resolutions` is student-pair only |
 | `bursaryAwards.controller.js:352-379` | approval gate + application-case override with written reason | unaffected by NULL; the explicit override is the documented escape hatch |
 | `adminDashboard.controller.js:32` | count by status, no join | counts application cases too; the label stays true, but see P3-3 |
 | `reports.controller.js:32-38` | count by status and date | same as above |
