@@ -94,19 +94,19 @@ Consequences for a public, unauthenticated guardian form: N pairs scored per sub
 200 per batch), a table-wide `FOR UPDATE` held for the duration, and a per-application cost that grows with
 the register. This is acceptable for staff-paced registration and is not acceptable for public traffic.
 
-**Proposed resolution for Phase 3/4 (does not change the model):**
+**Resolution adopted for Phase 3/4 (recall-safe, no model change):**
 
-- Keep the pipeline `candidate query → scorePairs → selectFlaggedCandidates → duplicate case`, but bound the
-  candidate set with a prefilter that cannot plausibly hide a real duplicate: an SQL `OR` of exact
-  identifier equality (normalised UPI, birth certificate, national ID) and a normalised-surname match,
-  scored normally afterwards.
-- Do **not** take `FOR UPDATE` over the whole table for public submissions; the unique constraints and the
-  existing unordered-pair index already protect against duplicate cases.
-- Record `candidates_considered` on the application so a recall regression is observable rather than
-  silent, and add a test that every scenario in §2 that represents a true duplicate still reaches
-  case-creation level through the bounded query.
-- If the prefilter cannot be validated as recall-safe within the deadline, the guardian path keeps the full
-  scan (correct but slow) and the limitation is recorded in the gap register instead of being hidden.
+- The guardian path keeps the **full candidate scan** — correctness first — but does **not** take
+  `FOR UPDATE` over the table; the CHECK constraint and the existing unordered-pair index already prevent
+  duplicate cases, and a public submission must never hold a table-wide lock.
+- `candidates_considered`, `candidates_qualifying` and `candidates_suppressed` are stored on the
+  application, so screening volume is observable rather than silent.
+- Case creation still runs through `selectFlaggedCandidates` with `top-1-corroborated`; the guardian path
+  does not threshold raw scores.
+- A bounded prefilter (exact identifiers OR normalised surname) is recorded in the gap register as a
+  scalability optimisation, because it can only be adopted after a recall-safety evaluation that does not
+  fit the remaining deadline. Keeping the full scan cannot hide a duplicate; a prefilter could.
+
 
 ## 5. Evidence files
 
