@@ -26,6 +26,8 @@ const MIGRATION_ORDER = Object.freeze([
   '20261113_notifications_dismiss_on_read.sql',
   '20261115_password_reset_tokens.sql',
   '20261115_eligibility_assessments_and_duplicate_resolution.sql',
+  '20261116_student_applications.sql',
+  '20261116_application_duplicate_cases.sql',
 ]);
 
 const MANUAL_MIGRATIONS = Object.freeze([
