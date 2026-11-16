@@ -105,6 +105,11 @@ afterAll(async () => {
     await pool.query('DELETE FROM student_applications WHERE id = ANY($1::uuid[])', [state.applicationIds]);
   }
   if (state.studentIds.length) {
+    await pool.query(
+      'DELETE FROM bursary_certificates WHERE award_id IN (SELECT id FROM bursary_awards WHERE student_id = ANY($1::uuid[]))',
+      [state.studentIds],
+    );
+    await pool.query('DELETE FROM bursary_awards WHERE student_id = ANY($1::uuid[])', [state.studentIds]);
     await pool.query('DELETE FROM students WHERE id = ANY($1::uuid[])', [state.studentIds]);
   }
   if (state.employeeIds.length) {
@@ -257,6 +262,7 @@ describe('Guardian application workflow', () => {
     expect(adminOverride.status).toBe(201);
     expect(adminOverride.body.status).toBe('verified');
     state.studentIds.push(adminOverride.body.student.id);
+    state.overrideStudentId = adminOverride.body.student.id;
 
     const { rows } = await pool.query(
       `SELECT details FROM audit_logs
@@ -291,6 +297,42 @@ describe('Guardian application workflow', () => {
 
     const { rows } = await pool.query('SELECT count(*)::int AS total FROM students WHERE upi = $1', [body.upi]);
     expect(rows[0].total).toBe(1);
+  });
+
+  test('approval is blocked by the same open case and needs an audited override', async () => {
+    expect(state.overrideStudentId).toBeDefined();
+
+    const proposed = await request(app)
+      .post('/api/awards')
+      .set('Authorization', `Bearer ${state.tokens.field_officer}`)
+      .send({ student_id: state.overrideStudentId, requested_amount: 15000 });
+    expect([201, 200]).toContain(proposed.status);
+    const awardId = proposed.body.award.id;
+
+    const blocked = await request(app)
+      .patch(`/api/awards/${awardId}/decision`)
+      .set('Authorization', `Bearer ${state.tokens.admin}`)
+      .send({ decision: 'approved', approved_amount: 15000, reason: 'Assessment reviewed and approved by the committee' });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.code).toBe('DUPLICATE_REVIEW_OPEN');
+
+    const approved = await request(app)
+      .patch(`/api/awards/${awardId}/decision`)
+      .set('Authorization', `Bearer ${state.tokens.admin}`)
+      .send({
+        decision: 'approved',
+        approved_amount: 15000,
+        reason: 'Assessment reviewed and approved by the committee',
+        override_reason: 'Documents independently verified; the open case is a different child',
+      });
+    expect(approved.status).toBe(200);
+
+    const { rows } = await pool.query(
+      `SELECT details FROM audit_logs WHERE action = 'AWARD_DUPLICATE_OVERRIDE' AND record_id = $1`,
+      [awardId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].details.override_reason).toContain('different child');
   });
 });
 

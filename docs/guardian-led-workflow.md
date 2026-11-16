@@ -66,6 +66,13 @@ guardian's view monotonic and avoids re-submission.
 
 ## 5. Data model changes (two migrations)
 
+> **Status (2026-11-16):** both migrations are written, applied to the local guarded `sbms_test`
+> database and covered by `backend/tests/applicationsSchema.test.js`. Endpoints, screening service,
+> award gate and test evidence are listed in `docs/guardian-led-handover-2026-11-16.md`. One
+> correction was made to §5.2: the legacy unlimited-pair index had to become **partial**
+> (`WHERE application_id IS NULL`), because PostgreSQL's `LEAST`/`GREATEST` ignore NULL and would
+> otherwise treat every application case against the same student as one index key.
+
 ### 5.1 `20261116_student_applications.sql`
 
 | Column | Type | Notes |

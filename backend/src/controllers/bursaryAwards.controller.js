@@ -3,6 +3,7 @@ const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
 const { issueForApprovedAward } = require('../services/certificateIssue');
 const { notifyAwardSubmitted, notifyAwardDecision } = require('../services/notifications');
+const { getDuplicateThreshold } = require('../config/settings');
 
 const createSchema = z.object({
   student_id: z.string().uuid(),
@@ -360,6 +361,35 @@ async function decide(req, res, next) {
       if (duplicates.rows.length) {
         await client.query('ROLLBACK');
         return res.status(409).json({ message: 'Resolve duplicate review cases before approving this award.' });
+      }
+      // Guardian-led applications can be verified by an administrator while a high-priority case is
+      // still open (the documented override). The same conflict must not silently reach a payment, so
+      // approval is blocked here as well, and the only way past it is another written reason.
+      const openApplicationCase = await client.query(
+        `SELECT a.id FROM student_applications a
+          WHERE a.verified_student_id = $1 AND a.duplicate_of_student_id IS NULL
+            AND EXISTS (
+              SELECT 1 FROM duplicate_flags f
+               WHERE f.application_id = a.id
+                 AND f.status IN ('pending', 'needs_verification')
+                 AND f.probability >= $2
+            )
+          LIMIT 1`,
+        [award.student_id, getDuplicateThreshold()],
+      );
+      if (openApplicationCase.rows.length) {
+        const overrideReason = typeof req.body?.override_reason === 'string' ? req.body.override_reason.trim() : '';
+        if (overrideReason.length < 10) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({
+            code: 'DUPLICATE_REVIEW_OPEN',
+            message: 'A high-priority duplicate case is still open for this application. Resolve it, or record an override reason of at least ten characters.',
+          });
+        }
+        await logAudit(actorId, 'AWARD_DUPLICATE_OVERRIDE', 'bursary_awards', award.id, {
+          application_id: openApplicationCase.rows[0].id,
+          override_reason: overrideReason,
+        }, client);
       }
       // The annual rule spans the resolved identity: a record resolved as a duplicate of this
       // student cannot hold a second bursary for the same year.
