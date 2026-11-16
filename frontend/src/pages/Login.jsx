@@ -37,6 +37,7 @@ function HeroPanel() {
     <aside className="sbms-auth-hero">
       <div className="sbms-auth-hero-copy">
         <h2 className="sbms-auth-hero-title">Welcome to the<br />student beneficiary system</h2>
+        <p className="sbms-auth-hero-subtitle">One place to review applications, track awards and keep every beneficiary record accurate.</p>
       </div>
       <svg className="sbms-auth-hero-art" viewBox="0 0 320 220" role="img" aria-hidden="true" focusable="false">
         <circle cx="262" cy="44" r="34" fill="rgb(200 164 93 / 28%)" />
@@ -129,71 +130,78 @@ export default function Login() {
       <main className="sbms-login-screen sbms-login-screen--split">
         <section className="sbms-auth-card">
           <div className="sbms-auth-form">
-            <Brand />
-            <h1 className="sbms-auth-heading">Sign in</h1>
+            <div className="sbms-auth-form-inner">
+              <Brand />
+              <h1 className="sbms-auth-heading">Sign in</h1>
+              <p className="sbms-auth-subtitle">Enter your account details to continue.</p>
 
-            {error && (
-              <div className="sbms-login-error mb-4 p-3 rounded" role="alert">
-                {error}
-              </div>
-            )}
+              {error && (
+                <div className="sbms-login-error mb-4 p-3 rounded" role="alert">
+                  {error}
+                </div>
+              )}
 
-            <form onSubmit={handleSubmit} aria-busy={loading}>
-              <label htmlFor="sbms-login-email" className="sbms-login-field sbms-login-field--first block mb-2 font-medium">
-                Email
-              </label>
-              <input
-                id="sbms-login-email"
-                name="email"
-                type="email"
-                autoComplete="username"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="sbms-login-input w-full border rounded p-2 mb-4"
-                placeholder="name@o365.strathmore.edu"
-                required
-              />
-
-              <label htmlFor="sbms-login-password" className="sbms-login-field block mb-2 font-medium">
-                Password
-              </label>
-              <div className="sbms-login-password mb-2">
+              <form onSubmit={handleSubmit} aria-busy={loading}>
+                <label htmlFor="sbms-login-email" className="sbms-login-field sbms-login-field--first block mb-2 font-medium">
+                  Email
+                </label>
                 <input
-                  id="sbms-login-password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="sbms-login-input w-full border rounded p-2 pr-10"
-                  placeholder="Enter your password"
+                  id="sbms-login-email"
+                  name="email"
+                  type="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="sbms-login-input w-full border rounded p-2 mb-4"
+                  placeholder="name@o365.strathmore.edu"
                   required
                 />
+
+                <label htmlFor="sbms-login-password" className="sbms-login-field block mb-2 font-medium">
+                  Password
+                </label>
+                <div className="sbms-login-password mb-2">
+                  <input
+                    id="sbms-login-password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className="sbms-login-input w-full border rounded p-2 pr-10"
+                    placeholder="Enter your password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
+                    className="sbms-login-password-toggle"
+                  >
+                    {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+                  </button>
+                </div>
+
+                <div className="sbms-auth-forgot-row">
+                  <button type="button" onClick={openResetDialog} className="sbms-auth-forgot">
+                    Forgot password?
+                  </button>
+                </div>
+
                 <button
-                  type="button"
-                  onClick={() => setShowPassword((visible) => !visible)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  aria-pressed={showPassword}
-                  className="sbms-login-password-toggle"
+                  type="submit"
+                  disabled={loading}
+                  className="sbms-login-submit w-full text-white py-2 rounded disabled:opacity-50"
                 >
-                  {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+                  <span aria-live="polite">{loading ? "Signing in..." : "Sign in"}</span>
                 </button>
-              </div>
+              </form>
 
-              <div className="sbms-auth-forgot-row">
-                <button type="button" onClick={openResetDialog} className="sbms-auth-forgot">
-                  Forgot password?
-                </button>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="sbms-login-submit w-full text-white py-2 rounded disabled:opacity-50"
-              >
-                <span aria-live="polite">{loading ? "Signing in..." : "Sign in"}</span>
-              </button>
-            </form>
+              <p className="sbms-auth-note">
+                Accounts are issued by an administrator. Ask them for access or a one-time password reset link.
+              </p>
+            </div>
           </div>
 
           <HeroPanel />

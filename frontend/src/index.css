@@ -576,13 +576,16 @@
    so the wording reads against the image. The reset page keeps the narrow glass panel. Colours come
    from the system palette (forest #173d35, deep #0f2c26, gold #c8a45d, sage tints).
    --------------------------------------------------------------------------------------------- */
-/* Sign-in owns the whole viewport; the reset page keeps the padded, centred screen. */
+/* Sign-in is a contained card on the deep-forest backdrop: capped width, rounded corners and a
+   soft shadow, so the form keeps a comfortable measure on wide monitors. */
 .sbms-login-screen--split {
   grid-template-columns: minmax(0, 1fr);
-  padding: 0;
-  place-items: stretch;
-  background-image: none;
-  background-color: #0d2721;
+  padding: clamp(16px, 2.6vw, 40px);
+  place-items: center;
+  background-color: #0b1f1a;
+  background-image:
+    radial-gradient(120% 90% at 50% 0%, rgb(32 84 72 / 52%) 0%, transparent 62%),
+    radial-gradient(90% 70% at 84% 100%, rgb(200 164 93 / 10%) 0%, transparent 58%);
 }
 
 .sbms-login-screen--split::before {
@@ -591,13 +594,14 @@
 
 .sbms-auth-card {
   display: grid;
-  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
-  width: 100%;
-  max-width: 100%;
-  min-height: 100vh;
-  min-height: 100svh;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  width: min(100%, 1120px);
+  min-height: min(680px, calc(100svh - 2 * clamp(16px, 2.6vw, 40px)));
   overflow: hidden;
-  background: var(--sbms-surface);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 26px;
+  background: #0d2721;
+  box-shadow: 0 36px 90px rgb(0 0 0 / 45%), inset 0 1px 0 rgb(255 255 255 / 5%);
 }
 
 .sbms-auth-form {
@@ -605,11 +609,18 @@
   min-width: 0;
   flex-direction: column;
   justify-content: center;
-  padding: clamp(28px, 3.4vw, 60px) clamp(24px, 4vw, 64px);
+  padding: clamp(32px, 3.4vw, 56px);
   background:
-    radial-gradient(130% 80% at 4% 0%, rgb(200 164 93 / 16%) 0%, transparent 56%),
-    linear-gradient(158deg, #1d4a3f 0%, #173d35 46%, #0d2721 100%);
+    radial-gradient(130% 80% at 4% 0%, rgb(200 164 93 / 14%) 0%, transparent 56%),
+    linear-gradient(158deg, #1d4a3f 0%, #173d35 46%, #0f2c26 100%);
   color: rgb(240 247 243 / 80%);
+}
+
+/* One readable column inside the panel: the card may be wide, the form should not be. */
+.sbms-auth-form-inner {
+  width: 100%;
+  max-width: 392px;
+  margin-inline: auto;
 }
 
 .sbms-auth-heading {
@@ -631,7 +642,7 @@
 .sbms-auth-forgot-row {
   display: flex;
   justify-content: flex-start;
-  margin: 0 0 20px;
+  margin: 2px 0 24px;
 }
 
 .sbms-auth-forgot {
@@ -686,24 +697,51 @@
 }
 
 .sbms-auth-form .sbms-login-brand-mark {
+  width: 40px;
+  height: 40px;
+  flex-basis: 40px;
+  border-radius: 11px 11px 11px 4px;
   background: var(--sbms-gold);
   color: #12312a;
 }
 
 .sbms-auth-form .sbms-auth-heading {
-  margin-bottom: 22px;
+  margin-bottom: 10px;
   color: #fff;
-  font-size: clamp(26px, 2.6vw, 34px);
+  font-size: clamp(28px, 2.6vw, 34px);
+}
+
+.sbms-auth-form .sbms-auth-subtitle {
+  margin: 0 0 30px;
+  color: rgb(240 247 243 / 60%);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* The footnote explains why there is no "create account" action; it reads as quiet help text. */
+.sbms-auth-form .sbms-auth-note {
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top-color: rgb(255 255 255 / 12%);
+  color: rgb(240 247 243 / 52%);
 }
 
 .sbms-auth-form label {
-  color: rgb(240 247 243 / 72%);
+  margin-bottom: 8px;
+  color: rgb(240 247 243 / 66%);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: .015em;
 }
 
 .sbms-auth-form .sbms-login-input {
-  border-color: rgb(255 255 255 / 22%);
-  background: rgb(255 255 255 / 8%);
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border-color: rgb(255 255 255 / 16%);
+  background: rgb(255 255 255 / 7%);
   color: #f6faf7;
+  font-size: 14px;
 }
 
 .sbms-auth-form .sbms-login-input::placeholder {
@@ -733,8 +771,13 @@
 }
 
 .sbms-auth-form .sbms-login-submit {
+  min-height: 50px;
+  border-radius: 10px;
   background: var(--sbms-gold);
   color: #10261f;
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: .01em;
 }
 
 .sbms-auth-form .sbms-login-submit:hover:not(:disabled) {
@@ -765,11 +808,11 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 22px;
-  padding: clamp(30px, 3.6vw, 62px);
+  gap: clamp(22px, 3vw, 36px);
+  padding: clamp(32px, 4vw, 64px);
   background-color: #173d35;
   background-image:
-    linear-gradient(196deg, rgb(11 34 29 / 76%) 0%, rgb(11 34 29 / 28%) 46%, rgb(8 28 24 / 88%) 100%),
+    linear-gradient(196deg, rgb(11 34 29 / 82%) 0%, rgb(11 34 29 / 34%) 44%, rgb(8 28 24 / 88%) 100%),
     url('/images/sbms-landscape.jpg');
   background-position: center;
   background-size: cover;
@@ -793,39 +836,54 @@
 
 .sbms-auth-hero-title {
   margin: 0;
-  max-width: 18ch;
+  max-width: 16ch;
   color: #fff;
-  font-size: clamp(28px, 3.4vw, 46px);
+  font-size: clamp(30px, 3vw, 44px);
   font-weight: 780;
   letter-spacing: -.03em;
-  line-height: 1.08;
+  line-height: 1.06;
   text-shadow: 0 2px 26px rgb(4 20 17 / 36%);
 }
 
+.sbms-auth-hero-subtitle {
+  margin: 16px 0 0;
+  max-width: 34ch;
+  color: rgb(244 248 245 / 76%);
+  font-size: clamp(13px, 1vw, 14.5px);
+  line-height: 1.6;
+}
+
 .sbms-auth-hero-art {
-  width: min(100%, 460px);
+  width: min(100%, 400px);
   height: auto;
   align-self: flex-end;
   filter: drop-shadow(0 22px 44px rgb(4 20 17 / 44%));
 }
 
-@media (max-width: 880px) {
+@media (max-width: 980px) {
+  .sbms-login-screen--split {
+    padding: 16px;
+  }
+
   .sbms-auth-card {
     grid-template-columns: minmax(0, 1fr);
-    min-height: 100vh;
-    min-height: 100svh;
+    min-height: 0;
+    border-radius: 22px;
   }
 
   .sbms-auth-hero {
     order: -1;
     justify-content: flex-end;
-    min-height: 34vh;
-    min-height: 34svh;
-    padding: 28px 24px;
+    min-height: 230px;
+    padding: 28px 26px;
   }
 
   .sbms-auth-hero-title {
-    font-size: clamp(24px, 6.4vw, 32px);
+    font-size: clamp(24px, 6vw, 32px);
+  }
+
+  .sbms-auth-hero-subtitle {
+    display: none;
   }
 
   .sbms-auth-hero-art {
@@ -834,11 +892,26 @@
 
   .sbms-auth-form {
     justify-content: flex-start;
-    padding: 30px 24px 36px;
+    padding: 32px 26px 38px;
+  }
+
+  .sbms-auth-form-inner {
+    max-width: 420px;
   }
 
   .sbms-auth-form .sbms-login-brand {
     margin-bottom: 28px;
+  }
+}
+
+/* Short laptop screens: let the card hug its content instead of forcing a tall frame. */
+@media (max-height: 760px) and (min-width: 981px) {
+  .sbms-auth-card {
+    min-height: 0;
+  }
+
+  .sbms-auth-form .sbms-login-brand {
+    margin-bottom: 24px;
   }
 }
 
