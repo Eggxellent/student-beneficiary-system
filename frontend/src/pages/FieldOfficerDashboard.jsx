@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, Plus } from "lucide-react";
+import { ArrowRight, ClipboardList, Plus } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 export default function FieldOfficerDashboard() {
@@ -14,6 +14,18 @@ export default function FieldOfficerDashboard() {
       </header>
 
       <section aria-label="Register student" className="mt-6 divide-y divide-slate-200 border-y border-slate-200">
+        <Link to="/applications" className="group flex items-center justify-between gap-4 py-6">
+          <span className="flex items-center gap-4">
+            <span className="flex h-10 w-10 items-center justify-center rounded-md bg-amber-50 text-amber-700">
+              <ClipboardList size={19} aria-hidden="true" />
+            </span>
+            <span>
+              <span className="block font-semibold text-slate-900">Review applications</span>
+              <span className="mt-1 block text-sm text-slate-600">Investigate duplicate cases and verify guardian applications.</span>
+            </span>
+          </span>
+          <ArrowRight size={18} className="shrink-0 text-slate-400 transition group-hover:translate-x-1 group-hover:text-blue-700" aria-hidden="true" />
+        </Link>
         <Link to="/students/register" className="group flex items-center justify-between gap-4 py-6">
           <span className="flex items-center gap-4">
             <span className="flex h-10 w-10 items-center justify-center rounded-md bg-blue-50 text-blue-700">

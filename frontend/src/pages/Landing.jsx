@@ -33,13 +33,13 @@ const CAPABILITIES = [
 const STEPS = [
   {
     number: "01",
-    title: "Register",
-    body: "A field officer captures the student's record and the system checks it against existing beneficiaries.",
+    title: "Apply",
+    body: "A guardian submits the student's details online, and the system checks them against existing beneficiaries before any record is created.",
   },
   {
     number: "02",
     title: "Review",
-    body: "An administrator reviews the proposed bursary award, any duplicate case, and records a decision.",
+    body: "An administrator reviews any duplicate case; a field officer verifies the details and records the eligibility assessment.",
   },
   {
     number: "03",
@@ -157,6 +157,7 @@ export default function Landing() {
           <nav className="hidden items-center gap-8 text-sm text-[#46545F] lg:flex" aria-label="Sections">
             <a href="#capabilities" className="hover:text-[#0B2239]">Capabilities</a>
             <a href="#process" className="hover:text-[#0B2239]">How it works</a>
+            <Link to="/apply" className="hover:text-[#0B2239]">Apply for a bursary</Link>
             <Link to="/verify-certificate" className="hover:text-[#0B2239]">Verify a document</Link>
           </nav>
           <Link
@@ -188,11 +189,17 @@ export default function Landing() {
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <Link
-                  to="/login"
+                  to="/apply"
                   className="inline-flex items-center gap-2 rounded-md bg-[#0B2239] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#12293F]"
                 >
-                  Staff Login
+                  Apply for a bursary
                   <ArrowRight size={16} aria-hidden="true" />
+                </Link>
+                <Link
+                  to="/apply/track"
+                  className="inline-flex items-center gap-2 rounded-md border border-[#C8D4DA] bg-white px-5 py-3 text-sm font-semibold text-[#0B2239] hover:border-[#0B2239]/40"
+                >
+                  Track an application
                 </Link>
                 <Link
                   to="/verify-certificate"
@@ -202,7 +209,7 @@ export default function Landing() {
                 </Link>
               </div>
               <p className="mt-4 text-xs text-[#6B7A85]">
-                Staff access only. Student registration is carried out by an authorised field officer.
+                Guardians apply without an account. Staff sign in to review, verify and decide.
               </p>
             </div>
             <InvoicePreview />
@@ -285,6 +292,8 @@ export default function Landing() {
             <p className="mt-1">Student Beneficiary Management System · NG-CDF bursary programme</p>
           </div>
           <nav className="flex flex-wrap items-center gap-5" aria-label="Footer">
+            <Link to="/apply" className="hover:text-[#0B2239]">Apply for a bursary</Link>
+            <Link to="/apply/track" className="hover:text-[#0B2239]">Track an application</Link>
             <Link to="/login" className="hover:text-[#0B2239]">Staff Login</Link>
             <Link to="/verify-certificate" className="hover:text-[#0B2239]">Verify an approval invoice</Link>
             <a href="#capabilities" className="hover:text-[#0B2239]">Capabilities</a>

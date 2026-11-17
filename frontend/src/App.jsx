@@ -4,6 +4,9 @@ import ResetPassword from "./pages/ResetPassword";
 import Verification from "./pages/Verification";
 import CertificateVerification from "./pages/CertificateVerification";
 import Landing from "./pages/Landing";
+import Apply from "./pages/Apply";
+import TrackApplication from "./pages/TrackApplication";
+import Applications from "./pages/Applications";
 import AdminDashboard from "./pages/AdminDashboard";
 import Students from "./pages/Students";
 import StudentRegistration from "./pages/StudentRegistration";
@@ -61,6 +64,9 @@ export default function App() {
     <Routes>
       <Route path="/verify" element={<Verification />} />
       <Route path="/verify-certificate" element={<CertificateVerification />} />
+      {/* The guardian workflow is public by design: no account, no session, one tracking code. */}
+      <Route path="/apply" element={<Apply />} />
+      <Route path="/apply/track" element={<TrackApplication />} />
       {/* One sign-in page for both account types, and one page that spends an administrator's
           one-time reset link. The old role-specific sign-in URLs stay as redirects so bookmarks and
           links in older emails still land on the single form. */}
@@ -81,6 +87,14 @@ export default function App() {
         element={
           <ProtectedPage allowedRoles={["field_officer"]}>
             <StudentRegistration />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/applications"
+        element={
+          <ProtectedPage allowedRoles={["admin", "field_officer"]}>
+            <Applications />
           </ProtectedPage>
         }
       />
