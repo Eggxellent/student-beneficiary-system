@@ -29,6 +29,7 @@ const MIGRATION_ORDER = Object.freeze([
   '20261116_student_applications.sql',
   '20261116_application_duplicate_cases.sql',
   '20261116_application_submission_guard.sql',
+  '20261117_application_closure.sql',
 ]);
 
 const MANUAL_MIGRATIONS = Object.freeze([

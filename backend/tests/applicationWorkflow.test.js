@@ -252,8 +252,17 @@ describe('Guardian application workflow', () => {
       .get(`/api/applications/${applicationId}`)
       .set('Authorization', `Bearer ${state.tokens.field_officer}`);
     expect(detailByOfficer.status).toBe(200);
-    expect(detailByOfficer.body.application.upi).toBe(body.upi);
-    expect(detailByOfficer.body.duplicate_cases[0].matched_upi).toBe(matchedStudentUpi);
+    // Masking is uniform now: the officer sees no more than the administrator in the detail read,
+    // and the duplicate case's matched identifiers are masked for both roles.
+    expect(detailByOfficer.body.application.upi).toMatch(/^\*{4}/);
+    expect(detailByOfficer.body.duplicate_cases[0].matched_upi).toBe(`****${matchedStudentUpi.slice(-4)}`);
+
+    // The raw value is available through the audited reveal instead.
+    const revealed = await request(app)
+      .get(`/api/applications/${applicationId}/identifiers`)
+      .set('Authorization', `Bearer ${state.tokens.field_officer}`);
+    expect(revealed.status).toBe(200);
+    expect(revealed.body.application.upi).toBe(body.upi);
   });
 
   test('an open high-priority case blocks the field officer, and the administrator override is audited', async () => {
@@ -358,6 +367,53 @@ describe('Guardian application workflow', () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].details.override_reason).toContain('different child');
+  });
+
+  test('a cleared application case no longer blocks award approval, and records no override', async () => {
+    // The public submission route is rate limited, so the extra submission in this test starts from a
+    // clean window rather than inheriting the count from the tests above.
+    applicationRateLimit.reset();
+    applicationRateLimit.resetTracking();
+    const { applicationId } = await submitWithCase(applicationBody({
+      // A distinct identity: earlier tests in this suite already registered a student with the default
+      // name, date of birth and school, and the shared namespace check treats that as the same child.
+      full_name: `Cleared Case Child ${Date.now()}`,
+      date_of_birth: '2011-07-22',
+    }));
+
+    const cleared = await request(app)
+      .post(`/api/applications/${applicationId}/resolve`)
+      .set('Authorization', `Bearer ${state.tokens.admin}`)
+      .send({ outcome: 'not_duplicate', reason: 'Documents confirm this is a different child' });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.status).toBe('screened');
+
+    const verified = await request(app)
+      .post(`/api/applications/${applicationId}/verify`)
+      .set('Authorization', `Bearer ${state.tokens.field_officer}`)
+      .send({ eligibility: ELIGIBILITY });
+    expect(verified.status).toBe(201);
+    state.studentIds.push(verified.body.student.id);
+
+    const proposed = await request(app)
+      .post('/api/awards')
+      .set('Authorization', `Bearer ${state.tokens.field_officer}`)
+      .send({ student_id: verified.body.student.id, requested_amount: 12000 });
+    expect(proposed.status).toBe(201);
+
+    // With the case cleared, the administrator approves normally: no override reason is needed and
+    // none is written to the audit trail.
+    const approved = await request(app)
+      .patch(`/api/awards/${proposed.body.award.id}/decision`)
+      .set('Authorization', `Bearer ${state.tokens.admin}`)
+      .send({ decision: 'approved', approved_amount: 12000, reason: 'Assessment reviewed and approved by the committee' });
+    expect(approved.status).toBe(200);
+
+    const { rows } = await pool.query(
+      `SELECT id FROM audit_logs WHERE action = 'AWARD_DUPLICATE_OVERRIDE' AND record_id = $1`,
+      [proposed.body.award.id],
+    );
+    expect(rows).toHaveLength(0);
   });
 });
 

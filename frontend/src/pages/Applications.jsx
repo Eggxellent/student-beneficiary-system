@@ -12,6 +12,7 @@ const STATUS_FILTERS = [
   { value: "resolved", label: "Cleared - ready to verify" },
   { value: "verified", label: "Verified" },
   { value: "rejected", label: "Rejected" },
+  { value: "withdrawn", label: "Withdrawn" },
 ];
 
 const STATUS_LABELS = {
@@ -29,6 +30,10 @@ const STATUS_LABELS = {
 
 const OPEN_CASE_STATUSES = new Set(["pending", "needs_verification"]);
 
+// The statuses the closure endpoints accept. `verified` and later are a deliberate exclusion: the
+// student record (and any award attached to it) already exists, so closing would orphan it.
+const CLOSABLE_STATUSES = new Set(["submitted", "screened", "needs_investigation", "investigated", "resolved"]);
+
 const EMPTY_ELIGIBILITY = {
   fee_balance: "",
   household_income: "",
@@ -42,6 +47,7 @@ const fieldClass =
 const labelClass = "block text-[11px] font-semibold text-slate-700";
 const primaryButton = "rounded bg-slate-800 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50";
 const secondaryButton = "rounded border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-slate-500";
+const selectedButton = "rounded border border-slate-800 bg-slate-800 px-3 py-2 text-xs font-semibold text-white";
 
 function formatDate(value) {
   return value ? new Date(value).toLocaleString() : "—";
@@ -85,6 +91,7 @@ export default function Applications() {
   const [eligibility, setEligibility] = useState(EMPTY_ELIGIBILITY);
   const [overrideEnabled, setOverrideEnabled] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+  const [closure, setClosure] = useState({ action: "", reason: "" });
 
   const loadList = useCallback(async () => {
     setListLoading(true);
@@ -125,6 +132,7 @@ export default function Applications() {
     setEligibility(EMPTY_ELIGIBILITY);
     setOverrideEnabled(false);
     setOverrideReason("");
+    setClosure({ action: "", reason: "" });
     setError("");
     setNotice("");
     loadDetail(selectedId);
@@ -209,6 +217,18 @@ export default function Applications() {
     }
   }
 
+  async function submitClosure(event) {
+    event.preventDefault();
+    if (!closure.action) return;
+    const succeeded = await run(
+      () => api.post(`/applications/${selectedId}/${closure.action}`, { reason: closure.reason.trim() }),
+      closure.action === "reject"
+        ? "Application rejected. The reason is on the application and in the audit log."
+        : "Application withdrawn. The reason is on the application and in the audit log.",
+    );
+    if (succeeded) setClosure({ action: "", reason: "" });
+  }
+
   const application = detail?.application || null;
   const cases = detail?.duplicate_cases || [];
   const openCases = cases.filter((entry) => OPEN_CASE_STATUSES.has(entry.status));
@@ -218,8 +238,12 @@ export default function Applications() {
 
   const displayValue = (field) => {
     if (revealed) return revealed[field] || "Not provided";
-    return isAdmin ? mask(application?.[field]) : application?.[field] || "Not provided";
+    return application?.[field] ? mask(application[field]) : "—";
   };
+
+  // Both roles make the same audited reveal request; the detail payload no longer carries raw values
+  // for anyone, so the button is not role-gated.
+  const canClose = application && CLOSABLE_STATUSES.has(application.status);
 
   return (
     <main className="space-y-5 p-6">
@@ -314,11 +338,9 @@ export default function Applications() {
                   <span className={`rounded border px-2 py-1 text-xs font-semibold ${statusTone(application.status)}`}>
                     {STATUS_LABELS[application.status] || application.status}
                   </span>
-                  {isAdmin && (
-                    <button type="button" onClick={revealIdentifiers} disabled={busy} className={secondaryButton}>
-                      <span className="inline-flex items-center gap-1"><Eye size={13} aria-hidden="true" /> {revealed ? "Revealed" : "Reveal identifiers"}</span>
-                    </button>
-                  )}
+                  <button type="button" onClick={revealIdentifiers} disabled={busy} className={secondaryButton}>
+                    <span className="inline-flex items-center gap-1"><Eye size={13} aria-hidden="true" /> {revealed ? "Revealed" : "Reveal identifiers"}</span>
+                  </button>
                 </div>
               </div>
 
@@ -394,6 +416,81 @@ export default function Applications() {
                   recorded human decision makes a duplicate.
                 </p>
               </div>
+
+              {["rejected", "withdrawn"].includes(application.status) && (
+                <div className="border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-700">
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">
+                    {application.status === "rejected" ? "Rejected application" : "Withdrawn application"}
+                  </h3>
+                  <p className="mt-2">{application.closure_reason || "No reason recorded."}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Closed {formatDate(application.closed_at)} by {shortId(application.closed_by)}. The
+                    application is kept as evidence, and it cannot be verified or awarded.
+                  </p>
+                </div>
+              )}
+
+              {canClose && (
+                <form onSubmit={submitClosure} className="border-t border-slate-200 px-5 py-4">
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">Close this application</h3>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Rejecting or withdrawing ends the workflow without creating a student record. A reason of
+                    at least ten characters is required, and the decision is written to the audit log.
+                  </p>
+                  {openCases.length > 0 && (
+                    <p className="mt-2 text-xs text-amber-800">
+                      An open duplicate case must be resolved before this application can be closed.
+                    </p>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setClosure((current) => ({ ...current, action: "reject" }))}
+                        className={closure.action === "reject" ? selectedButton : secondaryButton}
+                      >
+                        Reject
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setClosure((current) => ({ ...current, action: "withdraw" }))}
+                      className={closure.action === "withdraw" ? selectedButton : secondaryButton}
+                    >
+                      Withdraw
+                    </button>
+                  </div>
+                  {!isAdmin && (
+                    <p className="mt-2 text-[11px] text-slate-500">
+                      Only an administrator may reject an application. A field officer records a withdrawal
+                      when the guardian no longer wants the bursary.
+                    </p>
+                  )}
+                  {closure.action && (
+                    <>
+                      <label className={`${labelClass} mt-3`}>Reason
+                        <textarea
+                          required
+                          minLength={10}
+                          maxLength={2000}
+                          rows={2}
+                          value={closure.reason}
+                          onChange={(event) => setClosure((current) => ({ ...current, reason: event.target.value }))}
+                          className={fieldClass}
+                          placeholder="Why is this application being closed?"
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        disabled={busy || closure.reason.trim().length < 10}
+                        className={`${primaryButton} mt-3`}
+                      >
+                        {busy ? "Saving…" : closure.action === "reject" ? "Reject application" : "Withdraw application"}
+                      </button>
+                    </>
+                  )}
+                </form>
+              )}
 
               {isAdmin && application.status === "screened" && openCases.length > 0 && (
                 <form onSubmit={submitTriage} className="border-t border-slate-200 px-5 py-4">

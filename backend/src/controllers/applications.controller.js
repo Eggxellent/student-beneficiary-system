@@ -276,11 +276,12 @@ function schools(req, res) {
 }
 
 /**
- * Audited identifier reveal for the administrator.
+ * Audited identifier reveal for staff.
  *
  * The detail endpoint masks identifiers so that browsing the queue does not spray identity numbers
- * across screens. An administrator who is actually comparing two records asks for the reveal, and
- * the reveal is written to the audit log with the actor before the values leave the server.
+ * across screens. A member of staff who is actually comparing two records asks for the reveal, and
+ * the reveal is written to the audit log with the actor and their role before the values leave the
+ * server. Both staff roles use this path, so neither role reads unmasked identifiers unrecorded.
  */
 async function revealIdentifiers(req, res, next) {
   try {
@@ -297,6 +298,7 @@ async function revealIdentifiers(req, res, next) {
     const actorId = req.user.id || req.user.sub;
     await logAudit(actorId, 'APPLICATION_IDENTIFIERS_REVEALED', 'student_applications', application.id, {
       fields: ['upi', 'birth_certificate_number', 'national_id_number', 'guardian_phone'],
+      role: req.user?.role || null,
     });
 
     return res.json({ application });
@@ -333,7 +335,7 @@ async function list(req, res, next) {
   }
 }
 
-/** Detail. Administrators see identifiers masked; the revealing endpoint is separate and audited. */
+/** Detail. Identifiers are masked for every staff role; the reveal endpoint is separate and audited. */
 async function detail(req, res, next) {
   try {
     const { rows } = await pool.query('SELECT * FROM student_applications WHERE id = $1', [req.params.id]);
@@ -352,13 +354,15 @@ async function detail(req, res, next) {
       [application.id],
     );
 
-    const revealing = req.user?.role === 'field_officer';
+    // Identifiers are masked for every staff role. Field officers used to receive unmasked values
+    // here with no audit record, which made the same read accountable for one role and invisible for
+    // the other; the audited reveal endpoint below is now the only way to see the values.
     const masked = {
       ...application,
-      upi: revealing ? application.upi : maskIdentifier(application.upi),
-      birth_certificate_number: revealing ? application.birth_certificate_number : maskIdentifier(application.birth_certificate_number),
-      national_id_number: revealing ? application.national_id_number : maskIdentifier(application.national_id_number),
-      guardian_phone: revealing ? application.guardian_phone : maskIdentifier(application.guardian_phone),
+      upi: maskIdentifier(application.upi),
+      birth_certificate_number: maskIdentifier(application.birth_certificate_number),
+      national_id_number: maskIdentifier(application.national_id_number),
+      guardian_phone: maskIdentifier(application.guardian_phone),
       submitted_payload: undefined,
       tracking_code_hash: undefined,
     };
@@ -366,10 +370,8 @@ async function detail(req, res, next) {
       application: masked,
       duplicate_cases: cases.map((entry) => ({
         ...entry,
-        matched_upi: revealing ? entry.matched_upi : maskIdentifier(entry.matched_upi),
-        matched_birth_certificate_number: revealing
-          ? entry.matched_birth_certificate_number
-          : maskIdentifier(entry.matched_birth_certificate_number),
+        matched_upi: maskIdentifier(entry.matched_upi),
+        matched_birth_certificate_number: maskIdentifier(entry.matched_birth_certificate_number),
       })),
     });
   } catch (error) {
@@ -630,6 +632,90 @@ async function resolveCase(req, res, next) {
   }
 }
 
+const closeSchema = z.object({ reason: z.string().trim().min(10).max(2000) });
+
+// Statuses a person may still close. Verified applications are excluded: once a student exists the
+// correction is a bursary-award decision, not an application closure. Closed states are excluded
+// because a second close would overwrite the reason the first person recorded.
+const CLOSABLE_STATUSES = Object.freeze(['submitted', 'screened', 'needs_investigation', 'investigated', 'resolved']);
+
+/**
+ * Shared closure path for rejection and withdrawal.
+ *
+ * Both states end the application's life: the record is kept as evidence, but it can never be
+ * verified, turned into a student or awarded. The reason is mandatory because a closed record with
+ * no explanation is indistinguishable from an accident. An open duplicate case must be resolved
+ * first, so "rejected" never hides an unfinished duplicate review.
+ */
+async function closeApplication(req, res, next, { nextStatus, auditAction, verb }) {
+  const parsed = closeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'A reason of at least ten characters is required.' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const application = await lockApplication(client, req.params.id);
+    if (!application) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Application not found.' });
+    }
+    if (!CLOSABLE_STATUSES.includes(application.status)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'INVALID_STATE',
+        message: `An application in status '${application.status}' cannot be ${verb}.`,
+      });
+    }
+    const { rows: openCases } = await client.query(
+      `SELECT id FROM duplicate_flags
+        WHERE application_id = $1 AND status IN ('pending', 'needs_verification')`,
+      [application.id],
+    );
+    if (openCases.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'OPEN_DUPLICATE_CASE',
+        message: 'Resolve the open duplicate case before closing this application.',
+      });
+    }
+
+    const actorId = req.user.id || req.user.sub;
+    await client.query(
+      `UPDATE student_applications
+          SET status = $2, closure_reason = $3, closed_by = $4, closed_at = NOW(), updated_at = NOW()
+        WHERE id = $1`,
+      [application.id, nextStatus, parsed.data.reason, actorId],
+    );
+    await logAudit(actorId, auditAction, 'student_applications', application.id, {
+      reason: parsed.data.reason,
+      previous_status: application.status,
+      next_status: nextStatus,
+      role: req.user?.role || null,
+    }, client);
+    await client.query('COMMIT');
+    return res.json({
+      application_id: application.id,
+      status: nextStatus,
+      previous_status: application.status,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    return next(error);
+  } finally {
+    client.release();
+  }
+}
+
+/** Administrator rejection: review found that this application should not proceed. */
+async function reject(req, res, next) {
+  return closeApplication(req, res, next, { nextStatus: 'rejected', auditAction: 'APPLICATION_REJECTED', verb: 'rejected' });
+}
+
+/** Withdrawal: staff record that the guardian stepped away, without judging the application. */
+async function withdraw(req, res, next) {
+  return closeApplication(req, res, next, { nextStatus: 'withdrawn', auditAction: 'APPLICATION_WITHDRAWN', verb: 'withdrawn' });
+}
+
 /**
  * Field Officer verification: the application becomes a student, with the eligibility assessment
  * that was submitted at the same visit.
@@ -831,6 +917,8 @@ module.exports = {
   triage,
   investigate,
   resolveCase,
+  reject,
+  withdraw,
   verify,
   generateTrackingCode,
   hashTrackingCode,

@@ -1,6 +1,7 @@
 const request = require('supertest');
 const { randomInt, createHash } = require('crypto');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 const app = require('../src/index');
 const pool = require('../src/config/db');
 const applicationRateLimit = require('../src/middleware/applicationRateLimit');
@@ -239,7 +240,7 @@ describe('Guardian form support and audited identifier reveal', () => {
     expect(Object.keys(response.body)).toEqual(['schools']);
   });
 
-  test('reveals identifiers to an administrator only, and audits the reveal', async () => {
+  test('masks identifiers in the detail read and audits every staff reveal', async () => {
     const body = validApplication();
     const submitted = await submitApplication(body);
     expect(submitted.status).toBe(201);
@@ -252,7 +253,19 @@ describe('Guardian form support and audited identifier reveal', () => {
     const officer = await request(app)
       .get(`/api/applications/${applicationId}/identifiers`)
       .set('Authorization', `Bearer ${officerToken}`);
-    expect(officer.status).toBe(403);
+    expect(officer.status).toBe(200);
+    expect(officer.body.application.upi).toBe(body.upi);
+    expect(officer.body.application.tracking_code_hash).toBeUndefined();
+
+    // The detail read masks the same values for both staff roles, so no role compares identity
+    // numbers without the audited reveal.
+    const officerDetail = await request(app)
+      .get(`/api/applications/${applicationId}`)
+      .set('Authorization', `Bearer ${officerToken}`);
+    expect(officerDetail.status).toBe(200);
+    expect(officerDetail.body.application.upi).toBe(`****${body.upi.slice(-4)}`);
+    expect(officerDetail.body.application.guardian_phone).toMatch(/^\*{4}/);
+    expect(officerDetail.body.application.guardian_phone).not.toBe(body.guardian_phone);
 
     const adminToken = await loginAs('admin');
     const admin = await request(app)
@@ -260,15 +273,34 @@ describe('Guardian form support and audited identifier reveal', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(admin.status).toBe(200);
     expect(admin.body.application.upi).toBe(body.upi);
-    expect(admin.body.application.tracking_code_hash).toBeUndefined();
 
     const audit = await pool.query(
-      `SELECT details FROM audit_logs
+      `SELECT user_id, created_at, details FROM audit_logs
         WHERE table_name = 'student_applications' AND record_id = $1
-          AND action = 'APPLICATION_IDENTIFIERS_REVEALED'`,
+          AND action = 'APPLICATION_IDENTIFIERS_REVEALED'
+        ORDER BY created_at`,
       [applicationId],
     );
-    expect(audit.rowCount).toBe(1);
+    expect(audit.rowCount).toBe(2);
     expect(audit.rows[0].details.fields).toContain('upi');
+    expect(audit.rows.map((row) => row.details.role).sort()).toEqual(['admin', 'field_officer']);
+    // The trail names the individual actor and the moment of the reveal, not only the role.
+    expect(audit.rows.map((row) => row.user_id).sort()).toEqual(
+      [jwt.decode(officerToken).id, jwt.decode(adminToken).id].sort(),
+    );
+    for (const row of audit.rows) expect(row.created_at).toBeInstanceOf(Date);
+
+    // A reveal against an unknown application discloses nothing and writes no misleading entry.
+    const unknown = await request(app)
+      .get('/api/applications/00000000-0000-4000-8000-000000000000/identifiers')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(unknown.status).toBe(404);
+    expect(JSON.stringify(unknown.body)).not.toContain(body.upi);
+    const afterUnknown = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM audit_logs
+        WHERE action = 'APPLICATION_IDENTIFIERS_REVEALED' AND record_id = $1`,
+      ['00000000-0000-4000-8000-000000000000'],
+    );
+    expect(afterUnknown.rows[0].total).toBe(0);
   });
 });

@@ -25,6 +25,17 @@ describe('Guardian-led application schema', () => {
     ],
   );
 
+  // The case constraints need a real student because matched_student_id is a foreign key. The suite
+  // creates its own inside each test transaction instead of assuming an seeded row exists, so it also
+  // passes against a freshly bootstrapped sbms_test database.
+  const createStudent = async (fullName = 'Schema Test Student') => {
+    const { rows } = await client.query(
+      'INSERT INTO students (full_name) VALUES ($1) RETURNING id',
+      [fullName],
+    );
+    return rows[0].id;
+  };
+
   beforeAll(async () => {
     client = await pool.connect();
     await client.query('SELECT 1');
@@ -99,8 +110,7 @@ describe('Guardian-led application schema', () => {
   });
 
   test('an application can hold one case per matched student, and re-screening cannot create a second', async () => {
-    const student = await client.query('SELECT id FROM students LIMIT 1');
-    const matchedStudentId = student.rows[0].id;
+    const matchedStudentId = await createStudent('Matched Student A');
     const first = await insertApplication('schema-test-case-a');
     const second = await insertApplication('schema-test-case-b');
 
@@ -129,10 +139,10 @@ describe('Guardian-led application schema', () => {
   });
 
   test('a case with neither a student nor an application is refused', async () => {
-    const student = await client.query('SELECT id FROM students LIMIT 1');
+    const studentId = await createStudent('Matched Student B');
     await expectRefused(
       `INSERT INTO duplicate_flags (matched_student_id, probability, status) VALUES ($1, 0.5, 'pending')`,
-      [student.rows[0].id],
+      [studentId],
       '23514',
     );
   });
@@ -141,12 +151,12 @@ describe('Guardian-led application schema', () => {
   // student; the legacy registration case names the registering student. Never both, so every
   // reader can decide the subject from the row alone.
   test('a case cannot name both a student and an application as its subject', async () => {
-    const student = await client.query('SELECT id FROM students LIMIT 1');
+    const studentId = await createStudent('Matched Student C');
     const app = await insertApplication('schema-test-both');
     await expectRefused(
       `INSERT INTO duplicate_flags (student_id, application_id, matched_student_id, probability, status)
        VALUES ($1, $2, $1, 0.7, 'pending')`,
-      [student.rows[0].id, app.rows[0].id],
+      [studentId, app.rows[0].id],
       '23514',
     );
   });
@@ -160,12 +170,12 @@ describe('Guardian-led application schema', () => {
   });
 
   test('review events record the reviewing stage', async () => {
-    const student = await client.query('SELECT id FROM students LIMIT 1');
+    const studentId = await createStudent('Matched Student D');
     const app = await insertApplication('schema-test-stage');
     const flag = await client.query(
       `INSERT INTO duplicate_flags (application_id, matched_student_id, probability, status)
        VALUES ($1, $2, 0.9, 'pending') RETURNING id`,
-      [app.rows[0].id, student.rows[0].id],
+      [app.rows[0].id, studentId],
     );
     const event = await client.query(
       `INSERT INTO duplicate_review_events (duplicate_flag_id, reviewer_id, decision, reason, stage)
