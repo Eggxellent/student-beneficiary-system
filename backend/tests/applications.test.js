@@ -1,5 +1,6 @@
 const request = require('supertest');
 const { randomInt, createHash } = require('crypto');
+const bcrypt = require('bcrypt');
 const app = require('../src/index');
 const pool = require('../src/config/db');
 const applicationRateLimit = require('../src/middleware/applicationRateLimit');
@@ -14,6 +15,22 @@ const { scorePairs } = require('../src/services/mlDuplicateReview');
 
 const createdApplicationIds = [];
 const createdStudentIds = [];
+const createdUserIds = [];
+
+async function loginAs(role) {
+  const email = `applications-${role}-${Date.now()}${randomInt(1000, 9999)}@example.test`;
+  const password = 'ApplicationsPassword123!';
+  const passwordHash = await bcrypt.hash(password, 4);
+  const { rows } = await pool.query(
+    'INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id',
+    [`Applications ${role}`, email, passwordHash, role],
+  );
+  createdUserIds.push(rows[0].id);
+  const response = await request(app)
+    .post(role === 'admin' ? '/api/auth/login/admin' : '/api/auth/login/field-officer')
+    .send({ email, password });
+  return response.body.token;
+}
 
 function uniquePhone() {
   return `0788${String(randomInt(0, 1000000)).padStart(6, '0')}`;
@@ -58,6 +75,10 @@ afterAll(async () => {
   }
   if (createdStudentIds.length) {
     await pool.query('DELETE FROM students WHERE id = ANY($1::uuid[])', [createdStudentIds]);
+  }
+  if (createdUserIds.length) {
+    await pool.query('DELETE FROM audit_logs WHERE user_id = ANY($1::uuid[])', [createdUserIds]);
+    await pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [createdUserIds]);
   }
   await pool.end();
 });
@@ -203,5 +224,51 @@ describe('POST /api/applications/track', () => {
       date_of_birth: body.date_of_birth,
     });
     expect(wrongCode.status).toBe(404);
+  });
+});
+
+describe('Guardian form support and audited identifier reveal', () => {
+  jest.setTimeout(30000);
+
+  test('publishes the approved school list without authentication', async () => {
+    const response = await request(app).get('/api/applications/schools');
+
+    expect(response.status).toBe(200);
+    expect(response.body.schools).toContain('Nairobi School');
+    // The list is the approved constant, not a table dump: nothing else is disclosed.
+    expect(Object.keys(response.body)).toEqual(['schools']);
+  });
+
+  test('reveals identifiers to an administrator only, and audits the reveal', async () => {
+    const body = validApplication();
+    const submitted = await submitApplication(body);
+    expect(submitted.status).toBe(201);
+    const applicationId = submitted.body.application.id;
+
+    const anonymous = await request(app).get(`/api/applications/${applicationId}/identifiers`);
+    expect(anonymous.status).toBe(401);
+
+    const officerToken = await loginAs('field_officer');
+    const officer = await request(app)
+      .get(`/api/applications/${applicationId}/identifiers`)
+      .set('Authorization', `Bearer ${officerToken}`);
+    expect(officer.status).toBe(403);
+
+    const adminToken = await loginAs('admin');
+    const admin = await request(app)
+      .get(`/api/applications/${applicationId}/identifiers`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(admin.status).toBe(200);
+    expect(admin.body.application.upi).toBe(body.upi);
+    expect(admin.body.application.tracking_code_hash).toBeUndefined();
+
+    const audit = await pool.query(
+      `SELECT details FROM audit_logs
+        WHERE table_name = 'student_applications' AND record_id = $1
+          AND action = 'APPLICATION_IDENTIFIERS_REVEALED'`,
+      [applicationId],
+    );
+    expect(audit.rowCount).toBe(1);
+    expect(audit.rows[0].details.fields).toContain('upi');
   });
 });

@@ -265,6 +265,47 @@ function maskIdentifier(value) {
 }
 
 /**
+ * Public school list for the guardian form.
+ *
+ * The staff route (`GET /api/students/schools`) sits behind authentication because it belongs to
+ * registration. The guardian form needs the same approved list before anyone signs in, so this
+ * endpoint publishes the list and nothing else: no counts, no school-by-school data.
+ */
+function schools(req, res) {
+  return res.json({ schools: APPROVED_SCHOOLS });
+}
+
+/**
+ * Audited identifier reveal for the administrator.
+ *
+ * The detail endpoint masks identifiers so that browsing the queue does not spray identity numbers
+ * across screens. An administrator who is actually comparing two records asks for the reveal, and
+ * the reveal is written to the audit log with the actor before the values leave the server.
+ */
+async function revealIdentifiers(req, res, next) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, full_name, date_of_birth, school_code, upi, birth_certificate_number,
+              national_id_number, guardian_name, guardian_phone, guardian_email
+         FROM student_applications
+        WHERE id = $1`,
+      [req.params.id],
+    );
+    const application = rows[0];
+    if (!application) return res.status(404).json({ message: 'Application not found.' });
+
+    const actorId = req.user.id || req.user.sub;
+    await logAudit(actorId, 'APPLICATION_IDENTIFIERS_REVEALED', 'student_applications', application.id, {
+      fields: ['upi', 'birth_certificate_number', 'national_id_number', 'guardian_phone'],
+    });
+
+    return res.json({ application });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+/**
  * Triage queue.
  *
  * Field officers are not school-scoped in the users table, and inventing a school assignment here
@@ -300,7 +341,8 @@ async function detail(req, res, next) {
     if (!application) return res.status(404).json({ message: 'Application not found.' });
 
     const { rows: cases } = await pool.query(
-      `SELECT f.id, f.status, f.probability, f.review_threshold, f.comparison_features, f.created_at,
+      `SELECT f.id, f.status, f.matched_student_id, f.probability, f.review_threshold,
+              f.comparison_features, f.created_at,
               s.full_name AS matched_full_name, s.school_code AS matched_school_code,
               s.upi AS matched_upi, s.birth_certificate_number AS matched_birth_certificate_number
          FROM duplicate_flags f
@@ -782,8 +824,10 @@ async function verify(req, res, next) {
 module.exports = {
   submit,
   track,
+  schools,
   list,
   detail,
+  revealIdentifiers,
   triage,
   investigate,
   resolveCase,

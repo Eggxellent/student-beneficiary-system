@@ -6,7 +6,9 @@ const applicationSubmissionRateLimit = require('../middleware/applicationRateLim
 
 const router = express.Router();
 
-// Public: no token, no session. The limiter runs before the handler on both endpoints.
+// Public: no token, no session. The limiter runs before the handler on both endpoints. The school
+// list is public because the guardian form cannot ask a parent to sign in to see it.
+router.get('/schools', controller.schools);
 router.post('/', applicationSubmissionRateLimit, controller.submit);
 router.post('/track', applicationSubmissionRateLimit.tracking, controller.track);
 
@@ -15,6 +17,7 @@ router.post('/track', applicationSubmissionRateLimit.tracking, controller.track)
 router.use(authenticateToken);
 router.get('/', requireRole('field_officer', 'admin'), controller.list);
 router.get('/:id', requireRole('field_officer', 'admin'), controller.detail);
+router.get('/:id/identifiers', requireRole('admin'), controller.revealIdentifiers);
 router.post('/:id/triage', requireRole('admin'), controller.triage);
 router.post('/:id/investigation', requireRole('field_officer'), controller.investigate);
 router.post('/:id/resolve', requireRole('admin'), controller.resolveCase);
