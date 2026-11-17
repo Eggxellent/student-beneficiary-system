@@ -11,7 +11,7 @@ Companion records: `docs/guardian-led-handover-2026-11-16.md` (Phase 2 tree and 
 | --- | --- | --- |
 | 3 | Submission guard (advisory lock), mandatory duplicate-student check at verification, application-subject duplicate cases in the staff queue and resolution path, award gate counting application cases | Complete; `20261116_application_submission_guard.sql` applied to local `sbms_test` |
 | 4 | Guardian-facing entry: public application form, public tracking, guardian-led landing copy | Complete |
-| 5 | Staff workspace: queue, duplicate triage, field investigation, administrator decision, verification + eligibility, audited identifier reveal | Complete |
+| 5 | Staff workspace: queue, duplicate triage, field investigation, administrator decision, verification + eligibility, audited identifier reveal — plus reject/withdraw case closure and a role-symmetric mask/reveal (2026-11-17) | Complete |
 
 Commits added in this window (on top of the Phase 3 commits `e3ef3dc`, `23287da`, `54f4eb9`):
 
@@ -20,6 +20,7 @@ Commits added in this window (on top of the Phase 3 commits `e3ef3dc`, `23287da`
 | `52f2dc6` | `feat(applications)`: public approved-school list, audited admin-only identifier reveal, two new API tests |
 | `f4e017b` | `feat(frontend)`: `Apply.jsx`, `TrackApplication.jsx`, `Applications.jsx`, routing, nav, landing copy |
 | `614dcb6` | `chore(ml)`: adversarial format-scenario evaluation outputs |
+| `e257909` | `feat(applications)`: reject/withdraw case closure with an audited reason, role-symmetric identifier masking behind an audited reveal, new `20261117_application_closure.sql`, hardened tests, re-verified handover evidence (2026-11-17) |
 
 ## 2. Test evidence (observed, not estimated)
 
