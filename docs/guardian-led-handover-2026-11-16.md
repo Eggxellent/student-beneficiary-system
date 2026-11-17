@@ -2,6 +2,8 @@
 
 Branch: `redesign/guardian-led-applications`, forked from `f54ecdc` (`fix/sbms-completion-work`).
 Design contract: `docs/guardian-led-workflow.md`. Model evidence: `docs/ml-screening-audit-2026-11-16.md`.
+Phases 3–5 (submission guard, guardian pages, staff workspace) are recorded in
+`docs/guardian-led-phases-3-5-handover-2026-11-16.md`, which closes gap **G-2** below.
 
 ## 1. What is implemented
 
