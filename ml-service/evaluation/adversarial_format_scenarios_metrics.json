@@ -1,0 +1,300 @@
+{
+  "evaluation_only": true,
+  "training_performed": false,
+  "training_data_read": false,
+  "threshold_tuned": false,
+  "seed": 20261022,
+  "threshold": 0.5,
+  "rows_per_scenario": 250,
+  "scenario_count": 26,
+  "challenge_file": "evaluation\\adversarial_format_scenarios.csv",
+  "challenge_sha256": "352090d8943b21c70a0dcd7cb62c62c064e5efa9143bcaa41ce8e9c371053111",
+  "rows": 6500,
+  "class_counts": {
+    "0": 3250,
+    "1": 3250
+  },
+  "scenario_labels": {
+    "positive_case_whitespace": 1,
+    "positive_swapped_punctuated_name": 1,
+    "positive_diacritic_name": 1,
+    "positive_initials": 1,
+    "positive_truncated_name": 1,
+    "positive_date_format_change": 1,
+    "positive_identifier_separators": 1,
+    "positive_identifier_case_change": 1,
+    "positive_unicode_homoglyph": 1,
+    "positive_rekeyed_identifiers": 1,
+    "positive_sparse_fields": 1,
+    "positive_shared_missing_markers": 1,
+    "positive_garbage_name": 1,
+    "negative_common_name_collision": 0,
+    "negative_all_unknown_placeholders": 0,
+    "negative_shared_placeholder_fields": 0,
+    "negative_prefix_name_collision": 0,
+    "negative_upi_collision_only": 0,
+    "negative_birth_certificate_collision_only": 0,
+    "negative_twins_shared_household": 0,
+    "negative_unicode_near_name": 0,
+    "negative_empty_name_normalization": 0,
+    "negative_placeholder_name_only": 0,
+    "negative_demographic_and_certificate_collision": 0,
+    "negative_reformatted_id_collision": 0,
+    "negative_common_name_and_shared_guardian": 0
+  },
+  "feature_columns": [
+    "jaro_winkler",
+    "dob_match",
+    "school_match",
+    "guardian_match",
+    "upi_match",
+    "birth_certificate_match"
+  ],
+  "models": {
+    "current_xgboost_model": {
+      "model_file": "model\\xgb_duplicate_model.joblib",
+      "model_sha256_before": "6ec9f2a3cbe6ed0dcf80c79b15f47364d9f4f7bd3e27da25c690d0436bb0a6f9",
+      "model_sha256_after": "6ec9f2a3cbe6ed0dcf80c79b15f47364d9f4f7bd3e27da25c690d0436bb0a6f9",
+      "overall_metrics": {
+        "threshold": 0.5,
+        "accuracy": 0.5223076923076924,
+        "balanced_accuracy": 0.5223076923076924,
+        "precision": 0.5128432240921169,
+        "recall": 0.8907692307692308,
+        "f1": 0.6509274873524452,
+        "roc_auc": 0.34154584615384614,
+        "average_precision": 0.501396850768158,
+        "confusion_matrix_labels_0_1": [
+          [
+            500,
+            2750
+          ],
+          [
+            355,
+            2895
+          ]
+        ],
+        "true_negatives": 500,
+        "false_positives": 2750,
+        "false_negatives": 355,
+        "true_positives": 2895
+      },
+      "scenario_metrics": {
+        "negative_all_unknown_placeholders": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.3203926980495453,
+          "false_positive_rate": 0.0,
+          "recall": null
+        },
+        "negative_birth_certificate_collision_only": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 0.0,
+          "mean_duplicate_score": 0.989432692527771,
+          "false_positive_rate": 1.0,
+          "recall": null
+        },
+        "negative_common_name_and_shared_guardian": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 0.0,
+          "mean_duplicate_score": 0.9991711974143982,
+          "false_positive_rate": 1.0,
+          "recall": null
+        },
+        "negative_common_name_collision": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 0.0,
+          "mean_duplicate_score": 0.9998513460159302,
+          "false_positive_rate": 1.0,
+          "recall": null
+        },
+        "negative_demographic_and_certificate_collision": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 0.0,
+          "mean_duplicate_score": 0.9986881017684937,
+          "false_positive_rate": 1.0,
+          "recall": null
+        },
+        "negative_empty_name_normalization": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 0.0,
+          "mean_duplicate_score": 0.9995121955871582,
+          "false_positive_rate": 1.0,
+          "recall": null
+        },
+        "negative_placeholder_name_only": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 0.0,
+          "mean_duplicate_score": 0.9995481371879578,
+          "false_positive_rate": 1.0,
+          "recall": null
+        },
+        "negative_prefix_name_collision": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 0.0,
+          "mean_duplicate_score": 0.9998287558555603,
+          "false_positive_rate": 1.0,
+          "recall": null
+        },
+        "negative_reformatted_id_collision": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 0.0,
+          "mean_duplicate_score": 0.9878577589988708,
+          "false_positive_rate": 1.0,
+          "recall": null
+        },
+        "negative_shared_placeholder_fields": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.0880921483039856,
+          "false_positive_rate": 0.0,
+          "recall": null
+        },
+        "negative_twins_shared_household": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 0.0,
+          "mean_duplicate_score": 0.9993561506271362,
+          "false_positive_rate": 1.0,
+          "recall": null
+        },
+        "negative_unicode_near_name": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 0.0,
+          "mean_duplicate_score": 0.9997571706771851,
+          "false_positive_rate": 1.0,
+          "recall": null
+        },
+        "negative_upi_collision_only": {
+          "label": 0,
+          "rows": 250,
+          "accuracy": 0.0,
+          "mean_duplicate_score": 0.9878799915313721,
+          "false_positive_rate": 1.0,
+          "recall": null
+        },
+        "positive_case_whitespace": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.9981540441513062,
+          "false_positive_rate": null,
+          "recall": 1.0
+        },
+        "positive_date_format_change": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.9981540441513062,
+          "false_positive_rate": null,
+          "recall": 1.0
+        },
+        "positive_diacritic_name": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.9940998554229736,
+          "false_positive_rate": null,
+          "recall": 1.0
+        },
+        "positive_garbage_name": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.9840644598007202,
+          "false_positive_rate": null,
+          "recall": 1.0
+        },
+        "positive_identifier_case_change": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.9981540441513062,
+          "false_positive_rate": null,
+          "recall": 1.0
+        },
+        "positive_identifier_separators": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.9981540441513062,
+          "false_positive_rate": null,
+          "recall": 1.0
+        },
+        "positive_initials": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.9866887331008911,
+          "false_positive_rate": null,
+          "recall": 1.0
+        },
+        "positive_rekeyed_identifiers": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.99991375207901,
+          "false_positive_rate": null,
+          "recall": 1.0
+        },
+        "positive_shared_missing_markers": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 0.264,
+          "mean_duplicate_score": 0.376926988363266,
+          "false_positive_rate": null,
+          "recall": 0.264
+        },
+        "positive_sparse_fields": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 0.316,
+          "mean_duplicate_score": 0.38570258021354675,
+          "false_positive_rate": null,
+          "recall": 0.316
+        },
+        "positive_swapped_punctuated_name": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.9981540441513062,
+          "false_positive_rate": null,
+          "recall": 1.0
+        },
+        "positive_truncated_name": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.9904676675796509,
+          "false_positive_rate": null,
+          "recall": 1.0
+        },
+        "positive_unicode_homoglyph": {
+          "label": 1,
+          "rows": 250,
+          "accuracy": 1.0,
+          "mean_duplicate_score": 0.994022786617279,
+          "false_positive_rate": null,
+          "recall": 1.0
+        }
+      }
+    }
+  },
+  "limitations": [
+    "The challenge cases are generated and do not estimate live SBMS performance.",
+    "Scenario counts are balanced by design; aggregate accuracy is not production accuracy.",
+    "Malformed strings and placeholder conventions are stress cases, not claims about the frequency of such records.",
+    "This report is evaluation-only; the challenge must not be used as training or threshold-tuning data."
+  ]
+}
