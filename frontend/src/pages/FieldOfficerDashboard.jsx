@@ -73,7 +73,7 @@ export default function FieldOfficerDashboard() {
     <div className="sb-stack sb-animate-rise">
       <PageHeader
         eyebrow="Overview"
-        title={`Welcome, ${firstName}`}
+        title={`Welcome, ${user?.full_name?.split(" ")[0] || "Field Officer"}`}
         subtitle="Applications that need a Field Officer, based on the recorded status of each application."
         actions={
           <Button onClick={load} disabled={loading}>
