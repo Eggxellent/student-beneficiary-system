@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { Calculator, Info, Search, Users } from "lucide-react";
 import api from "../services/api";
-import { useAuth } from "../context/AuthContext";
+import { Alert, Badge, Button, Card, EmptyState, Field, PageHeader } from "../components/ui/primitives";
+import { money } from "../lib/applicationStatus";
 
 const EMPTY_FORM = {
   student_id: "",
@@ -11,70 +14,47 @@ const EMPTY_FORM = {
   prior_bursary_history: "none",
 };
 
-const CATEGORY_STYLES = {
-  high: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  moderate: "border-amber-200 bg-amber-50 text-amber-800",
-  low: "border-slate-200 bg-slate-50 text-slate-700",
-};
-
-const FALLBACK_FORMULA = [
-  { key: "fee_balance", label: "Fee balance", max_points: 30, rules: [">= 50,000: 30", ">= 30,000: 25", ">= 15,000: 15", "> 0: 5", "0: 0"] },
-  { key: "household_income", label: "Household income", max_points: 25, rules: ["<= 20,000: 25", "<= 40,000: 20", "<= 60,000: 10", "above 60,000: 0"] },
-  { key: "vulnerability_status", label: "Vulnerability status", max_points: 25, rules: ["High: 25", "Medium: 15", "Low: 5"] },
-  { key: "siblings_in_school", label: "Siblings in school", max_points: 10, rules: [">= 4: 10", "2-3: 7", "1: 3", "0: 0"] },
-  { key: "prior_bursary_history", label: "Prior bursary history", max_points: 10, rules: ["None: 10", "Low: 7", "High: 2"] },
-];
-
-const money = (value) => `KSh ${Number(value).toLocaleString("en-KE")}`;
-
-const fieldClass =
-  "mt-2 h-11 w-full border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400";
-const labelClass = "block text-[10px] font-bold uppercase tracking-wide text-slate-800";
+const CATEGORY_TONE = { high: "success", moderate: "warning", low: "neutral" };
 
 export default function Eligibility() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
   const [form, setForm] = useState(EMPTY_FORM);
   const [students, setStudents] = useState([]);
-  const [formula, setFormula] = useState({ factors: FALLBACK_FORMULA });
+  const [studentQuery, setStudentQuery] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [studentsError, setStudentsError] = useState("");
 
   useEffect(() => {
-    api.get("/students")
+    api
+      .get("/students")
       .then((response) => setStudents(Array.isArray(response.data) ? response.data : response.data?.value || []))
-      .catch(() => setStudents([]));
-    if (isAdmin) {
-      api.get("/eligibility")
-        .then((response) => setFormula(response.data || { factors: FALLBACK_FORMULA }))
-        .catch(() => setFormula({ factors: FALLBACK_FORMULA }));
-    }
-  }, [isAdmin]);
+      .catch((err) => {
+        setStudents([]);
+        setStudentsError(err.response?.data?.message || "The student list could not be loaded.");
+      });
+  }, []);
 
-  const selectedStudent = useMemo(
-    () => students.find((student) => student.id === form.student_id) || null,
-    [students, form.student_id]
-  );
+  const visibleStudents = useMemo(() => {
+    const query = studentQuery.trim().toLowerCase();
+    if (!query) return students;
+    return students.filter((student) =>
+      [student.full_name, student.school_code, student.upi]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    );
+  }, [studentQuery, students]);
 
-  const hasStudent = Boolean(form.student_id);
-
-  function handleChange(e) {
-    const { name, value } = e.target;
-    setForm({ ...form, [name]: value });
+  function handleChange(event) {
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
     setResult(null);
     setError("");
   }
 
-  function resetStudent() {
-    setForm(EMPTY_FORM);
-    setResult(null);
-    setError("");
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!hasStudent) {
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!form.student_id) {
       setError("Select a registered student before calculating eligibility.");
       return;
     }
@@ -98,218 +78,198 @@ export default function Eligibility() {
     }
   }
 
-  const provisional = result?.recommended_range?.provisional ?? formula.amount_ranges_provisional ?? true;
+  const canCalculate =
+    Boolean(form.student_id) && form.fee_balance !== "" && form.household_income !== "" && form.siblings_in_school !== "";
 
   return (
-    <main className="space-y-5 p-6">
-      <header>
-        <h1 className="text-2xl font-bold text-slate-900">Eligibility calculation</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Financial-need assessment for a registered student. The result guides the approving officer; it never approves a bursary on its own.
-        </p>
-      </header>
+    <div className="sb-stack sb-animate-rise">
+      <PageHeader
+        eyebrow="Eligibility"
+        title="Eligibility verification"
+        subtitle="Calculate the eligibility assessment for a registered student. Eligibility uses the office's defined rules; it is separate from duplicate screening and is not an award approval."
+        actions={
+          <Link to="/applications" className="sb-btn">
+            Back to applications
+          </Link>
+        }
+      />
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <section className="border border-slate-200 bg-white">
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">1. Select student</h2>
-            {hasStudent && (
-              <button type="button" onClick={resetStudent} className="text-xs font-semibold text-sky-600 hover:underline">Clear</button>
-            )}
-          </div>
+      {studentsError && (
+        <Alert tone="error" title="Student list unavailable">
+          {studentsError} You can still calculate eligibility if the student is registered.
+        </Alert>
+      )}
 
-          <div className="p-4">
-            <label className={labelClass}>
-              Registered student <span className="text-red-600">*</span>
+      <div className="sb-split">
+        <Card title="Eligibility information">
+          <form onSubmit={handleSubmit} className="sb-stack">
+            <div className="sb-panel">
+              <p className="sb-label" style={{ marginBottom: 6 }}>
+                Registered student
+              </p>
+              <div className="sb-input-group" style={{ marginBottom: 8 }}>
+                <span className="sb-input-group__prefix" aria-hidden="true">
+                  <Search size={14} />
+                </span>
+                <input
+                  type="search"
+                  value={studentQuery}
+                  onChange={(event) => setStudentQuery(event.target.value)}
+                  className="sb-input"
+                  placeholder="Search by name, school or UPI"
+                  aria-label="Search registered students"
+                  autoComplete="off"
+                />
+              </div>
               <select
-                name="student_id"
                 value={form.student_id}
-                onChange={handleChange}
-                required
-                aria-invalid={!hasStudent}
-                className={fieldClass}
+                onChange={(event) => {
+                  setForm((current) => ({ ...current, student_id: event.target.value }));
+                  setResult(null);
+                  setError("");
+                }}
+                className="sb-input"
+                aria-label="Select a registered student"
               >
-                <option value="">Select a registered student (required)</option>
-                {students.map((student) => (
+                <option value="">Select student…</option>
+                {visibleStudents.map((student) => (
                   <option key={student.id} value={student.id}>
-                    {student.full_name}
-                    {student.upi ? ` - ${student.upi}` : ""}
-                    {student.school_code ? ` - ${student.school_code}` : ""}
+                    {student.full_name} — {student.school_code || "No school"}
                   </option>
                 ))}
               </select>
-            </label>
-
-            {selectedStudent && (
-              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                <dt className="font-semibold text-slate-500">UPI</dt>
-                <dd className="text-right text-slate-800">{selectedStudent.upi || "Not recorded"}</dd>
-                <dt className="font-semibold text-slate-500">School</dt>
-                <dd className="text-right text-slate-800">{selectedStudent.school_code || "Not recorded"}</dd>
-                <dt className="font-semibold text-slate-500">Last category</dt>
-                <dd className="text-right capitalize text-slate-800">{selectedStudent.eligibility_category || "Not assessed"}</dd>
-              </dl>
-            )}
-
-            {!hasStudent && (
-              <p className="mt-3 border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                A student must be selected before the assessment fields are enabled. The result is saved to that student's record.
-              </p>
-            )}
-          </div>
-        </section>
-
-        {isAdmin && (
-        <section className="border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Scoring formula</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              {formula.scale || "Score out of 100 - five weighted factors"}. Fixed, documented weights.
-            </p>
-          </div>
-          <div className="p-4">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500">
-                  <th className="pb-1">Factor</th>
-                  <th className="pb-1">Max</th>
-                  <th className="pb-1">Rule</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {(formula.factors || FALLBACK_FORMULA).map((factor) => (
-                  <tr key={factor.key}>
-                    <td className="py-1.5 pr-2 font-semibold text-slate-800">{factor.label}</td>
-                    <td className="py-1.5 pr-2 text-slate-600">{factor.max_points}</td>
-                    <td className="py-1.5 text-slate-500">{factor.rules.join(" · ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="mt-3 text-xs text-slate-600">
-              Bands: <span className="font-semibold">High</span> 70-100 · <span className="font-semibold">Moderate</span> 40-69 · <span className="font-semibold">Low</span> 0-39
-            </p>
-            {provisional && (
-              <p className="mt-2 border-l-2 border-amber-400 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                Bursary amount ranges are provisional: no approved allocation ranges are configured.
-              </p>
-            )}
-          </div>
-        </section>
-        )}
-      </div>
-
-      <form onSubmit={handleSubmit} className="border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">2. Assessment details</h2>
-        </div>
-        <fieldset disabled={!hasStudent || loading} className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-5">
-          <label className={labelClass}>Fee balance (KSh)
-            <input type="number" min="0" name="fee_balance" value={form.fee_balance} onChange={handleChange} className={fieldClass} placeholder="45000" required />
-          </label>
-          <label className={labelClass}>Household income (KSh)
-            <input type="number" min="0" name="household_income" value={form.household_income} onChange={handleChange} className={fieldClass} placeholder="18000" required />
-          </label>
-          <label className={labelClass}>Vulnerability
-            <select name="vulnerability_status" value={form.vulnerability_status} onChange={handleChange} className={fieldClass}>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </label>
-          <label className={labelClass}>Siblings in school
-            <input type="number" min="0" name="siblings_in_school" value={form.siblings_in_school} onChange={handleChange} className={fieldClass} placeholder="2" required />
-          </label>
-          <label className={labelClass}>Prior bursary
-            <select name="prior_bursary_history" value={form.prior_bursary_history} onChange={handleChange} className={fieldClass}>
-              <option value="none">None</option>
-              <option value="low">Low</option>
-              <option value="high">High</option>
-            </select>
-          </label>
-        </fieldset>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3">
-          <p className="text-xs text-slate-500">
-            {hasStudent
-              ? `Result will be saved to ${selectedStudent?.full_name || "the selected student"}.`
-              : "Select a student to enable calculation."}
-          </p>
-          <button
-            type="submit"
-            disabled={!hasStudent || loading}
-            title={!hasStudent ? "Select a registered student first" : undefined}
-            className="h-10 bg-sky-500 px-6 text-sm font-bold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Calculating..." : "Calculate"}
-          </button>
-        </div>
-      </form>
-
-      {error && (
-        <div className="border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700" role="alert">{error}</div>
-      )}
-
-      {result && (
-        <section className="border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Result</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              {result.student?.full_name}
-              {result.student?.upi ? ` · ${result.student.upi}` : ""}
-              {result.student?.school_code ? ` · ${result.student.school_code}` : ""} — saved to this student's record.
-            </p>
-          </div>
-
-          <div className="grid gap-4 p-4 sm:grid-cols-3">
-            <div className={`border p-4 ${CATEGORY_STYLES[result.category] || CATEGORY_STYLES.low}`}>
-              <p className="text-[10px] font-bold uppercase tracking-wide">Eligibility category</p>
-              <p className="mt-1 text-2xl font-bold">{result.category_label}</p>
-            </div>
-            <div className="border border-slate-200 bg-slate-50 p-4 text-slate-800">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Eligibility score</p>
-              <p className="mt-1 text-2xl font-bold">{result.score} / {result.max_score ?? 100}</p>
-            </div>
-            <div className="border border-sky-200 bg-sky-50 p-4 text-sky-900">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-sky-700">Recommended bursary range</p>
-              <p className="mt-1 text-2xl font-bold">{money(result.recommended_range.min)} – {money(result.recommended_range.max)}</p>
-              {result.recommended_range.provisional && (
-                <p className="mt-1 inline-block bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">Provisional</p>
+              {students.length === 0 && !studentsError && (
+                <p className="sb-hint" style={{ marginTop: 8 }}>
+                  No students are registered yet. Students are created when an application is verified.
+                </p>
               )}
             </div>
-          </div>
 
-          {result.recommended_range.provisional && (
-            <p className="mx-4 mb-4 border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              No approved allocation ranges are configured, so these figures are a provisional proposal - not an official NG-CDF allocation limit. The authorised officer sets the final amount.
-            </p>
+            <div className="sb-grid sb-grid--2">
+              <Field label="Fee balance (KSh)" htmlFor="fee_balance" required>
+                <input id="fee_balance" name="fee_balance" type="number" min="0" step="0.01" value={form.fee_balance} onChange={handleChange} className="sb-input" placeholder="e.g. 24000" required />
+              </Field>
+              <Field label="Household income (KSh)" htmlFor="household_income" required>
+                <input id="household_income" name="household_income" type="number" min="0" step="0.01" value={form.household_income} onChange={handleChange} className="sb-input" placeholder="e.g. 18000" required />
+              </Field>
+              <Field label="Vulnerability status" htmlFor="vulnerability_status" required>
+                <select id="vulnerability_status" name="vulnerability_status" value={form.vulnerability_status} onChange={handleChange} className="sb-input">
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </Field>
+              <Field label="Siblings in school" htmlFor="siblings_in_school" required>
+                <input id="siblings_in_school" name="siblings_in_school" type="number" min="0" step="1" value={form.siblings_in_school} onChange={handleChange} className="sb-input" placeholder="e.g. 2" required />
+              </Field>
+              <Field label="Prior bursary history" htmlFor="prior_bursary_history" required>
+                <select id="prior_bursary_history" name="prior_bursary_history" value={form.prior_bursary_history} onChange={handleChange} className="sb-input">
+                  <option value="none">None</option>
+                  <option value="low">Low</option>
+                  <option value="high">High</option>
+                </select>
+              </Field>
+            </div>
+
+            {error && <Alert tone="error">{error}</Alert>}
+
+            <div className="sb-row">
+              <Button type="submit" variant="primary" disabled={loading || !canCalculate}>
+                <Calculator size={15} aria-hidden="true" />
+                {loading ? "Calculating…" : "Calculate eligibility"}
+              </Button>
+              <span className="sb-meta">The result is saved to the selected student's record.</span>
+            </div>
+          </form>
+        </Card>
+
+
+        <Card title="Assessment result">
+          {!result ? (
+            <EmptyState title="No result yet" icon={Calculator}>
+              Choose a registered student, record the eligibility figures and calculate. The result appears
+              here with its score breakdown.
+            </EmptyState>
+          ) : (
+            <div className="sb-stack">
+              <div className="sb-panel">
+                <p className="sb-meta">Student</p>
+                <p style={{ fontWeight: 650, color: "var(--sb-primary-dark)" }}>{result.student?.full_name}</p>
+                <p className="sb-meta">
+                  {result.student?.school_code || "School not recorded"} · UPI {result.student?.upi || "not recorded"}
+                </p>
+              </div>
+
+              <div className="sb-grid sb-grid--2">
+                <div className="sb-stat">
+                  <span className="sb-stat__label">Eligibility category</span>
+                  <span className="sb-stat__value">{result.category_label}</span>
+                  <Badge tone={CATEGORY_TONE[result.category] || "neutral"}>{result.category}</Badge>
+                </div>
+                <div className="sb-stat">
+                  <span className="sb-stat__label">Eligibility score</span>
+                  <span className="sb-stat__value">
+                    {result.score}
+                    <span style={{ fontSize: 14, color: "var(--sb-muted)" }}> / {result.max_score ?? 100}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="sb-panel">
+                <p className="sb-label">Recommended bursary range</p>
+                <p style={{ fontSize: 20, fontWeight: 700, color: "var(--sb-primary-dark)", marginTop: 4 }}>
+                  {money(result.recommended_range.min)} – {money(result.recommended_range.max)}
+                </p>
+                {result.recommended_range.provisional && (
+                  <Badge tone="warning" className="sb-badge" style={{ marginTop: 6 }}>
+                    Provisional recommendation
+                  </Badge>
+                )}
+              </div>
+
+              {result.recommended_range.provisional && (
+                <Alert tone="warning" title="Provisional figures">
+                  No approved allocation ranges are configured, so these figures are a provisional proposal —
+                  not an official allocation limit. An authorised officer sets the final amount.
+                </Alert>
+              )}
+
+              <div className="sb-table-wrap">
+                <table className="sb-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Factor</th>
+                      <th scope="col">Recorded</th>
+                      <th scope="col">Points</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(result.factors || []).map((factor) => (
+                      <tr key={factor.key}>
+                        <td className="sb-table__primary">{factor.label}</td>
+                        <td className="sb-meta">{factor.detail}</td>
+                        <td style={{ textAlign: "right", fontWeight: 600 }}>
+                          {factor.points} / {factor.max_points}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <Alert tone="info" title="Recommendation only" icon={Info}>
+                {result.guidance || "An authorised administrator must approve or reject the bursary award."}
+              </Alert>
+
+              <Link to="/awards" className="sb-btn sb-btn--primary sb-btn--block">
+                <Users size={15} aria-hidden="true" />
+                Continue to award recommendation
+              </Link>
+            </div>
           )}
-
-          <div className="border-t border-slate-200 px-4 py-4">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Score breakdown</p>
-            <table className="mt-2 w-full text-xs">
-              <tbody className="divide-y divide-slate-100">
-                {(result.factors || []).map((factor) => (
-                  <tr key={factor.key}>
-                    <td className="py-1.5 pr-3 font-semibold text-slate-800">{factor.label}</td>
-                    <td className="py-1.5 pr-3 text-slate-500">{factor.detail}</td>
-                    <td className="py-1.5 text-right font-bold text-slate-800">{factor.points} / {factor.max_points}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-200">
-                  <td className="py-2 font-bold text-slate-900" colSpan={2}>Total</td>
-                  <td className="py-2 text-right font-bold text-slate-900">{result.score} / {result.max_score ?? 100}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          <p className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-            {result.guidance || "Recommendation only. An authorised officer must approve or reject the bursary."}
-          </p>
-        </section>
-      )}
-    </main>
+        </Card>
+      </div>
+    </div>
   );
 }
+

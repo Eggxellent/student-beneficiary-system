@@ -18,8 +18,13 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import AuditLogs from "./pages/AuditLogs";
 import UserManagement from "./pages/UserManagement";
+import OfficerApplications from "./pages/officer/OfficerApplications";
+import OfficerApplicationDetail from "./pages/officer/OfficerApplicationDetail";
+import AwardRecommendations from "./pages/officer/AwardRecommendations";
 import { useAuth } from "./context/AuthContext";
 import AppLayout from "./components/AppLayout";
+import OfficerLayout from "./components/OfficerLayout";
+
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { isAuthenticated, user, authLoading } = useAuth();
@@ -59,6 +64,51 @@ function ProtectedPage({ children, allowedRoles }) {
   );
 }
 
+// The Admin interface keeps the untouched AppLayout. Field Officer pages mount the new shell in
+// OfficerLayout; no Admin route is routed through it, so the Admin experience cannot change.
+function OfficerPage({ children }) {
+  return (
+    <ProtectedRoute allowedRoles={["field_officer"]}>
+      <OfficerLayout>{children}</OfficerLayout>
+    </ProtectedRoute>
+  );
+}
+
+// `/applications` and `/awards` are shared paths. The Admin branch renders the existing pages inside
+// the existing layout, byte-for-byte unchanged; the Field Officer branch renders the redesigned views.
+function ApplicationsEntry() {
+  const { user } = useAuth();
+  if (user?.role === "admin") {
+    return (
+      <AppLayout>
+        <Applications />
+      </AppLayout>
+    );
+  }
+  return (
+    <OfficerLayout>
+      <OfficerApplications />
+    </OfficerLayout>
+  );
+}
+
+function AwardsEntry() {
+  const { user } = useAuth();
+  if (user?.role === "admin") {
+    return (
+      <AppLayout>
+        <Awards />
+      </AppLayout>
+    );
+  }
+  return (
+    <OfficerLayout>
+      <AwardRecommendations />
+    </OfficerLayout>
+  );
+}
+
+
 export default function App() {
   return (
     <Routes>
@@ -93,9 +143,17 @@ export default function App() {
       <Route
         path="/applications"
         element={
-          <ProtectedPage allowedRoles={["admin", "field_officer"]}>
-            <Applications />
-          </ProtectedPage>
+          <ProtectedRoute allowedRoles={["admin", "field_officer"]}>
+            <ApplicationsEntry />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/applications/:id"
+        element={
+          <OfficerPage>
+            <OfficerApplicationDetail />
+          </OfficerPage>
         }
       />
       <Route
@@ -109,17 +167,17 @@ export default function App() {
       <Route
         path="/awards"
         element={
-          <ProtectedPage allowedRoles={["admin", "field_officer"]}>
-            <Awards />
-          </ProtectedPage>
+          <ProtectedRoute allowedRoles={["admin", "field_officer"]}>
+            <AwardsEntry />
+          </ProtectedRoute>
         }
       />
       <Route
         path="/eligibility"
         element={
-          <ProtectedPage allowedRoles={["field_officer"]}>
+          <OfficerPage>
             <Eligibility />
-          </ProtectedPage>
+          </OfficerPage>
         }
       />
       <Route
@@ -150,9 +208,9 @@ export default function App() {
       <Route
         path="/field-officer"
         element={
-          <ProtectedPage allowedRoles={["field_officer"]}>
+          <OfficerPage>
             <FieldOfficerDashboard />
-          </ProtectedPage>
+          </OfficerPage>
         }
       />
       <Route
