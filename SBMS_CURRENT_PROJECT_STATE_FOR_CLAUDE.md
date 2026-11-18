@@ -435,8 +435,8 @@ leaving the Admin pages, `AppLayout` and their styles untouched; `/applications`
 `ReferenceError: checkedAt is not defined` at module evaluation, so the app rendered a blank page on every
 route even though `GET /` returned 200. `Verification.jsx` and `CertificateVerification.jsx` had component
 declarations outside the component (after its closing brace, and inside the returned JSX), and
-`FieldOfficerDashboard` referenced an undefined `firstName`. Fixed in `2b2d077`, redeployed, live bundle
-`assets/index-CIJgsrMk.js`. `scripts/redesign-ui-smoke.mjs` (Chrome over CDP) now checks the public pages,
+`FieldOfficerDashboard` referenced an undefined `firstName`. Fixed in `2b2d077` and `32bb3e9`,
+redeployed, live bundle `assets/index-CIJgsrMk.js`. `scripts/redesign-ui-smoke.mjs` (Chrome over CDP) now checks the public pages,
 the certificate and tracking states, the Admin/Field Officer layouts and a 16-route mount sweep:
 **36 passed, 3 failed** against the live app (`verification-evidence/2026-11-18/`, gitignored). The 3
 failures are the Field Officer and Admin sign-ins: both documented accounts are rejected with

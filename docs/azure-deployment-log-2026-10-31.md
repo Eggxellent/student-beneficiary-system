@@ -511,6 +511,7 @@ guardian tracking stage, the Admin/Field Officer layouts and a 16-route mount sw
 | Check | Result |
 | --- | --- |
 | `npm --prefix frontend run build` before the fix | exit 0, `built in 11.41s`, reproduces the deployed hash `assets/index-DKup_JUf.js` (byte-identical name = same content hash), so the live bundle was exactly this source |
+| `git push origin redesign/guardian-led-applications` | `8f646ff..32bb3e9` (`2b2d077` verification pages, `32bb3e9` dashboard greeting, `ddffe39` these docs) |
 | Live bundle inspection before the fix | `GET /assets/index-DKup_JUf.js` contained the fixes from `cdf6339` (`Check another certificate`, `Partly cleared`, `No longer current`, `Connection problem`) but threw `checkedAt is not defined` on evaluation |
 | `npm --prefix frontend run build` after the fixes | exit 0, `built in 10.33s`, emits `assets/index-CIJgsrMk.js` |
 | `az webapp deploy -g rg-sbms -n sbms-web --type zip` | exit 0, "Deployment has completed successfully", `status: 4` |
