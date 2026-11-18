@@ -547,3 +547,37 @@ so it needs approval) and re-run `scripts/redesign-ui-smoke.mjs` with `SBMS_OFFI
 add one issued certificate reference and one live tracking code to that run to replace the stubbed
 certificate and tracking states. Backend image and Container App revision stay untouched.
 
+## 15. "The app shows nothing" was a cached shell, not a bad deploy (18 November 2026)
+
+A report that the site was blank *after* the §14 redeploy was investigated against the live service.
+
+**Cause.** The deploy was fine; the browser was not. `frontend/public/web.config` set a one-year
+`Cache-Control: max-age` for `/assets` but nothing at all for `index.html`, and IIS therefore emitted no
+`Cache-Control` for the document. With no explicit freshness a browser may reuse its copy heuristically,
+so a tab that had loaded the broken §13 shell kept reusing that `index.html`, which still pointed at
+`assets/index-DKup_JUf.js` — a URL that is (a) still served with 200, and (b) cached for a year, and
+(c) throws `checkedAt is not defined`. Result: the crisp new bundle was deployed and never requested.
+
+**Fix.** `index.html` is now served with `Cache-Control: no-store, no-cache, must-revalidate` plus
+`Pragma: no-cache`; hashed bundles under `/assets` keep their immutable one-year cache. Rebuilt (`web.config`
+is the only change, so the bundle hash stays `assets/index-CIJgsrMk.js`), zip-deployed.
+
+| Check | Result |
+| --- | --- |
+| `GET /` `Cache-Control` before | *absent* (no explicit freshness, heuristic reuse allowed) |
+| `GET /assets/index-CIJgsrMk.js` before | `max-age=31536000` (correct for a hashed asset) |
+| `GET /assets/index-DKup_JUf.js` | still `200` — the §13 bundle was never deleted, so stale shells keep loading it |
+| `npm --prefix frontend run build` | exit 0, `built in 8.66s`, `assets/index-CIJgsrMk.js` (unchanged hash), `dist/web.config` 3060 bytes |
+| `az webapp deploy -g rg-sbms -n sbms-web --type zip` | exit 0, `status: 4`, "Deployment has completed successfully" |
+| `GET /`, `/index.html`, `/admin`, `/verify` after | all `200`, `Cache-Control: no-store, no-cache, must-revalidate`, `Pragma: no-cache` |
+| `GET /assets/index-CIJgsrMk.js` after | `200`, `Cache-Control: max-age=31536000` (unchanged) |
+| Fresh Chrome loading `/` | `#root` 12 031 chars, `.sbms-ui` present, **0** exceptions, 0 console errors, 0 failed requests; only the bundle, the stylesheet and the favicon are fetched |
+
+**Recovery for anyone who already cached the old shell:** one hard reload (`Ctrl+Shift+R`, or DevTools →
+Network → *Disable cache*, or clear site data for the origin). Nothing server-side can invalidate a copy the
+browser already holds; the new header only guarantees it cannot happen again.
+
+**Caveat.** The verification above is a fresh-profile load plus header inspection. It does not prove what a
+particular user's browser still holds; if a browser still renders blank after a hard reload, check
+`Performance`/`Network` for `index-DKup_JUf.js` and clear site data for `sbms-web.azurewebsites.net`.
+

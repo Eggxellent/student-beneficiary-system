@@ -447,6 +447,13 @@ browser-level stubs, because no issued certificate reference is reachable from t
 PostgreSQL firewall times the connection out) and tracking codes are stored only as hashes. See
 `docs/azure-deployment-log-2026-10-31.md` section 14 for the full table.
 
+**Cached shell, same day.** The site then appeared blank again for a returning browser. The deploy was
+fine: `index.html` was served with no `Cache-Control` at all, so a browser could keep reusing the old
+document, which still pointed at the broken `assets/index-DKup_JUf.js` (still served, cached for a year).
+`frontend/public/web.config` now sends `index.html` as `no-store, no-cache, must-revalidate` while
+`/assets` keeps `max-age=31536000`; redeployed. A fresh Chrome load renders the shell with zero exceptions.
+Anyone who saw the blank page needs one hard reload. See section 15 of the same log.
+
 **Outstanding deployment work (do not claim as done in the report):**
 1. Apply `backend/src/db/migrations/20261111_notifications.sql` to the production database (backup and
    restore rehearsal first, per `README.md`).
