@@ -54,6 +54,8 @@ export default function Verification() {
     };
   }, [token, readFailed, attempt]);
 
+  const checked = formatTimestamp(checkedAt);
+
   return (
     <PublicVerificationLayout>
       <div className="sb-stack sb-stack--tight">
@@ -130,6 +132,3 @@ export default function Verification() {
     </PublicVerificationLayout>
   );
 }
-
-
-  const checked = formatTimestamp(checkedAt);

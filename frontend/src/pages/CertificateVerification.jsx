@@ -136,6 +136,20 @@ export default function CertificateVerification() {
     if (lastReference) lookupByReference(lastReference);
   };
 
+  const checked = formatTimestamp(checkedAt);
+  const reference = result?.certificate_reference;
+  const programme = result?.constituency
+    ? `${result.programme} · ${result.constituency} constituency`
+    : result?.programme;
+
+  const payments = result?.payments;
+  const paymentLabel = !payments || payments.status === "no_payment"
+    ? "No payment recorded"
+    : payments.status === "pending_clearance"
+      ? `Recorded, awaiting clearance — ${formatAmount(payments.total_recorded)}`
+      : payments.status === "cleared"
+        ? `Cleared — ${formatAmount(payments.total_cleared)}`
+        : `Partly cleared — ${formatAmount(payments.total_cleared)} of ${formatAmount(result?.approved_amount)}`;
 
   const referenceForm = (
     <form
@@ -237,21 +251,6 @@ export default function CertificateVerification() {
           <ResetButton onClick={resetToForm} />
         </div>
       )}
-
-  const checked = formatTimestamp(checkedAt);
-  const reference = result?.certificate_reference;
-  const programme = result?.constituency
-    ? `${result.programme} · ${result.constituency} constituency`
-    : result?.programme;
-
-  const payments = result?.payments;
-  const paymentLabel = !payments || payments.status === "no_payment"
-    ? "No payment recorded"
-    : payments.status === "pending_clearance"
-      ? `Recorded, awaiting clearance — ${formatAmount(payments.total_recorded)}`
-      : payments.status === "cleared"
-        ? `Cleared — ${formatAmount(payments.total_cleared)}`
-        : `Partly cleared — ${formatAmount(payments.total_cleared)} of ${formatAmount(result?.approved_amount)}`;
 
       {status === "not-current" && (
         <div className="sb-stack" style={{ marginTop: 22 }}>
