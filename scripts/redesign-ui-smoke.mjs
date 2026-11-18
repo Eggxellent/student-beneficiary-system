@@ -217,7 +217,13 @@ async function stubFetch(rules) {
   stubs.length = 0;
   stubs.push(...rules);
   await send('Fetch.enable', {
-    patterns: [{ urlPattern: '*api/certificates/verify*' }, { urlPattern: '*api/applications/track*' }],
+    patterns: [
+      { urlPattern: '*api/certificates/verify*' },
+      { urlPattern: '*api/applications*' },
+      { urlPattern: '*api/awards*' },
+      { urlPattern: '*api/students*' },
+      { urlPattern: '*api/auth/me*' },
+    ],
     handleAuthRequests: false,
   });
 }
@@ -486,6 +492,137 @@ if (!loginFailed(adminProbe)) {
   await screenshot('18-admin-awards');
 }
 }
+
+// --------------------------------------- layout routing with a synthetic session
+// The documented production credentials are rejected (see the deployment log), so the role split is
+// also exercised with a synthetic localStorage session. This proves which layout each role receives,
+// not that a real account can sign in: data requests still return 401 in this mode.
+if (process.env.SBMS_SYNTHETIC_ROLES === '1') {
+  // Minimal list fixtures, shaped like the API responses, so the officer pages render real rows
+  // instead of an error state. They are local to this browser session only.
+  const fixtureApplication = {
+    id: '11111111-1111-1111-1111-111111111111',
+    full_name: 'Smoke Test Applicant',
+    guardian_name: 'Smoke Test Guardian',
+    school_code: 'SCH-001',
+    upi: 'UPI0000001',
+    status: 'screened',
+    created_at: '2026-11-12T08:00:00.000Z',
+    submitted_at: '2026-11-12T08:00:00.000Z',
+    updated_at: '2026-11-13T08:00:00.000Z',
+    duplicate_of_student_id: null,
+    open_cases: 0,
+    constituency: 'Smoke Constituency',
+  };
+  const fixtureAward = {
+    id: '22222222-2222-2222-2222-222222222222',
+    application_id: '11111111-1111-1111-1111-111111111111',
+    student_name: 'Smoke Test Applicant',
+    status: 'submitted',
+    amount: '45000.00',
+    created_at: '2026-11-13T08:00:00.000Z',
+    constituency: 'Smoke Constituency',
+  };
+
+  async function syntheticSession(role) {
+    // AuthContext validates the stored token against /auth/me on every load, so that call plus the
+    // list endpoints the officer pages read are answered locally; writes are never stubbed.
+    await stubFetch([
+      {
+        match: (url) => url.includes('/api/auth/me'),
+        status: 200,
+        body: { id: 0, email: 'synthetic@local.invalid', full_name: 'Synthetic Check', role },
+      },
+      {
+        match: (url) => /\/api\/applications(\?|$)/.test(url),
+        status: 200,
+        body: { applications: [fixtureApplication] },
+      },
+      { match: (url) => /\/api\/awards(\?|$)/.test(url), status: 200, body: { awards: [fixtureAward] } },
+      { match: (url) => /\/api\/students(\?|$)/.test(url), status: 200, body: [] },
+    ]);
+    await navigate('/login');
+    await evaluate(`
+      localStorage.setItem('token', 'synthetic-layout-check');
+      localStorage.setItem('user', JSON.stringify({ id: 0, email: 'synthetic@local.invalid', full_name: 'Synthetic Check', role: ${JSON.stringify(role)} }));
+      return true;
+    `);
+  }
+
+  await syntheticSession('admin');
+  await navigate('/applications');
+  const syntheticAdminApplications = {
+    heading: await heading(),
+    redesign: await evaluate('return document.querySelectorAll(".sbms-ui, .sb-officer").length;'),
+  };
+  record(
+    '(synthetic admin session) /applications uses the original interface',
+    syntheticAdminApplications.heading === 'Guardian applications' && syntheticAdminApplications.redesign === 0,
+    `${syntheticAdminApplications.heading} — redesign nodes: ${syntheticAdminApplications.redesign}`,
+  );
+  await screenshot('19-synthetic-admin-applications');
+
+  await navigate('/awards');
+  const syntheticAdminAwards = {
+    heading: await heading(),
+    redesign: await evaluate('return document.querySelectorAll(".sbms-ui, .sb-officer").length;'),
+  };
+  record(
+    '(synthetic admin session) /awards uses the original interface',
+    syntheticAdminAwards.heading === 'Bursary awards' && syntheticAdminAwards.redesign === 0,
+    `${syntheticAdminAwards.heading} — redesign nodes: ${syntheticAdminAwards.redesign}`,
+  );
+  await screenshot('20-synthetic-admin-awards');
+
+  await syntheticSession('field_officer');
+  for (const [route, shot] of [
+    ['/field-officer', '21-synthetic-officer-dashboard'],
+    ['/applications', '22-synthetic-officer-applications'],
+    ['/eligibility', '23-synthetic-officer-eligibility'],
+  ]) {
+    await navigate(route);
+    const shell = await evaluate('return !!document.querySelector(".sb-officer");');
+    const path_ = await evaluate('return location.pathname + location.search;');
+    record(`(synthetic officer session) ${route} renders the redesigned shell`, shell, path_);
+    await screenshot(shot);
+  }
+  // Route sweep: every page the redesign touched (plus the routes either role shares) is mounted
+  // once, so a render-time ReferenceError like the ones found on 18 November cannot hide.
+  const sweep = {
+    admin: ['/dashboard', '/applications', '/awards', '/students', '/students/register', '/duplicate-review', '/reports', '/settings', '/audit', '/users', '/eligibility'],
+    field_officer: ['/field-officer', '/applications', '/applications/1', '/awards', '/eligibility'],
+  };
+  for (const role of Object.keys(sweep)) {
+    await syntheticSession(role);
+    for (const route of sweep[role]) {
+      const before = pageErrors.length;
+      await navigate(route);
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      const chars = await evaluate('return document.body.innerText.trim().length;');
+      const thrown = pageErrors.slice(before).map((entry) => entry.split('\n')[0]);
+      record(
+        `(synthetic ${role}) ${route} renders without throwing`,
+        thrown.length === 0,
+        thrown[0] || `${chars} chars${chars < 40 ? ' (blank body)' : ''}`,
+      );
+      if (role === 'field_officer' && route === '/applications') {
+        const listText = await evaluate('return document.body.innerText;');
+        const statuses = await evaluate(
+          'return performance.getEntriesByType("resource").filter((entry) => entry.name.includes("/api/")).map((entry) => entry.name.split("/api/")[1] + ":" + entry.responseStatus).join(" | ");',
+        );
+        record(
+          '(synthetic officer) /applications renders the fixture row',
+          listText.includes('Smoke Test Applicant'),
+          listText.includes('Smoke Test Applicant') ? 'fixture row visible' : `${listText.slice(0, 200)} :: ${statuses}`,
+        );
+      }
+    }
+  }
+
+  await evaluate('localStorage.clear(); sessionStorage.clear(); return true;');
+  await clearStubs();
+}
+
 
 // ------------------------------------------------------------------- diagnostics
 const unexpectedConsole = consoleErrors.filter((line) => !/429|Too Many Requests|503|Failed to load resource/i.test(line));

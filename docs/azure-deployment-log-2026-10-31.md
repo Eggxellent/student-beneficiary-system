@@ -482,3 +482,67 @@ reset, and add the two sign-ins (Admin and Field Officer) to that smoke run so t
 by evidence rather than by inspection.
 
 
+## 14. The §13 bundle rendered a blank page; fixed and redeployed (18 November 2026)
+
+**Problem.** §13 was signed off on HTTP status codes. A real headless Chrome pass (CDP, same pattern
+as `scripts/browser-smoke.mjs`) showed that the deployed `assets/index-DKup_JUf.js` threw
+`ReferenceError: checkedAt is not defined` while the module was evaluated, so React never mounted and
+`#root` stayed empty on **every** route, `/` included. `GET /` still returned 200 and still served the
+expected hash, which is why the earlier check passed.
+
+**Cause.** In `frontend/src/pages/Verification.jsx` and `frontend/src/pages/CertificateVerification.jsx`
+a block of component code ended up outside the component body: `const checked = formatTimestamp(checkedAt)`
+sat after the closing brace in `Verification.jsx`, and in `CertificateVerification.jsx` the
+`checked`/`reference`/`programme`/`payments`/`paymentLabel` declarations sat inside the returned JSX
+after the verified block, where they became literal children instead of declarations. `vite build`
+does not type-check, so both files built and deployed cleanly. A third defect surfaced from the same
+sweep: `FieldOfficerDashboard` rendered `Welcome, ${firstName}` with no `firstName` in scope, so
+`/field-officer` crashed at render.
+
+**Change.** Declarations restored inside their components (`Verification.jsx`, before `return`;
+`CertificateVerification.jsx`, before `referenceForm`); the dashboard greeting now uses
+`user?.full_name?.split(" ")[0] || "Field Officer"`, matching `AdminDashboard`. No Admin page, no
+business logic, no API and no database record was touched. Added `scripts/redesign-ui-smoke.mjs`:
+zero-dependency Chrome-over-CDP checks for the public pages, the certificate verification states, the
+guardian tracking stage, the Admin/Field Officer layouts and a 16-route mount sweep.
+
+**Evidence**
+
+| Check | Result |
+| --- | --- |
+| `npm --prefix frontend run build` before the fix | exit 0, `built in 11.41s`, reproduces the deployed hash `assets/index-DKup_JUf.js` (byte-identical name = same content hash), so the live bundle was exactly this source |
+| Live bundle inspection before the fix | `GET /assets/index-DKup_JUf.js` contained the fixes from `cdf6339` (`Check another certificate`, `Partly cleared`, `No longer current`, `Connection problem`) but threw `checkedAt is not defined` on evaluation |
+| `npm --prefix frontend run build` after the fixes | exit 0, `built in 10.33s`, emits `assets/index-CIJgsrMk.js` |
+| `az webapp deploy -g rg-sbms -n sbms-web --type zip` | exit 0, "Deployment has completed successfully", `status: 4` |
+| Live `GET https://sbms-web.azurewebsites.net/` | 200, serves `assets/index-CIJgsrMk.js` |
+| `node scripts/redesign-ui-smoke.mjs` against the live app | **36 passed, 3 failed**; evidence in `verification-evidence/2026-11-18/` (`results.json` plus 18 screenshots, gitignored) |
+| Public `/`, `/verify`, `/apply`, `/apply/track` without a session | all render the redesigned shell and their headings |
+| Certificate verification, unknown reference `SBMS-2026-AAAA-AAAA` | real API call, renders **Not found** |
+| Certificate verification, 429 | **Please wait** (429 answered at the browser network layer) |
+| Certificate verification, 503 and connection failure | **Connection problem** in both cases |
+| Certificate verification, `valid:false,status:"not_current"` | **No longer current** |
+| Certificate verification, `valid:true,status:"verified"` | **Current certificate** with beneficiary and approval status (not treated as valid on any other shape) |
+| Guardian tracking, application with `screening_failure_code` | "What happens next" shows *Screening could not be completed…*, i.e. the blocked stage wins over current and pending |
+| Admin `/applications` and `/awards` (synthetic session) | original headings `Guardian applications` / `Bursary awards`, **0** `.sbms-ui`/`.sb-officer` nodes |
+| Field Officer `/field-officer`, `/applications`, `/eligibility` (synthetic session) | `.sb-officer` shell on each route; fixture row renders on `/applications` |
+| 16-route mount sweep (`/dashboard`, `/students`, `/students/register`, `/duplicate-review`, `/reports`, `/settings`, `/audit`, `/users`, `/applications/1`, …) | no exception thrown and no unexpected console error |
+| Field Officer and Admin sign-in with `deploy/azure/.secrets.json` | **failed**: "Invalid email or password" for `officer.1031205024@sbms.test` and `admin@sbms.com` |
+
+**What this does not establish.**
+
+- No real authenticated session: the officer and admin accounts are rejected (§9), so the role split is
+  proven with a synthetic `localStorage` session whose `/auth/me` and list responses are answered at the
+  browser network layer. That proves which layout each role receives; it proves nothing about
+  authorization, and the real sign-in is still unverified.
+- The certificate `verified`, `not_current`, 429 and 5xx states are exercised at the browser network
+  layer, not by the live API: no production certificate reference is reachable without database access
+  (this machine times out connecting to `pg-sbms.postgres.database.azure.com`), and tracking codes are
+  stored only as hashes (`student_applications.tracking_code_hash`), so the guardian tracking check also
+  used a stubbed response while the page logic was real.
+- `/applications/:id` was only mounted with no data; its populated tabs are unverified with real records.
+
+**Carry-forward.** Reset the admin password or re-enable a Field Officer test account (a database write,
+so it needs approval) and re-run `scripts/redesign-ui-smoke.mjs` with `SBMS_OFFICER_*`/`SBMS_ADMIN_*`;
+add one issued certificate reference and one live tracking code to that run to replace the stubbed
+certificate and tracking states. Backend image and Container App revision stay untouched.
+
