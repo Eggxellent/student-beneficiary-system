@@ -422,9 +422,17 @@ Do not cite 21/128 or 24/151 as the current totals; they predate the notificatio
 | Resource | Observed |
 |---|---|
 | Container App `ca-sbms-api` | revision `ca-sbms-api--latest`, `Healthy`, `Running`, image `ghcr.io/eggxellent/sbms-api:896ee1255aa4e3c27a6981a9454feda88044c3ec` |
-| App Service `sbms-web` (F1) | `https://sbms-web.azurewebsites.net` serves `assets/index-GOfkCZ_y.js` (commit `896ee12`); `/duplicate-review` returns 200 |
+| App Service `sbms-web` (F1) | `https://sbms-web.azurewebsites.net` serves `assets/index-DKup_JUf.js` (commit `cdf6339`, redeployed 18 November 2026); `/duplicate-review` and `/verify-certificate` return 200 |
 | PostgreSQL Flexible Server `pg-sbms` (B1MS) | database `sbms`; schema state not queried (out of scope for this document) |
 | Budget | `budget-sbms`; recorded idle cost ≈ $4.42/month |
+
+**Update 2026-11-18 (frontend only).** `sbms-web` was rebuilt and zip-deployed from `cdf6339`,
+which replaces every public and Field Officer screen with the scoped `.sbms-ui` design layer while
+leaving the Admin pages, `AppLayout` and their styles untouched; `/applications` and `/awards` branch on
+`user.role` in `frontend/src/App.jsx`. The live bundle is `assets/index-DKup_JUf.js`. The API image and
+Container App revision above were not changed. No authenticated browser session was run for this
+deploy, so the role split is confirmed by code and by `git diff`, not by a click-through; see
+`docs/azure-deployment-log-2026-10-31.md` section 13 for the evidence table.
 
 **Outstanding deployment work (do not claim as done in the report):**
 1. Apply `backend/src/db/migrations/20261111_notifications.sql` to the production database (backup and

@@ -24,6 +24,7 @@ do not re-derive them, do not re-run the audit.
 | 7. Handover/milestone update | **This document and plan §12.15** |
 | 8. Revised cost model | **Done** — plan §12.0–§12.13: **$4.42/mo idle** (A2), $4.58 per 8 h demo, ≈$6.42 in a normal month |
 | Image-size verification | **Done** — **1.37 GB** after cleanup (was 2.22 GB); `deploy/` and `.env*` excluded, ML gate runs inside the build |
+| 9. Public and Field Officer UI redesign | **Done** — `cdf6339`; frontend rebuilt and redeployed to `sbms-web` on 18 November 2026, live `assets/index-DKup_JUf.js` (section 13) |
 
 ## 2. Verified facts (carry forward — do not re-check)
 
@@ -434,4 +435,50 @@ count so the suppression is visible.
 | --- | --- |
 | `backend/tests/duplicateAggregation.test.js` | 17 tests pass: a guardian-only pair is suppressed under `top-1`, `top-1-corroborated` and `all`; it is flagged again once `dob_match` agrees; an exact identifier outranks the rule; the audit summary counts sibling pairs apart from near misses |
 | `backend/src/controllers/students.controller.js` | `duplicate_candidates_guardian_only` added to the audit payload and `candidates_guardian_only` to `duplicate_screening` |
+
+## 13. Frontend redesign deployed (18 November 2026)
+
+**Problem.** The public pages and the Field Officer workspace were still rendering on the original
+per-page CSS, while the Admin workspace was the only reviewed, stable surface. A visual rebuild was
+wanted for everyone except Admin.
+
+**Change.** A single scoped layer, `frontend/src/styles/sbms-ui.css`, imported once from `main.jsx` and
+applied only under a `.sbms-ui` root element, so no Admin selector can be reached. On top of it:
+
+- `frontend/src/components/ui/primitives` (page header, card, badge, button, stat, alert, field, modal,
+  tabs, data row, empty state, skeleton) and `frontend/src/lib/applicationStatus.js` (status wording,
+  required action, screening summary, identifier masking, money and date formatting).
+- Rebuilt public surfaces: `Landing`, `Apply`, `TrackApplication`, `Verification` and
+  `CertificateVerification`, the last two on a shared `PublicVerificationLayout`.
+- Rebuilt Field Officer surfaces: `FieldOfficerDashboard`, `officer/OfficerApplications`,
+  `officer/OfficerApplicationDetail` (Overview, Duplicate screening, Investigation, Eligibility,
+  Identifiers tabs plus the withdraw dialog), `officer/AwardRecommendations` and `Eligibility`, mounted
+  in the new `OfficerLayout`.
+- `App.jsx` routes `/applications` and `/awards` through role-aware entries: the Admin branch still
+  renders the original pages inside the original `AppLayout`, the Field Officer branch renders the new
+  views. No Admin page, layout or stylesheet was edited.
+
+**Evidence**
+
+| Check | Result |
+| --- | --- |
+| `git push origin redesign/guardian-led-applications` | `fa420de..cdf6339` |
+| `npm --prefix frontend run build` with `VITE_API_ORIGIN=https://ca-sbms-api.ambitiousstone-f2de8f67.uaenorth.azurecontainerapps.io` | exit 0, `built in 10.61s`, emits `assets/index-DKup_JUf.js`; `dist/web.config` present and the bundle contains the Container App origin |
+| `az webapp deploy -g rg-sbms -n sbms-web --type zip` | exit 0, "Deployment has completed successfully" |
+| Live `GET https://sbms-web.azurewebsites.net/` | 200, serves `assets/index-DKup_JUf.js` — the deployed bundle is the reviewed one |
+| Live `GET /verify-certificate` | 200 (SPA rewrite intact) |
+| `npm run build` and Vite dev transforms of the rewritten modules | 200 for `main.jsx`, `pages/CertificateVerification.jsx`, `pages/officer/OfficerApplicationDetail.jsx` |
+| `sb-*` class audit, used vs defined | 106 class names used across `frontend/src`; the only three not found as selectors are `var(--sb-primary)`, `var(--sb-primary-dark)` and `var(--sb-accent-soft)`, all defined in `sbms-ui.css` |
+| CSS scoping read-through | no bare `body`, `html`, `button`, `h1` or `:root` rule; every rule sits under `.sbms-ui` |
+
+**What this does not establish.** No authenticated browser session was run after the deploy, so the
+role split (Admin sees the original pages on `/applications` and `/awards`, Field Officer sees the new
+ones) is established structurally by `App.jsx` and by `git diff` showing no Admin file touched, not by
+clicking through both accounts. The API image was not rebuilt: no backend file changed, so the running
+Container App revision is unchanged.
+
+**Carry-forward.** Re-run `scripts/browser-smoke.mjs` once the drifted admin password from section 9 is
+reset, and add the two sign-ins (Admin and Field Officer) to that smoke run so the role split is covered
+by evidence rather than by inspection.
+
 
