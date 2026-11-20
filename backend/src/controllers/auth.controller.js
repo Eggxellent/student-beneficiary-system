@@ -58,6 +58,9 @@ async function login(req, res, expectedRole) {
     { expiresIn: '8h' }
   );
 
+  // Recorded for the guardian account page; a failure here never blocks sign-in.
+  pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]).catch(() => {});
+
   res.json({
     message: 'Login successful',
     token,
@@ -78,7 +81,12 @@ const loginAny = (req, res) => login(req, res, null);
 
 async function me(req, res, next) {
   try {
-    const { rows } = await pool.query('SELECT id, full_name, email, role FROM users WHERE id = $1', [req.user.id]);
+    const { rows } = await pool.query(
+      `SELECT id, full_name, email, role, phone, national_id, relationship_to_student,
+              created_at, last_login_at
+         FROM users WHERE id = $1`,
+      [req.user.id],
+    );
     if (!rows.length) return res.status(401).json({ message: 'User account no longer exists' });
     res.json(rows[0]);
   } catch (error) { next(error); }

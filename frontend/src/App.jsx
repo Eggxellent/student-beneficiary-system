@@ -3,10 +3,6 @@ import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import Verification from "./pages/Verification";
 import CertificateVerification from "./pages/CertificateVerification";
-import Landing from "./pages/Landing";
-import Apply from "./pages/Apply";
-import TrackApplication from "./pages/TrackApplication";
-import Applications from "./pages/Applications";
 import AdminDashboard from "./pages/AdminDashboard";
 import Students from "./pages/Students";
 import StudentRegistration from "./pages/StudentRegistration";
@@ -18,13 +14,14 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import AuditLogs from "./pages/AuditLogs";
 import UserManagement from "./pages/UserManagement";
-import OfficerApplications from "./pages/officer/OfficerApplications";
-import OfficerApplicationDetail from "./pages/officer/OfficerApplicationDetail";
-import AwardRecommendations from "./pages/officer/AwardRecommendations";
+import GuardianRegistration from "./pages/GuardianRegistration";
+import GuardianDashboard from "./pages/GuardianDashboard";
+import NewApplication from "./pages/NewApplication";
+import MyApplications from "./pages/MyApplications";
+import ApplicationDetails from "./pages/ApplicationDetails";
+import GuardianAccount from "./pages/GuardianAccount";
 import { useAuth } from "./context/AuthContext";
 import AppLayout from "./components/AppLayout";
-import OfficerLayout from "./components/OfficerLayout";
-
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { isAuthenticated, user, authLoading } = useAuth();
@@ -53,6 +50,10 @@ function DashboardHome() {
     return <Navigate to="/field-officer" replace />;
   }
 
+  if (user?.role === "guardian") {
+    return <Navigate to="/guardian/dashboard" replace />;
+  }
+
   return <Navigate to="/login" replace />;
 }
 
@@ -64,64 +65,41 @@ function ProtectedPage({ children, allowedRoles }) {
   );
 }
 
-// The Admin interface keeps the untouched AppLayout. Field Officer pages mount the new shell in
-// OfficerLayout; no Admin route is routed through it, so the Admin experience cannot change.
-function OfficerPage({ children }) {
-  return (
-    <ProtectedRoute allowedRoles={["field_officer"]}>
-      <OfficerLayout>{children}</OfficerLayout>
-    </ProtectedRoute>
-  );
-}
-
-// `/applications` and `/awards` are shared paths. The Admin branch renders the existing pages inside
-// the existing layout, byte-for-byte unchanged; the Field Officer branch renders the redesigned views.
-function ApplicationsEntry() {
-  const { user } = useAuth();
-  if (user?.role === "admin") {
-    return (
-      <AppLayout>
-        <Applications />
-      </AppLayout>
-    );
-  }
-  return (
-    <OfficerLayout>
-      <OfficerApplications />
-    </OfficerLayout>
-  );
-}
-
-function AwardsEntry() {
-  const { user } = useAuth();
-  if (user?.role === "admin") {
-    return (
-      <AppLayout>
-        <Awards />
-      </AppLayout>
-    );
-  }
-  return (
-    <OfficerLayout>
-      <AwardRecommendations />
-    </OfficerLayout>
-  );
-}
-
-
 export default function App() {
   return (
     <Routes>
       <Route path="/verify" element={<Verification />} />
       <Route path="/verify-certificate" element={<CertificateVerification />} />
-      {/* The guardian workflow is public by design: no account, no session, one tracking code. */}
-      <Route path="/apply" element={<Apply />} />
-      <Route path="/apply/track" element={<TrackApplication />} />
       {/* One sign-in page for both account types, and one page that spends an administrator's
           one-time reset link. The old role-specific sign-in URLs stay as redirects so bookmarks and
           links in older emails still land on the single form. */}
       <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      {/* Guardian self-registration stays public; it links to the shared /login form. The guardian
+          workspace below requires a signed-in guardian account, and a guardian token is rejected by
+          every staff route and vice versa. */}
+      <Route path="/guardian/register" element={<GuardianRegistration />} />
+      <Route
+        path="/guardian/dashboard"
+        element={<ProtectedRoute allowedRoles={["guardian"]}><GuardianDashboard /></ProtectedRoute>}
+      />
+      <Route
+        path="/guardian/applications/new"
+        element={<ProtectedRoute allowedRoles={["guardian"]}><NewApplication /></ProtectedRoute>}
+      />
+      <Route
+        path="/guardian/applications"
+        element={<ProtectedRoute allowedRoles={["guardian"]}><MyApplications /></ProtectedRoute>}
+      />
+      {/* React Router ranks the static /guardian/applications/new route above this dynamic one. */}
+      <Route
+        path="/guardian/applications/:reference"
+        element={<ProtectedRoute allowedRoles={["guardian"]}><ApplicationDetails /></ProtectedRoute>}
+      />
+      <Route
+        path="/guardian/profile"
+        element={<ProtectedRoute allowedRoles={["guardian"]}><GuardianAccount /></ProtectedRoute>}
+      />
       <Route path="/admin/login" element={<Navigate to="/login" replace />} />
       <Route path="/field-officer/login" element={<Navigate to="/login" replace />} />
       <Route
@@ -141,22 +119,6 @@ export default function App() {
         }
       />
       <Route
-        path="/applications"
-        element={
-          <ProtectedRoute allowedRoles={["admin", "field_officer"]}>
-            <ApplicationsEntry />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/applications/:id"
-        element={
-          <OfficerPage>
-            <OfficerApplicationDetail />
-          </OfficerPage>
-        }
-      />
-      <Route
         path="/duplicate-review"
         element={
           <ProtectedPage allowedRoles={["admin"]}>
@@ -167,17 +129,17 @@ export default function App() {
       <Route
         path="/awards"
         element={
-          <ProtectedRoute allowedRoles={["admin", "field_officer"]}>
-            <AwardsEntry />
-          </ProtectedRoute>
+          <ProtectedPage allowedRoles={["admin", "field_officer"]}>
+            <Awards />
+          </ProtectedPage>
         }
       />
       <Route
         path="/eligibility"
         element={
-          <OfficerPage>
+          <ProtectedPage allowedRoles={["field_officer"]}>
             <Eligibility />
-          </OfficerPage>
+          </ProtectedPage>
         }
       />
       <Route
@@ -208,9 +170,9 @@ export default function App() {
       <Route
         path="/field-officer"
         element={
-          <OfficerPage>
+          <ProtectedPage allowedRoles={["field_officer"]}>
             <FieldOfficerDashboard />
-          </OfficerPage>
+          </ProtectedPage>
         }
       />
       <Route
@@ -221,9 +183,10 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      {/* The public landing page is the entry point for everyone who is not signed in. It renders
-          outside the authenticated layout, and the staff sign-in route is unchanged. */}
-      <Route path="/" element={<Landing />} />
+      {/* The sign-in screen is the entry point; the marketing page is retired so nobody has to
+          click through it before reaching the staff login form. */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
+
     </Routes>
   );
 }

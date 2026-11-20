@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+﻿import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, BadgeCheck, ShieldQuestion, WifiOff } from "lucide-react";
 import api from "../services/api";
 import useHashToken from "../hooks/useHashToken";
@@ -17,7 +17,8 @@ import {
 //
 // Two entry points resolve to the same database row: the QR code printed on the certificate (an
 // opaque token in the URL fragment) and the reference a person types off the paper. The page then
-// shows exactly the facts the paper shows, so a holder, a school or an employer can compare the two.
+// shows exactly the facts the paper shows, so a holder, a school or an employer can compare the two
+// and see whether the document in their hands describes this record.
 
 const REFERENCE_EXAMPLE = "SBMS-2026-K8M4-X7PQ-2RZ";
 
@@ -36,8 +37,12 @@ function formatDate(value) {
 
 function ResetButton({ onClick }) {
   return (
-    <button type="button" onClick={onClick} className="sb-btn">
-      Check another certificate
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-sm font-semibold text-[#173D35] underline underline-offset-2 hover:text-[#245747]"
+    >
+      Check another invoice
     </button>
   );
 }
@@ -86,7 +91,7 @@ export default function CertificateVerification() {
     async (reference) => {
       const trimmed = reference.trim();
       if (!trimmed) {
-        setFormError("Enter the certificate reference printed on the document.");
+        setFormError("Enter the invoice number printed on the document.");
         return;
       }
       setFormError("");
@@ -139,7 +144,7 @@ export default function CertificateVerification() {
   const checked = formatTimestamp(checkedAt);
   const reference = result?.certificate_reference;
   const programme = result?.constituency
-    ? `${result.programme} · ${result.constituency} constituency`
+    ? `${result.programme} Â· ${result.constituency} constituency`
     : result?.programme;
 
   const payments = result?.payments;
@@ -157,76 +162,64 @@ export default function CertificateVerification() {
         event.preventDefault();
         lookupByReference(referenceInput);
       }}
-      className="sb-stack"
+      className="space-y-3"
     >
-      <div className="sb-field">
-        <label htmlFor="certificate-reference" className="sb-label">
-          Certificate reference
-        </label>
-        <p className="sb-hint">Printed below the QR code. Letter case and spaces do not matter.</p>
-        <input
-          id="certificate-reference"
-          name="certificate-reference"
-          value={referenceInput}
-          onChange={(event) => setReferenceInput(event.target.value)}
-          autoComplete="off"
-          autoCapitalize="characters"
-          spellCheck={false}
-          maxLength={40}
-          placeholder={REFERENCE_EXAMPLE}
-          className={`sb-input sb-code${formError ? " sb-input--error" : ""}`}
-          aria-invalid={Boolean(formError)}
-        />
-        {formError && (
-          <p className="sb-error" role="alert">
-            {formError}
-          </p>
-        )}
-      </div>
-      <div className="sb-row">
-        <button type="submit" disabled={status === "loading"} className="sb-btn sb-btn--primary">
-          {status === "loading" ? "Checking…" : "Verify certificate"}
-        </button>
-      </div>
+      <label htmlFor="certificate-reference" className="block text-sm font-semibold text-slate-900">
+        Check an approval invoice number
+      </label>
+      <p className="text-xs leading-relaxed text-slate-600">
+        Printed below the QR code, e.g. {REFERENCE_EXAMPLE}. Letter case and spaces do not matter.
+      </p>
+      <input
+        id="certificate-reference"
+        name="certificate-reference"
+        value={referenceInput}
+        onChange={(event) => setReferenceInput(event.target.value)}
+        autoComplete="off"
+        autoCapitalize="characters"
+        spellCheck={false}
+        maxLength={40}
+        placeholder={REFERENCE_EXAMPLE}
+        className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 font-mono text-sm uppercase tracking-wide text-slate-900 focus:border-[#173D35] focus:outline-none focus:ring-2 focus:ring-[#173D35]/20"
+      />
+      {formError && <p className="text-xs font-medium text-red-700">{formError}</p>}
+      <button
+        type="submit"
+        disabled={status === "loading"}
+        className="w-full rounded-md border border-[#173D35] bg-[#173D35] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#245747] disabled:opacity-60 sm:w-auto"
+      >
+        Verify invoice
+      </button>
     </form>
   );
 
   return (
     <PublicVerificationLayout>
-      <div className="sb-stack sb-stack--tight">
-        <span className="sb-eyebrow">Public verification</span>
-        <h1 className="sb-title">Bursary certificate verification</h1>
-        <p className="sb-subtitle">
-          {token ? "Scanned SBMS bursary certificate" : "Check an SBMS bursary certificate"}
+      <div>
+        <h1 className="text-xl font-bold tracking-tight text-[#173D35]">Bursary approval invoice verification</h1>
+        <p className="mt-1 text-sm text-slate-600">
+          {token ? "Scanned SBMS bursary approval invoice" : "Check an SBMS bursary approval invoice"}
         </p>
       </div>
 
-      {status === "loading" && (
-        <div style={{ marginTop: 24 }}>
-          <LoadingState message="Checking this certificate…" />
-          <div className="sb-skeleton sb-skeleton--line" style={{ marginTop: 16, width: "78%" }} aria-hidden="true" />
-          <div className="sb-skeleton sb-skeleton--line" style={{ width: "54%" }} aria-hidden="true" />
-        </div>
-      )}
+      {status === "loading" && <div className="mt-8"><LoadingState message="Checking this approval invoice..." /></div>}
 
       {status === "idle" && (
-        <div className="sb-stack" style={{ marginTop: 22 }}>
-          <p className="sb-subtitle">
-            Scan the QR code on an SBMS bursary certificate, or type the reference printed on it.
+        <div className="mt-6 space-y-5">
+          <p className="text-sm leading-relaxed text-slate-700">
+            Scan the QR code on an SBMS bursary approval invoice, or type the invoice number printed on it.
           </p>
           {referenceForm}
         </div>
       )}
 
       {status === "verified" && (
-        <div className="sb-stack" style={{ marginTop: 22 }}>
-          <StatusBadge tone="success" icon={BadgeCheck}>
-            Current certificate
-          </StatusBadge>
-          <p className="sb-subtitle">
+        <div className="mt-6 space-y-4">
+          <StatusBadge tone="success" icon={BadgeCheck}>Current approval</StatusBadge>
+          <p className="text-sm leading-relaxed text-slate-700">
             Matches an approved bursary award. Compare every field with the document in your hands.
           </p>
-          <dl className="sb-dl">
+          <dl className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2">
             <DetailRow label="Beneficiary" value={result?.beneficiary_name} />
             <DetailRow label="Institution" value={result?.institution} />
             <DetailRow label="Bursary programme" value={programme} />
@@ -234,7 +227,7 @@ export default function CertificateVerification() {
             <DetailRow label="Approved bursary award" value={formatAmount(result?.approved_amount)} />
             <DetailRow label="Date of issue" value={formatDate(result?.issued_at)} />
             <DetailRow label="Award approved on" value={formatDate(result?.award_approved_at)} />
-            <DetailRow label="Certificate reference" value={reference} mono />
+            <DetailRow label="Invoice number" value={reference} mono />
             <DetailRow label="Approval status" value="Current" />
             <DetailRow label="Payment tracking" value={paymentLabel} />
             <DetailRow
@@ -243,26 +236,24 @@ export default function CertificateVerification() {
             />
             <DetailRow label="Checked" value={checked ? `${checked} (device time)` : null} />
           </dl>
-          <p className="sb-hint">
-            A copy of these details on altered paper is not genuine, and only this live check counts.
-            Approval is not payment: the payment lines above report what SBMS has recorded, not what it has
-            promised. If any printed detail differs, treat the document as unverified.
+          <p className="text-xs leading-relaxed text-slate-600">
+            A copy of these details on altered paper is not genuine, and only this live check counts. Approval is
+            not payment: the payment lines above report what SBMS has recorded, not what it has promised. If any
+            printed detail differs, treat the document as unverified.
           </p>
           <ResetButton onClick={resetToForm} />
         </div>
       )}
 
       {status === "not-current" && (
-        <div className="sb-stack" style={{ marginTop: 22 }}>
-          <StatusBadge tone="warning" icon={AlertTriangle}>
-            No longer current
-          </StatusBadge>
-          <p className="sb-subtitle">
-            The award this certificate names has changed since it was issued, so the printed document can no
-            longer be relied on. Ask the awarding office for a replacement.
+        <div className="mt-6 space-y-4">
+          <StatusBadge tone="warning" icon={AlertTriangle}>No longer current</StatusBadge>
+          <p className="text-sm leading-relaxed text-slate-700">
+            The award this approval invoice names has changed since it was issued, so the printed document
+            can no longer be relied on. Ask the awarding office for a replacement.
           </p>
-          <dl className="sb-dl">
-            <DetailRow label="Certificate reference" value={reference} mono />
+          <dl className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2">
+            <DetailRow label="Invoice number" value={reference} mono />
             <DetailRow label="Approval status" value="Superseded" />
             <DetailRow label="Checked" value={checked ? `${checked} (device time)` : null} />
           </dl>
@@ -271,43 +262,37 @@ export default function CertificateVerification() {
       )}
 
       {status === "not-found" && (
-        <div className="sb-stack" style={{ marginTop: 22 }}>
-          <StatusBadge tone="danger" icon={ShieldQuestion}>
-            Not found
-          </StatusBadge>
-          <p className="sb-subtitle">
-            This reference was not issued by SBMS. A code copied, hand-made or altered after printing cannot
-            pass.
+        <div className="mt-6 space-y-4">
+          <StatusBadge tone="danger" icon={ShieldQuestion}>Not found</StatusBadge>
+          <p className="text-sm leading-relaxed text-slate-700">
+            This reference was not issued by SBMS. A code copied, hand-made or altered after printing
+            cannot pass.
           </p>
-          <p className="sb-hint">
-            Check the reference character by character, scan the QR code on the certificate itself, or ask the
-            awarding office to confirm.
+          <p className="text-xs leading-relaxed text-slate-600">
+            Check the invoice number character by character, scan the QR code on the invoice itself, or ask
+            the awarding office to confirm.
           </p>
-          {checked && <p className="sb-meta">Checked at {checked} (device time).</p>}
+          {checked && <p className="text-xs text-slate-600">Checked at {checked} (device time).</p>}
           <ResetButton onClick={resetToForm} />
         </div>
       )}
 
       {status === "rate-limited" && (
-        <div className="sb-stack" style={{ marginTop: 22 }}>
-          <StatusBadge tone="warning" icon={AlertTriangle}>
-            Please wait
-          </StatusBadge>
-          <p className="sb-subtitle">
-            Too many checks in a short time, so this certificate was not checked. Wait a few minutes and try
-            again.
+        <div className="mt-6 space-y-4">
+          <StatusBadge tone="warning" icon={AlertTriangle}>Please wait</StatusBadge>
+          <p className="text-sm leading-relaxed text-slate-700">
+            Too many checks in a short time, so this approval invoice was not checked. Wait a few minutes and try again.
           </p>
           <RetryButton onClick={retry}>Try again</RetryButton>
         </div>
       )}
 
       {status === "unavailable" && (
-        <div className="sb-stack" style={{ marginTop: 22 }}>
-          <StatusBadge tone="warning" icon={WifiOff}>
-            Connection problem
-          </StatusBadge>
-          <p className="sb-subtitle">
-            The verification service could not be reached, so this certificate was <strong>not</strong> checked.
+        <div className="mt-6 space-y-4">
+          <StatusBadge tone="warning" icon={WifiOff}>Connection problem</StatusBadge>
+          <p className="text-sm leading-relaxed text-slate-700">
+            The verification service could not be reached, so this approval invoice was
+            <strong> not</strong> checked.
           </p>
           <RetryButton onClick={retry} />
         </div>
@@ -315,4 +300,3 @@ export default function CertificateVerification() {
     </PublicVerificationLayout>
   );
 }
-

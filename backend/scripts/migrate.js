@@ -26,14 +26,22 @@ const MIGRATION_ORDER = Object.freeze([
   '20261113_notifications_dismiss_on_read.sql',
   '20261115_password_reset_tokens.sql',
   '20261115_eligibility_assessments_and_duplicate_resolution.sql',
-  '20261116_student_applications.sql',
-  '20261116_application_duplicate_cases.sql',
-  '20261116_application_submission_guard.sql',
-  '20261117_application_closure.sql',
+  '20261119_guardian_accounts.sql',
 ]);
 
 const MANUAL_MIGRATIONS = Object.freeze([
   '20261023_retain_primary_accounts.sql',
+]);
+
+// Applied on the former guardian-led redesign and intentionally absent from this tree.
+// The ledger rows are kept (history is never rewritten) and the SQL remains recoverable
+// from commit 80badde, but the runner treats these as retired: never pending and never
+// re-applied. Removing objects they created is a separate, reviewed decision.
+const RETIRED_MIGRATIONS = Object.freeze([
+  '20261116_student_applications.sql',
+  '20261116_application_duplicate_cases.sql',
+  '20261116_application_submission_guard.sql',
+  '20261117_application_closure.sql',
 ]);
 
 function validateTargetDatabaseUrl(value) {
@@ -121,9 +129,10 @@ async function run() {
       ? await client.query('SELECT name FROM public.sbms_schema_migrations ORDER BY name')
       : { rows: [] };
     const appliedNames = new Set(applied.rows.map((row) => row.name));
-    const knownNames = new Set(files.map((item) => item.name));
+    const knownNames = new Set([...files.map((item) => item.name), ...RETIRED_MIGRATIONS]);
     const unknownApplied = [...appliedNames].filter((name) => !knownNames.has(name));
     if (unknownApplied.length) throw new Error(`Migration ledger has unknown entries: ${unknownApplied.join(', ')}.`);
+    const retiredApplied = RETIRED_MIGRATIONS.filter((name) => appliedNames.has(name));
     const pending = files.filter((item) => !item.manual && !appliedNames.has(item.name));
 
     if (command === 'status' || command === 'dry-run') {
@@ -132,6 +141,7 @@ async function run() {
       console.log(`Applied migrations: ${appliedNames.size}`);
       console.log(`Pending migrations: ${pending.length ? pending.map((item) => item.name).join(', ') : 'none'}`);
       console.log(`Manual-only migrations: ${MANUAL_MIGRATIONS.join(', ')}`);
+      console.log(`Retired migrations (ledger-only, files absent): ${retiredApplied.length ? retiredApplied.join(', ') : 'none'}`);
       if (!ledgerExists.rows[0].exists) console.log('Ledger absent. Application is blocked until schema history is explicitly adopted.');
       if (command === 'dry-run') console.log('Dry run only; no schema changes were made.');
       return;
@@ -192,6 +202,7 @@ async function run() {
       }
     }
     console.log(`Migration run complete. Applied ${pending.length} migration(s).`);
+    if (retiredApplied.length) console.log(`Retired migrations left untouched: ${retiredApplied.join(', ')}`);
     if (MANUAL_MIGRATIONS.length) console.log(`Not applied (manual decision required): ${MANUAL_MIGRATIONS.join(', ')}`);
   } finally {
     if (migrationLockAcquired) {
@@ -208,4 +219,6 @@ if (require.main === module) {
   });
 }
 
-module.exports = { listMigrationFiles, parseAdoptionList, validateTargetDatabaseUrl, MIGRATION_ORDER, MANUAL_MIGRATIONS };
+module.exports = {
+  listMigrationFiles, parseAdoptionList, validateTargetDatabaseUrl, MIGRATION_ORDER, MANUAL_MIGRATIONS, RETIRED_MIGRATIONS,
+};

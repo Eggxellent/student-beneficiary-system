@@ -99,6 +99,10 @@ def _identifier_similarity(first: object, second: object) -> float:
             left = left[len(prefix):]
         if right.startswith(prefix):
             right = right[len(prefix):]
+    # A value that was only a field prefix (for example "UPI-" or "BC-") carries no
+    # identifier characters. Two of them must not become a perfect match.
+    if not left or not right:
+        return 0.0
     if left == right:
         return 1.0
     return float(jellyfish.jaro_winkler_similarity(left, right)) if left and right else 0.0

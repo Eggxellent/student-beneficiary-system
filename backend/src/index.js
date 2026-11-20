@@ -10,7 +10,6 @@ const beneficiariesRouter = require('./routes/beneficiaries.routes');
 const authRouter = require('./routes/auth.routes');
 const auditRouter = require('./routes/audit.routes');
 const studentsRouter = require('./routes/students.routes');
-const applicationsRouter = require('./routes/applications.routes');
 const verificationController = require('./controllers/verification.controller');
 const verificationRateLimit = require('./middleware/verificationRateLimit');
 const certificatesController = require('./controllers/certificates.controller');
@@ -23,6 +22,7 @@ const eligibilityRouter = require('./routes/eligibility.routes');
 const adminDashboardRouter = require('./routes/adminDashboard.routes');
 const usersRouter = require('./routes/users.routes');
 const notificationsRouter = require('./routes/notifications.routes');
+const guardianRouter = require('./routes/guardian.routes');
 const errorHandler = require('./middleware/errorHandler');
 const { getAllowedOrigins } = require('./config/cors');
 
@@ -90,7 +90,6 @@ app.use('/api/beneficiaries', beneficiariesRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/audit-logs', auditRouter);
 app.use('/api/students', studentsRouter);
-app.use('/api/applications', applicationsRouter);
 app.use('/api/duplicate-flags', duplicateFlagsRouter);
 app.use('/api/awards', bursaryAwardsRouter);
 app.use('/api/settings', settingsRouter);
@@ -99,6 +98,7 @@ app.use('/api/eligibility', eligibilityRouter);
 app.use('/api/admin/dashboard', adminDashboardRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/guardian', guardianRouter);
 app.use(errorHandler);
 
 if (require.main === module) {

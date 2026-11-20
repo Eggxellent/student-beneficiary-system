@@ -32,31 +32,6 @@ function Brand() {
   );
 }
 
-function HeroPanel() {
-  return (
-    <aside className="sbms-auth-hero">
-      <div className="sbms-auth-hero-copy">
-        <h2 className="sbms-auth-hero-title">Welcome to the<br />student beneficiary system</h2>
-        <p className="sbms-auth-hero-subtitle">One place to review applications, track awards and keep every beneficiary record accurate.</p>
-      </div>
-      <svg className="sbms-auth-hero-art" viewBox="0 0 320 220" role="img" aria-hidden="true" focusable="false">
-        <circle cx="262" cy="44" r="34" fill="rgb(200 164 93 / 28%)" />
-        <circle cx="42" cy="188" r="26" fill="rgb(255 255 255 / 12%)" />
-        <rect x="54" y="50" width="156" height="122" rx="12" fill="#f7faf8" />
-        <rect x="72" y="72" width="86" height="9" rx="4.5" fill="#c8a45d" />
-        <rect x="72" y="94" width="118" height="7" rx="3.5" fill="#c6d6cd" />
-        <rect x="72" y="111" width="104" height="7" rx="3.5" fill="#c6d6cd" />
-        <rect x="72" y="128" width="118" height="7" rx="3.5" fill="#d8e3dc" />
-        <rect x="72" y="145" width="72" height="7" rx="3.5" fill="#d8e3dc" />
-        <rect x="168" y="112" width="110" height="80" rx="12" fill="#12312a" stroke="rgb(255 255 255 / 26%)" />
-        <path d="M196 150l11 11 24-26" fill="none" stroke="#c8a45d" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-        <rect x="180" y="172" width="56" height="6" rx="3" fill="rgb(255 255 255 / 42%)" />
-      </svg>
-    </aside>
-  );
-}
-
-
 export default function Login() {
   const navigate = useNavigate();
   const { login, isAuthenticated, user, authLoading } = useAuth();
@@ -84,7 +59,14 @@ export default function Login() {
   }, [resetOpen]);
 
   if (authLoading) return null;
-  if (isAuthenticated) return <Navigate to={user?.role === "admin" ? "/dashboard" : "/field-officer"} replace />;
+  if (isAuthenticated) {
+    const home = user?.role === "admin"
+      ? "/dashboard"
+      : user?.role === "guardian"
+        ? "/guardian/dashboard"
+        : "/field-officer";
+    return <Navigate to={home} replace />;
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -95,7 +77,13 @@ export default function Login() {
     setLoading(true);
     try {
       const account = await login(email, password);
-      navigate(account.role === "admin" ? "/dashboard" : "/field-officer");
+      navigate(
+        account.role === "admin"
+          ? "/dashboard"
+          : account.role === "guardian"
+            ? "/guardian/dashboard"
+            : "/field-officer"
+      );
     } catch (err) {
       setError(
         err.response?.data?.message ||
@@ -127,13 +115,13 @@ export default function Login() {
 
   return (
     <>
-      <main className="sbms-login-screen sbms-login-screen--split">
-        <section className="sbms-auth-card">
-          <div className="sbms-auth-form">
-            <div className="sbms-auth-form-inner">
-              <Brand />
-              <h1 className="sbms-auth-heading">Sign in</h1>
-              <p className="sbms-auth-subtitle">Enter your account details to continue.</p>
+      <main className="sbms-login-screen">
+        <section className="sbms-login-panel sbms-login-panel--narrow">
+          <div className="sbms-auth-form-inner">
+            <Brand />
+            <h1 className="sbms-auth-heading">Sign in</h1>
+            <p className="sbms-auth-subtitle">Enter your account details to continue.</p>
+
 
               {error && (
                 <div className="sbms-login-error mb-4 p-3 rounded" role="alert">
@@ -201,10 +189,7 @@ export default function Login() {
               <p className="sbms-auth-note">
                 Accounts are issued by an administrator. Ask them for access or a one-time password reset link.
               </p>
-            </div>
           </div>
-
-          <HeroPanel />
         </section>
       </main>
 

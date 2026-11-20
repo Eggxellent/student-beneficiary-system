@@ -58,60 +58,48 @@ export default function Verification() {
 
   return (
     <PublicVerificationLayout>
-      <div className="sb-stack sb-stack--tight">
-        <span className="sb-eyebrow">Public verification</span>
-        <h1 className="sb-title">Student record verification</h1>
-        <p className="sb-subtitle">Scanned SBMS student QR code</p>
+      <div>
+        <h1 className="text-xl font-bold tracking-tight text-[#173D35]">Student record verification</h1>
+        <p className="mt-1 text-sm text-slate-600">Scanned SBMS student QR code</p>
       </div>
 
-      {status === "loading" && (
-        <div style={{ marginTop: 24 }}>
-          <LoadingState message="Checking this code…" />
-          <div className="sb-skeleton sb-skeleton--line" style={{ marginTop: 16, width: "82%" }} aria-hidden="true" />
-          <div className="sb-skeleton sb-skeleton--line" style={{ width: "58%" }} aria-hidden="true" />
-        </div>
-      )}
+      {status === "loading" && <div className="mt-8"><LoadingState message="Checking this code..." /></div>}
 
       {status === "found" && (
-        <div className="sb-stack" style={{ marginTop: 22 }}>
-          <StatusBadge tone="success" icon={ShieldCheck}>
-            Record found
-          </StatusBadge>
-          <p className="sb-subtitle">This code matches a student record held by the awarding office.</p>
-          <dl className="sb-dl">
+        <div className="mt-6 space-y-4">
+          <StatusBadge tone="success" icon={ShieldCheck}>Record found</StatusBadge>
+          <p className="text-sm leading-relaxed text-slate-700">
+            This code matches a student record held by the awarding office.
+          </p>
+          <dl className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2">
             <DetailRow label="Result" value="Student record exists" />
             <DetailRow label="Checked" value={checked ? `${checked} (device time)` : null} />
           </dl>
-          <p className="sb-hint">
-            Confirms the record exists only — not identity, eligibility, approval or payment. A bursary
+          <p className="text-xs leading-relaxed text-slate-600">
+            Confirms the record exists only - not identity, eligibility, approval or payment. A bursary
             certificate has its own QR code. Confirm identity with the awarding office before releasing funds.
           </p>
         </div>
       )}
 
       {status === "invalid" && (
-        <div className="sb-stack" style={{ marginTop: 22 }}>
-          <StatusBadge tone="danger" icon={ShieldQuestion}>
-            Not verified
-          </StatusBadge>
-          <p className="sb-subtitle">
-            No student record matches this code. It may be damaged or belong to another system; this does not
-            prove a person is not registered.
+        <div className="mt-6 space-y-4">
+          <StatusBadge tone="danger" icon={ShieldQuestion}>Not verified</StatusBadge>
+          <p className="text-sm leading-relaxed text-slate-700">
+            No student record matches this code. It may be damaged or belong to another system; this does
+            not prove a person is not registered.
           </p>
-          <p className="sb-hint">
-            Scan again in good light, check you scanned the student QR code, or ask the awarding office to
-            confirm directly.
+          <p className="text-xs leading-relaxed text-slate-600">
+            Scan again in good light, check you scanned the student QR code, or ask the awarding office to confirm directly.
           </p>
-          {checked && <p className="sb-meta">Checked at {checked} (device time).</p>}
+          {checked && <p className="text-xs text-slate-600">Checked at {checked} (device time).</p>}
         </div>
       )}
 
       {status === "rate-limited" && (
-        <div className="sb-stack" style={{ marginTop: 22 }}>
-          <StatusBadge tone="warning" icon={AlertTriangle}>
-            Please wait
-          </StatusBadge>
-          <p className="sb-subtitle">
+        <div className="mt-6 space-y-4">
+          <StatusBadge tone="warning" icon={AlertTriangle}>Please wait</StatusBadge>
+          <p className="text-sm leading-relaxed text-slate-700">
             Too many checks in a short time, so this code was not checked. Wait a few minutes and try again.
           </p>
           <RetryButton onClick={() => setAttempt((value) => value + 1)}>Try again</RetryButton>
@@ -119,16 +107,15 @@ export default function Verification() {
       )}
 
       {status === "unavailable" && (
-        <div className="sb-stack" style={{ marginTop: 22 }}>
-          <StatusBadge tone="warning" icon={WifiOff}>
-            Connection problem
-          </StatusBadge>
-          <p className="sb-subtitle">
+        <div className="mt-6 space-y-4">
+          <StatusBadge tone="warning" icon={WifiOff}>Connection problem</StatusBadge>
+          <p className="text-sm leading-relaxed text-slate-700">
             The verification service could not be reached, so this code was <strong>not</strong> checked.
           </p>
           <RetryButton onClick={() => setAttempt((value) => value + 1)} />
         </div>
       )}
+
     </PublicVerificationLayout>
   );
 }

@@ -9,7 +9,11 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role VARCHAR(50) NOT NULL DEFAULT 'field_officer',
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
-  CONSTRAINT users_role_supported_check CHECK (role IN ('admin', 'field_officer')),
+  phone VARCHAR(50),
+  national_id VARCHAR(100),
+  relationship_to_student VARCHAR(50),
+  last_login_at TIMESTAMP,
+  CONSTRAINT users_role_supported_check CHECK (role IN ('admin', 'field_officer', 'guardian')),
   created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -19,7 +23,7 @@ BEGIN
     SELECT 1 FROM pg_constraint WHERE conname = 'users_role_supported_check'
   ) THEN
     ALTER TABLE users ADD CONSTRAINT users_role_supported_check
-      CHECK (role IN ('admin', 'field_officer'));
+      CHECK (role IN ('admin', 'field_officer', 'guardian'));
   END IF;
 END $$;
 
@@ -170,3 +174,40 @@ CREATE TABLE IF NOT EXISTS beneficiaries (
   scholarship_amount NUMERIC DEFAULT 0,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE SEQUENCE IF NOT EXISTS guardian_application_reference_seq START WITH 1000;
+
+CREATE TABLE IF NOT EXISTS guardian_applications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reference VARCHAR(20) UNIQUE NOT NULL,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status VARCHAR(20) NOT NULL DEFAULT 'submitted',
+  student_full_name VARCHAR(255) NOT NULL,
+  student_date_of_birth DATE,
+  student_gender VARCHAR(20),
+  student_identifier VARCHAR(100),
+  relationship_to_student VARCHAR(50),
+  school_name VARCHAR(255) NOT NULL,
+  school_level VARCHAR(50),
+  admission_number VARCHAR(100),
+  class_year VARCHAR(100),
+  school_county VARCHAR(150),
+  guardian_full_name VARCHAR(255) NOT NULL,
+  guardian_phone VARCHAR(50) NOT NULL,
+  household_size INTEGER,
+  income_source VARCHAR(150),
+  monthly_income NUMERIC(14, 2),
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  decision_note TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  decided_at TIMESTAMP,
+  CONSTRAINT guardian_applications_status_check
+    CHECK (status IN ('submitted', 'under_review', 'approved', 'rejected'))
+);
+
+CREATE INDEX IF NOT EXISTS guardian_applications_user_created_idx
+  ON guardian_applications (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS guardian_applications_status_created_idx
+  ON guardian_applications (status, created_at DESC);

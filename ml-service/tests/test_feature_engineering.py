@@ -39,6 +39,25 @@ class FeatureEngineeringTest(unittest.TestCase):
         self.assertEqual(features["upi_match"], 0)
         self.assertEqual(features["birth_certificate_match"], 0)
 
+    def test_identifier_that_is_only_a_field_prefix_is_not_a_match(self):
+        first = {
+            "full_name": "Nia Wanjiku",
+            "guardian_id": "G-",
+            "upi": "UPI-",
+            "birth_certificate_number": "BC-",
+        }
+        second = {
+            "full_name": "Brian Otieno",
+            "guardian_id": "G-",
+            "upi": "UPI-",
+            "birth_certificate_number": "BC-",
+        }
+        features = build_pair_features(first, second)
+
+        self.assertEqual(features["guardian_match"], 0)
+        self.assertEqual(features["upi_match"], 0)
+        self.assertEqual(features["birth_certificate_match"], 0)
+
     def test_pair_prediction_uses_shared_features_and_returns_positive_class_score(self):
         class FakeModel:
             classes_ = [0, 1]

@@ -29,6 +29,27 @@
   --color-gray-600: #53615a;
   --color-sky-500: #173d35;
   --color-sky-600: #245747;
+
+  /* Semantic tokens for the public/guardian surface: named aliases of the SBMS palette above,
+     so new pages read like a design system without introducing a second colour scheme. */
+  --color-background: #f5f7f6;
+  --color-foreground: #202a26;
+  --color-card: #ffffff;
+  --color-card-foreground: #202a26;
+  --color-primary: #173d35;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #245747;
+  --color-secondary-foreground: #ffffff;
+  --color-muted: #edf1ee;
+  --color-muted-foreground: #68756f;
+  --color-accent: #e4eee8;
+  --color-accent-foreground: #173d35;
+  --color-sage: #e4eee8;
+  --color-gold: #c8a45d;
+  --color-border: #dfe6e1;
+  --color-input: #dfe6e1;
+  --color-ring: #c8a45d;
+  --color-destructive: #b42318;
 }
 
 :root {
@@ -905,6 +926,24 @@
 }
 
 /* Short laptop screens: let the card hug its content instead of forcing a tall frame. */
+/* The sign-in panel is a glass card over the landscape photograph, so the muted footnote grey used
+   elsewhere in the app washes out. These overrides stay inside the panel only. */
+.sbms-login-panel .sbms-auth-subtitle,
+.sbms-login-panel .sbms-auth-note {
+  color: rgb(18 41 63 / 78%);
+}
+
+.sbms-login-panel .sbms-auth-note a {
+  color: var(--sbms-forest);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sbms-login-panel .sbms-login-field {
+  color: rgb(18 41 63 / 88%);
+}
+
 @media (max-height: 760px) and (min-width: 981px) {
   .sbms-auth-card {
     min-height: 0;

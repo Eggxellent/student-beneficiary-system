@@ -52,22 +52,7 @@ const CASE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 const REVEALED_IDENTIFIER_FIELDS = ['guardian_contact', 'upi', 'birth_certificate_number', 'national_id_number'];
 
 function toReviewCase(row) {
-  // An application case has no student yet: its subject is the application, and its comparison is
-  // application-vs-existing-student. One queue, one evidence vocabulary, two subject types
-  // (docs/phase3-duplicate-schema-review.md section 3).
-  const applicationCase = !row.student_id && Boolean(row.application_id);
-  const applicationSubject = {
-    full_name: row.application_name,
-    date_of_birth: row.application_date_of_birth,
-    school_code: row.application_school,
-    guardian_id: null,
-    primary_phone: row.application_primary_phone || row.application_guardian_phone,
-    upi: row.application_upi,
-    birth_certificate_number: row.application_birth_certificate_number,
-    national_id_number: row.application_national_id_number,
-    is_synthetic: false,
-  };
-  const first = applicationCase ? applicationSubject : {
+  const first = {
     full_name: row.student_name,
     date_of_birth: row.student_date_of_birth,
     school_code: row.student_school,
@@ -129,8 +114,6 @@ function toReviewCase(row) {
 
   return {
     id: row.id,
-    subject_type: applicationCase ? 'application' : 'student',
-    application_id: row.application_id || null,
     model_score: row.model_version ? score : null,
     legacy_rule_score: row.model_version ? null : score,
     score_type: row.model_version ? 'unvalidated_model_score' : 'legacy_rule_score',
@@ -143,36 +126,8 @@ function toReviewCase(row) {
     reason,
     exact_identifier_matches: exactIdentifiers,
     students: [
-      {
-        reference: applicationCase ? row.application_id : row.student_id,
-        record_type: applicationCase ? 'application' : 'student',
-        full_name: first.full_name,
-        is_synthetic: first.is_synthetic,
-        date_of_birth: first.date_of_birth,
-        school: first.school_code,
-        school_code: first.school_code,
-        guardian_contact: maskIdentifier(first.primary_phone),
-        upi: maskIdentifier(first.upi),
-        birth_certificate_number: maskIdentifier(first.birth_certificate_number),
-        national_id_number: maskIdentifier(first.national_id_number),
-        duplicate_of_student_id: applicationCase ? null : (row.student_duplicate_of || null),
-        application_status: applicationCase ? row.application_status : null,
-      },
-      {
-        reference: row.matched_student_id,
-        record_type: 'student',
-        full_name: second.full_name,
-        is_synthetic: second.is_synthetic,
-        date_of_birth: second.date_of_birth,
-        school: second.school_code,
-        school_code: second.school_code,
-        guardian_contact: maskIdentifier(second.primary_phone),
-        upi: maskIdentifier(second.upi),
-        birth_certificate_number: maskIdentifier(second.birth_certificate_number),
-        national_id_number: maskIdentifier(second.national_id_number),
-        duplicate_of_student_id: row.matched_duplicate_of || null,
-        application_status: null,
-      },
+      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code, school_code: first.school_code, guardian_contact: maskIdentifier(first.primary_phone), upi: maskIdentifier(first.upi), birth_certificate_number: maskIdentifier(first.birth_certificate_number), national_id_number: maskIdentifier(first.national_id_number), duplicate_of_student_id: row.student_duplicate_of || null },
+      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code, school_code: second.school_code, guardian_contact: maskIdentifier(second.primary_phone), upi: maskIdentifier(second.upi), birth_certificate_number: maskIdentifier(second.birth_certificate_number), national_id_number: maskIdentifier(second.national_id_number), duplicate_of_student_id: row.matched_duplicate_of || null },
     ],
     resolution: row.resolution_id ? {
       id: row.resolution_id,
@@ -247,7 +202,7 @@ async function scanExisting(req, res, next) {
        ORDER BY created_at ASC, id ASC`
     );
     const { rows: existingFlags } = await pool.query(
-      'SELECT student_id, matched_student_id FROM duplicate_flags WHERE student_id IS NOT NULL'
+      'SELECT student_id, matched_student_id FROM duplicate_flags'
     );
     const pairKey = (firstId, secondId) => [String(firstId), String(secondId)].sort().join(':');
     const knownPairs = new Set(existingFlags.map((flag) => pairKey(flag.student_id, flag.matched_student_id)));
@@ -349,15 +304,6 @@ async function list(req, res, next) {
     const result = await pool.query(
       `SELECT df.id, df.probability, df.status, df.created_at,
               df.updated_at, df.model_version, df.review_threshold, df.comparison_features,
-              df.application_id,
-              a.full_name AS application_name, a.status AS application_status,
-              TO_CHAR(a.date_of_birth, 'YYYY-MM-DD') AS application_date_of_birth,
-              a.school_code AS application_school,
-              a.upi AS application_upi,
-              a.birth_certificate_number AS application_birth_certificate_number,
-              a.national_id_number AS application_national_id_number,
-              a.primary_phone AS application_primary_phone,
-              a.guardian_phone AS application_guardian_phone,
               s1.id AS student_id, s2.id AS matched_student_id,
               s1.is_synthetic AS student_is_synthetic, s2.is_synthetic AS matched_student_is_synthetic,
               s1.full_name AS student_name, s1.school_code AS student_school,
@@ -387,8 +333,7 @@ async function list(req, res, next) {
               s1.guardian_id IS NOT DISTINCT FROM s2.guardian_id AS guardian_match,
               s1.upi IS NOT DISTINCT FROM s2.upi AS upi_match
        FROM duplicate_flags df
-       LEFT JOIN students s1 ON df.student_id = s1.id
-       LEFT JOIN student_applications a ON a.id = df.application_id
+       JOIN students s1 ON df.student_id = s1.id
        JOIN students s2 ON df.matched_student_id = s2.id
        LEFT JOIN duplicate_resolutions dfr ON dfr.duplicate_flag_id = df.id
        LEFT JOIN users resolver ON resolver.id = dfr.resolved_by
@@ -466,15 +411,7 @@ async function revealIdentifiers(req, res, next) {
       return res.status(404).json({ message: 'Duplicate flag not found' });
     }
     const { rows } = await pool.query(
-      `SELECT df.id, df.application_id,
-              a.full_name AS application_name,
-              TO_CHAR(a.date_of_birth, 'YYYY-MM-DD') AS application_date_of_birth,
-              a.school_code AS application_school,
-              a.upi AS application_upi,
-              a.birth_certificate_number AS application_birth_certificate_number,
-              a.national_id_number AS application_national_id_number,
-              a.primary_phone AS application_primary_phone,
-              a.guardian_phone AS application_guardian_phone,
+      `SELECT df.id,
               s1.id AS student_id, s1.full_name AS student_name,
               s1.is_synthetic AS student_is_synthetic,
               TO_CHAR(s1.date_of_birth, 'YYYY-MM-DD') AS student_date_of_birth,
@@ -492,8 +429,7 @@ async function revealIdentifiers(req, res, next) {
               s2.birth_certificate_number AS matched_birth_certificate_number,
               s2.national_id_number AS matched_national_id_number
        FROM duplicate_flags df
-       LEFT JOIN students s1 ON df.student_id = s1.id
-       LEFT JOIN student_applications a ON a.id = df.application_id
+       JOIN students s1 ON df.student_id = s1.id
        JOIN students s2 ON df.matched_student_id = s2.id
        WHERE df.id = $1`,
       [req.params.id]
@@ -501,20 +437,17 @@ async function revealIdentifiers(req, res, next) {
     const row = rows[0];
     if (!row) return res.status(404).json({ message: 'Duplicate flag not found' });
 
-    // A case has exactly one subject (duplicate_flags_case_kind_check), so `||` cannot pick the wrong
-    // record: either the registration columns or the application columns are present, never both.
     const students = [
       {
-        reference: row.student_id || row.application_id,
-        record_type: row.student_id ? 'student' : 'application',
-        full_name: row.student_name || row.application_name,
-        is_synthetic: row.student_id ? row.student_is_synthetic : false,
-        date_of_birth: row.student_date_of_birth || row.application_date_of_birth,
-        school_code: row.student_school || row.application_school,
-        guardian_contact: row.student_guardian_contact || row.application_guardian_phone,
-        upi: row.student_upi || row.application_upi,
-        birth_certificate_number: row.student_birth_certificate_number || row.application_birth_certificate_number,
-        national_id_number: row.student_national_id_number || row.application_national_id_number,
+        reference: row.student_id,
+        full_name: row.student_name,
+        is_synthetic: row.student_is_synthetic,
+        date_of_birth: row.student_date_of_birth,
+        school_code: row.student_school,
+        guardian_contact: row.student_guardian_contact,
+        upi: row.student_upi,
+        birth_certificate_number: row.student_birth_certificate_number,
+        national_id_number: row.student_national_id_number,
       },
       {
         reference: row.matched_student_id,
@@ -530,15 +463,13 @@ async function revealIdentifiers(req, res, next) {
     ];
 
     await logAudit(req.user.id || req.user.sub, 'REVEAL_DUPLICATE_IDENTIFIERS', 'duplicate_flags', row.id, {
-      student_ids: [row.student_id, row.matched_student_id].filter(Boolean),
-      application_id: row.application_id || null,
+      student_ids: [row.student_id, row.matched_student_id],
       fields: REVEALED_IDENTIFIER_FIELDS,
       purpose: 'manual verification of a duplicate-review case',
     });
 
     res.json({
       case_id: row.id,
-      subject_type: row.student_id ? 'student' : 'application',
       revealed_at: new Date().toISOString(),
       revealed_fields: REVEALED_IDENTIFIER_FIELDS,
       students,
@@ -575,32 +506,6 @@ async function update(req, res, next) {
     }
 
     const flag = result.rows[0];
-    // Application cases share this endpoint with registration cases. The application is the record
-    // the workflow then acts on, so the decision has to move it too: confirming a duplicate names
-    // the matched student, clearing the case returns the application to the verification queue, and
-    // asking for more verification leaves its status alone
-    // (docs/phase3-duplicate-schema-review.md section 3.4).
-    if (flag.application_id) {
-      const synced = await client.query(
-        `UPDATE student_applications
-            SET status = CASE WHEN $2 = 'confirmed_duplicate' THEN 'resolved'
-                              WHEN $2 = 'not_duplicate' THEN 'screened'
-                              ELSE status END,
-                duplicate_of_student_id = CASE WHEN $2 = 'confirmed_duplicate' THEN $3 ELSE duplicate_of_student_id END,
-                decision_reason = $4,
-                updated_at = NOW()
-          WHERE id = $1 AND status IN ('submitted', 'screened', 'needs_investigation', 'investigated')
-          RETURNING id, status`,
-        [flag.application_id, decision, flag.matched_student_id, reason],
-      );
-      if (!synced.rows.length) {
-        await client.query('ROLLBACK');
-        return res.status(409).json({
-          code: 'INVALID_STATE',
-          message: 'This application is no longer awaiting verification, so its duplicate case cannot be decided here.',
-        });
-      }
-    }
     await client.query(
       `INSERT INTO duplicate_review_events (duplicate_flag_id, reviewer_id, decision, reason, notes)
        VALUES ($1, $2, $3, $4, $5)`,
@@ -650,17 +555,6 @@ async function resolve(req, res, next) {
     if (!flag) {
       await client.query('ROLLBACK');
       return res.status(404).json({ message: 'Duplicate case not found.' });
-    }
-    // An application case has no duplicate student to mark yet: the application is the subject, and
-    // `duplicate_resolutions` requires two student rows. The application endpoint performs the
-    // equivalent write and records both audit trails, so this one refuses by name rather than
-    // failing on a null student id (section 3.4 / P3-5).
-    if (flag.application_id) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({
-        code: 'APPLICATION_CASE',
-        message: 'This case belongs to an application. Resolve it with POST /api/applications/:id/resolve so the application, the case and the audit trail stay in step.',
-      });
     }
     if (flag.status !== 'confirmed_duplicate') {
       await client.query('ROLLBACK');

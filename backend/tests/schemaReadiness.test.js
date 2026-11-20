@@ -21,8 +21,8 @@ describe('Database schema readiness', () => {
       'bursary_certificates',
       'duplicate_flags',
       'duplicate_review_events',
+      'guardian_applications',
       'reports',
-      'student_applications',
       'students',
       'users',
     ]);
@@ -35,6 +35,15 @@ describe('Database schema readiness', () => {
     );
 
     expect(ready).toBe(true);
+  });
+
+  test('checkDatabaseReadiness refuses a database that lacks guardian_applications', async () => {
+    const { ready } = await checkDatabaseReadiness(
+      async () => ({ rows: [{ database_name: 'sbms_test', missing_tables: ['guardian_applications'] }] }),
+      { expectedDatabaseName: undefined },
+    );
+
+    expect(ready).toBe(false);
   });
 
   test('the legacy beneficiaries table exists with the columns the model uses', async () => {

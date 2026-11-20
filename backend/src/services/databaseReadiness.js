@@ -3,7 +3,6 @@
 const REQUIRED_TABLES = Object.freeze([
   'users',
   'students',
-  'student_applications',
   'beneficiaries',
   'duplicate_flags',
   'duplicate_review_events',
@@ -12,6 +11,7 @@ const REQUIRED_TABLES = Object.freeze([
   'bursary_awards',
   'bursary_award_verification_events',
   'bursary_certificates',
+  'guardian_applications',
 ]);
 
 const READINESS_QUERY = `

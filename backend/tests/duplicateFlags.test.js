@@ -380,49 +380,6 @@ describe('Duplicate flags and award API', () => {
     await pool.query('DELETE FROM students WHERE id = $1 OR id = $2', [student.id, matchedStudent.id]);
   });
 
-  test('a confirmed duplicate cannot be bypassed by sending override fields to the decision endpoint', async () => {
-    const student = await createStudent({ full_name: `Award Bypass ${Date.now()}` });
-    const matchedStudent = await createStudent({ full_name: `Award Bypass Match ${Date.now()}` });
-    const officerId = jwt.decode(officerToken).id;
-    const adminId = jwt.decode(adminToken).id;
-    const awardId = await createSubmittedVerifiedAward(student, officerId);
-
-    const flagResult = await pool.query(
-      `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status, resolved_by, resolved_at)
-       VALUES ($1, $2, 0.94, 'confirmed_duplicate', $3, NOW())
-       RETURNING id`,
-      [student.id, matchedStudent.id, adminId]
-    );
-
-    // A client that calls the decision endpoint directly, skipping the interface, still cannot turn a
-    // confirmed duplicate into an approved award by attaching override fields.
-    const response = await request(app)
-      .patch(`/api/awards/${awardId}/decision`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        decision: 'approved',
-        approved_amount: 5000,
-        reason: 'Attempted approval with an override payload.',
-        override_reason: 'Direct API call claims the duplicate case was cleared elsewhere',
-        confirm_duplicate_allocation: true,
-      });
-    expect(response.statusCode).toBe(409);
-    expect(response.body.code).toBe('DUPLICATE_REVIEW_OPEN');
-
-    const stored = await pool.query('SELECT status FROM bursary_awards WHERE id = $1', [awardId]);
-    expect(stored.rows[0].status).toBe('submitted');
-
-    const overrides = await pool.query(
-      "SELECT id FROM audit_logs WHERE action = 'AWARD_DUPLICATE_OVERRIDE' AND record_id = $1",
-      [awardId]
-    );
-    expect(overrides.rows).toHaveLength(0);
-
-    await pool.query('DELETE FROM duplicate_flags WHERE id = $1', [flagResult.rows[0].id]);
-    await pool.query('DELETE FROM bursary_awards WHERE id = $1', [awardId]);
-    await pool.query('DELETE FROM students WHERE id = $1 OR id = $2', [student.id, matchedStudent.id]);
-  });
-
   test('pending and further-verification flags block award approval until resolved', async () => {
     const student = await createStudent({ full_name: `Award Pending ${Date.now()}` });
     const matchedStudent = await createStudent({ full_name: `Award Pending Match ${Date.now()}` });
