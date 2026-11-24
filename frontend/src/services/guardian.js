@@ -39,15 +39,26 @@ export async function fetchGuardianApplication(reference) {
 }
 
 export function apiErrorMessage(error, fallback) {
-  const details = error.response?.data?.details;
+  const response = error?.response;
+  const details = response?.data?.details;
   const fieldErrors = details?.fieldErrors || details?.flatten?.()?.fieldErrors;
   const firstFieldError = fieldErrors
     ? Object.values(fieldErrors).flat().filter(Boolean)[0]
     : undefined;
-  return (
-    firstFieldError ||
-    error.response?.data?.error ||
-    error.response?.data?.message ||
-    fallback
-  );
+  const serverMessage =
+    firstFieldError || response?.data?.error || response?.data?.message;
+
+  if (serverMessage) return serverMessage;
+
+  // A response without a readable body (a proxy error page, for example) still carries the
+  // status, so show it instead of blaming the values the user typed.
+  if (response) return `${fallback} (server status ${response.status})`;
+
+  // No response at all means the request never reached the API. Saying so is the difference
+  // between "your details are wrong" and "the backend is not running".
+  if (error?.request) {
+    return "Cannot reach the server. Check that the API is running, then try again.";
+  }
+
+  return fallback;
 }
