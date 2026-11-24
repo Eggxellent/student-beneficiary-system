@@ -1,0 +1,98 @@
+{
+  "experiment": "fresh XGBoost model trained only on raw_pairs.csv training partition",
+  "dataset_sha256": "65fc50e9e8ef02c32ab58f6e1c95555d90ac644d793e71c514993a3649db56c2",
+  "rows": 10000,
+  "target": "label (0=non-duplicate, 1=duplicate)",
+  "class_counts": {
+    "0": 5000,
+    "1": 5000
+  },
+  "split": {
+    "method": "same first fold of StratifiedGroupKFold(n_splits=5, shuffle=True) as Random Forest run",
+    "seed": 20261021,
+    "ratio": "approximately 80/20",
+    "train_rows": 8000,
+    "test_rows": 2000,
+    "train_groups": 4000,
+    "test_groups": 1000,
+    "train_class_counts": {
+      "0": 4000,
+      "1": 4000
+    },
+    "test_class_counts": {
+      "0": 1000,
+      "1": 1000
+    },
+    "group_ids_in_both_splits": 0,
+    "exact_record_signatures_in_both_splits": 0,
+    "exact_unordered_pairs_in_both_splits": 0
+  },
+  "model": {
+    "algorithm": "XGBClassifier",
+    "parameters": {
+      "n_estimators": 250,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "subsample": 0.9,
+      "colsample_bytree": 0.9,
+      "reg_lambda": 1.0,
+      "objective": "binary:logistic",
+      "eval_metric": "logloss",
+      "tree_method": "hist",
+      "random_state": 20261021,
+      "n_jobs": -1
+    },
+    "preprocessing": "median SimpleImputer in train-fitted pipeline; feature columns are complete",
+    "features": [
+      "jaro_winkler",
+      "dob_match",
+      "school_match",
+      "guardian_match",
+      "upi_match",
+      "birth_certificate_match"
+    ],
+    "threshold": 0.5
+  },
+  "metrics": {
+    "accuracy": 0.9045,
+    "precision": 0.921793534932221,
+    "recall": 0.884,
+    "f1": 0.9025012761613068,
+    "roc_auc": 0.9709805,
+    "pr_auc_average_precision": 0.9753202181297125,
+    "confusion_matrix_rows_actual_0_1_columns_predicted_0_1": [
+      [
+        925,
+        75
+      ],
+      [
+        116,
+        884
+      ]
+    ],
+    "true_negatives": 925,
+    "false_positives": 75,
+    "false_negatives": 116,
+    "true_positives": 884
+  },
+  "timing_seconds": {
+    "training": 0.40998229999968316,
+    "test_evaluation": 0.010040599998319522
+  },
+  "validity_notes": [
+    "Fresh estimator; no existing model weights were loaded.",
+    "Same test rows, features, and fixed 0.5 threshold as the Random Forest comparison; test set was not used for tuning.",
+    "No group IDs or target column were model inputs; exact group, pair, and record overlap checks are recorded in the split section.",
+    "Data is synthetic and has no canonical student IDs; results do not establish real-world accuracy or definitively prove unseen-student generalization."
+  ],
+  "versions": {
+    "xgboost": "3.2.0",
+    "scikit_learn": "1.9.0",
+    "pandas": "3.0.5"
+  },
+  "artifacts": {
+    "model": "raw_pair_xgboost.joblib",
+    "model_sha256": "f45916e550c7f7ecf14e18499e8102a8e7343e50bffe411aeabbed2aab0eacf6",
+    "report": "raw_pair_xgboost_metrics.json"
+  }
+}

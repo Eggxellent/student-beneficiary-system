@@ -1,0 +1,131 @@
+{
+  "experiment": "fresh XGBoost trained on dev branch attachment-style training CSV",
+  "source_branch": "origin/dev (read-only; no changes made)",
+  "dataset": {
+    "train_file": "ml-service/data/dev_branch_attachment_style/pairs_attachment_style_train.csv",
+    "holdout_file": "ml-service/data/dev_branch_attachment_style/pairs_attachment_style_holdout.csv",
+    "train_sha256": "22bafa6cc0b58c44ad55c65d972997206f69a86b9adfce4cec1421fe500366e8",
+    "holdout_sha256": "bf90ea74e9b8f2552cd2eda8b7ff1a27202038b41e2e5d5862ac8cf207b7d7d4",
+    "train_rows": 10000,
+    "holdout_rows": 10000,
+    "train_class_counts": {
+      "0": 5000,
+      "1": 5000
+    },
+    "holdout_class_counts": {
+      "0": 5000,
+      "1": 5000
+    },
+    "train_groups": 5000,
+    "holdout_groups": 5000,
+    "train_exact_duplicate_rows_retained": 161,
+    "holdout_exact_duplicate_rows_retained": 157,
+    "feature_missing_values": {
+      "train": {
+        "jaro_winkler": 0,
+        "dob_match": 0,
+        "school_match": 0,
+        "guardian_match": 0,
+        "upi_match": 0,
+        "birth_certificate_match": 0
+      },
+      "holdout": {
+        "jaro_winkler": 0,
+        "dob_match": 0,
+        "school_match": 0,
+        "guardian_match": 0,
+        "upi_match": 0,
+        "birth_certificate_match": 0
+      }
+    },
+    "raw_school_missing_values": {
+      "train_school_1": 1054,
+      "train_school_2": 3281,
+      "holdout_school_1": 1092,
+      "holdout_school_2": 3424
+    }
+  },
+  "validity": {
+    "group_ids_overlapping_train_holdout": 0,
+    "exact_record_signatures_overlapping_train_holdout": 0,
+    "exact_unordered_pairs_overlapping_train_holdout": 0,
+    "valid_raw_field_value_overlap_excluding_known_placeholders": {
+      "name": 0,
+      "dob": 0,
+      "school": 5,
+      "guardian": 0,
+      "upi": 0,
+      "birth_certificate": 0
+    },
+    "features_used": [
+      "jaro_winkler",
+      "dob_match",
+      "school_match",
+      "guardian_match",
+      "upi_match",
+      "birth_certificate_match"
+    ],
+    "excluded_from_model": [
+      "label",
+      "group_id",
+      "pair_scenario",
+      "raw names/dates/schools/IDs"
+    ],
+    "test_set_used_for_fit_or_tuning": false,
+    "limitation": "Independent synthetic domains are used; this evaluates generalization to the supplied holdout, not real-world records."
+  },
+  "model": {
+    "algorithm": "XGBClassifier",
+    "parameters": {
+      "n_estimators": 250,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "subsample": 0.9,
+      "colsample_bytree": 0.9,
+      "reg_lambda": 1.0,
+      "objective": "binary:logistic",
+      "eval_metric": "logloss",
+      "tree_method": "hist",
+      "random_state": 20261021,
+      "n_jobs": -1
+    },
+    "preprocessing": "training-fitted median SimpleImputer; comparison features had no missing values",
+    "threshold": 0.5
+  },
+  "metrics": {
+    "accuracy": 0.7604,
+    "precision": 0.9465020576131687,
+    "recall": 0.552,
+    "f1": 0.697321879737241,
+    "roc_auc": 0.8311895,
+    "pr_auc_average_precision": 0.8649484552745015,
+    "confusion_matrix_rows_actual_0_1_columns_predicted_0_1": [
+      [
+        4844,
+        156
+      ],
+      [
+        2240,
+        2760
+      ]
+    ],
+    "true_negatives": 4844,
+    "false_positives": 156,
+    "false_negatives": 2240,
+    "true_positives": 2760
+  },
+  "timing_seconds": {
+    "training": 0.365306599996984,
+    "holdout_evaluation": 0.01579209999908926
+  },
+  "versions": {
+    "xgboost": "3.2.0",
+    "scikit_learn": "1.9.0",
+    "pandas": "3.0.5"
+  },
+  "artifacts": {
+    "model": "dev_branch_xgboost.joblib",
+    "model_sha256": "ec10da2dd30145946241d233f1490bed194aca6c33f4d8a22ba7314a6d6f8725",
+    "report": "dev_branch_xgboost_metrics.json"
+  }
+}

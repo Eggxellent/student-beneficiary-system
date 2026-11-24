@@ -1,0 +1,168 @@
+{
+  "experiment": "fresh raw_pairs.csv model experiment; no production model loaded or changed",
+  "dataset": {
+    "path": "ml-service/data/raw_pairs.csv",
+    "sha256": "65fc50e9e8ef02c32ab58f6e1c95555d90ac644d793e71c514993a3649db56c2",
+    "rows": 10000,
+    "target": "label (0=non-duplicate, 1=duplicate)",
+    "feature_count": 6,
+    "features": [
+      "jaro_winkler",
+      "dob_match",
+      "school_match",
+      "guardian_match",
+      "upi_match",
+      "birth_certificate_match"
+    ],
+    "column_data_types": {
+      "name_1": "str",
+      "name_2": "str",
+      "dob_1": "str",
+      "dob_2": "str",
+      "school_1": "str",
+      "school_2": "str",
+      "guardian_1": "str",
+      "guardian_2": "str",
+      "upi_1": "str",
+      "upi_2": "str",
+      "group_id": "str",
+      "jaro_winkler": "float64",
+      "dob_match": "float64",
+      "school_match": "int64",
+      "guardian_match": "float64",
+      "upi_match": "float64",
+      "birth_certificate_match": "float64",
+      "label": "int64"
+    },
+    "raw_record_fields_available": [
+      "name_1",
+      "name_2",
+      "dob_1",
+      "dob_2",
+      "school_1",
+      "school_2",
+      "guardian_1",
+      "guardian_2",
+      "upi_1",
+      "upi_2"
+    ],
+    "source_type": "synthetic pair data with raw student fields and precomputed comparison features",
+    "class_counts": {
+      "0": 5000,
+      "1": 5000
+    },
+    "raw_field_missing_counts": {
+      "name_1": 393,
+      "name_2": 405,
+      "dob_1": 372,
+      "dob_2": 401,
+      "school_1": 403,
+      "school_2": 413,
+      "guardian_1": 398,
+      "guardian_2": 412,
+      "upi_1": 440,
+      "upi_2": 403
+    },
+    "feature_missing_counts": {
+      "jaro_winkler": 0,
+      "dob_match": 0,
+      "school_match": 0,
+      "guardian_match": 0,
+      "upi_match": 0,
+      "birth_certificate_match": 0
+    },
+    "exact_duplicate_rows_retained": 74,
+    "unique_comparison_feature_vectors": 8892,
+    "feature_vectors_seen_with_both_labels": 125
+  },
+  "split": {
+    "method": "first fold of StratifiedGroupKFold(n_splits=5, shuffle=True)",
+    "seed": 20261021,
+    "ratio": "approximately 80/20",
+    "train_rows": 8000,
+    "test_rows": 2000,
+    "train_groups": 4000,
+    "test_groups": 1000,
+    "train_class_counts": {
+      "0": 4000,
+      "1": 4000
+    },
+    "test_class_counts": {
+      "0": 1000,
+      "1": 1000
+    },
+    "duplicate_rows_train": 61,
+    "duplicate_rows_test": 13,
+    "group_ids_in_both_splits": 0,
+    "exact_record_signatures_in_both_splits": 0,
+    "exact_unordered_pairs_in_both_splits": 0,
+    "identity_limit": "group_id keeps each generated pair group together; the CSV has no canonical student IDs, so unseen-student generalization cannot be fully established"
+  },
+  "model": {
+    "algorithm": "RandomForestClassifier",
+    "parameters": {
+      "n_estimators": 200,
+      "random_state": 20261021,
+      "n_jobs": -1
+    },
+    "preprocessing": "median SimpleImputer in a training-fitted pipeline; features complete, so no values were imputed",
+    "threshold": 0.5,
+    "features_used": [
+      "jaro_winkler",
+      "dob_match",
+      "school_match",
+      "guardian_match",
+      "upi_match",
+      "birth_certificate_match"
+    ],
+    "excluded": [
+      "label (target)",
+      "group_id (split key)",
+      "raw names, DOBs, schools, and identifiers"
+    ]
+  },
+  "metrics": {
+    "accuracy": 0.8895,
+    "precision": 0.9070010449320794,
+    "recall": 0.868,
+    "f1": 0.8870720490546755,
+    "roc_auc": 0.957718,
+    "pr_auc_average_precision": 0.9633437140261014,
+    "confusion_matrix_rows_actual_0_1_columns_predicted_0_1": [
+      [
+        911,
+        89
+      ],
+      [
+        132,
+        868
+      ]
+    ],
+    "true_negatives": 911,
+    "false_positives": 89,
+    "false_negatives": 132,
+    "true_positives": 868
+  },
+  "timing_seconds": {
+    "training": 0.8957060999964597,
+    "test_evaluation": 0.11532050000096206
+  },
+  "validity_notes": [
+    "Test rows were not used to fit preprocessing or the model; no hyperparameter or threshold tuning was performed.",
+    "No group IDs, row identifiers, scenario labels, or existing model predictions were used as features.",
+    "The input CSV has precomputed comparison features; birth_certificate_match is provided but the corresponding raw birth certificate values are absent, so that one feature cannot be independently recomputed from this file.",
+    "Repeated exact rows were retained; grouped splitting keeps duplicate rows from a group in one partition.",
+    "The supplied data is synthetic; these scores describe this dataset only and do not establish real-world accuracy."
+  ],
+  "versions": {
+    "python": "3.11.9",
+    "scikit_learn": "1.9.0",
+    "pandas": "3.0.5"
+  },
+  "artifacts": {
+    "model": "raw_pair_random_forest.joblib",
+    "model_sha256": "05c88fe5809f41482a31e4d1893f87f5aa92a1de6f7794dd8bec7e6ea7e2a4da",
+    "report": "raw_pair_experiment_metrics.json",
+    "split_manifest": "raw_pair_split_manifest.csv"
+  }
+}

@@ -1,0 +1,469 @@
+{
+  "experiment": "audited raw-pair XGBoost; parameters and threshold selected without test data",
+  "dataset": {
+    "sha256": "65fc50e9e8ef02c32ab58f6e1c95555d90ac644d793e71c514993a3649db56c2",
+    "rows": 10000,
+    "labels": {
+      "0": 5000,
+      "1": 5000
+    },
+    "test_previously_reported": true,
+    "test_previous_exposure_note": "This group-held-out fold was scored in the earlier raw RF and fixed-parameter XGBoost experiments. It was not used in this run's CV or selection; repeated reporting limits its status as a pristine once-only final test.",
+    "duplicate_rows_retained": 74,
+    "feature_missing_counts": {
+      "jaro_winkler": 0,
+      "dob_match": 0,
+      "school_match": 0,
+      "guardian_match": 0,
+      "upi_match": 0,
+      "birth_certificate_match": 0
+    },
+    "feature_vectors_in_training": 7214,
+    "training_feature_vectors_with_both_labels": 90
+  },
+  "split": {
+    "method": "first fold of StratifiedGroupKFold(n_splits=5, shuffle=True)",
+    "seed": 20261021,
+    "train_rows": 8000,
+    "test_rows": 2000,
+    "train_groups": 4000,
+    "test_groups": 1000,
+    "train_labels": {
+      "0": 4000,
+      "1": 4000
+    },
+    "test_labels": {
+      "0": 1000,
+      "1": 1000
+    },
+    "group_ids_in_both_splits": 0,
+    "exact_record_signatures_in_both_splits": 0,
+    "exact_unordered_pairs_in_both_splits": 0,
+    "identity_limit": "group_id keeps each synthetic pair group together; raw CSV has no canonical student IDs, so unseen-student generalization cannot be fully proven"
+  },
+  "existing_production_model_configuration": {
+    "source_model_file": "ml-service/model/rf_duplicate_model.joblib",
+    "source_model_sha256": "f81e6214d14ebabb37c4234e215e1493b8b0d90a1c55a4c0249f4448cf686482",
+    "inspection_only_model_not_used_for_training_or_prediction": true,
+    "algorithm": "RandomForestClassifier",
+    "effective_parameters": {
+      "bootstrap": true,
+      "ccp_alpha": 0.0,
+      "class_weight": null,
+      "criterion": "gini",
+      "max_depth": 10,
+      "max_features": "sqrt",
+      "max_leaf_nodes": null,
+      "max_samples": null,
+      "min_impurity_decrease": 0.0,
+      "min_samples_leaf": 8,
+      "min_samples_split": 2,
+      "min_weight_fraction_leaf": 0.0,
+      "monotonic_cst": null,
+      "n_estimators": 160,
+      "n_jobs": -1,
+      "oob_score": false,
+      "random_state": 876441,
+      "verbose": 0,
+      "warm_start": false
+    },
+    "fitted_feature_names": [
+      "jaro_winkler",
+      "dob_match",
+      "school_match",
+      "guardian_match",
+      "upi_match",
+      "birth_certificate_match"
+    ],
+    "training_file": "training\\realistic_pairs_train.csv",
+    "training_sha256": "7b58568076865f9197505636b9ef293d754fbe8403ddb7e91ebaa787e0e9d6a5",
+    "training_rows": 12000,
+    "selected_by": "5-fold StratifiedGroupKFold, F1 selected on training partition only; threshold fixed at 0.5",
+    "selected_parameters": {
+      "class_weight": null,
+      "max_depth": 10,
+      "min_samples_leaf": 8,
+      "n_estimators": 160
+    },
+    "threshold": 0.5,
+    "feature_semantics": "Names compare direct and token-order-tolerant Jaro-Winkler; DOB tolerates common formats and small day errors; IDs compare normalized text and fuzzy transcription similarity; school codes compare normalized exact values.",
+    "holdout_file": "evaluation\\realistic_pairs_holdout.csv",
+    "holdout_sha256": "533e1fc7e23afb5a1dd0000e03d0b8555659714249f8ae6f9fcecbca894935ee",
+    "holdout_metrics": {
+      "threshold": 0.5,
+      "accuracy": 0.89775,
+      "balanced_accuracy": 0.89775,
+      "precision": 0.9045600949313443,
+      "recall": 0.8893333333333333,
+      "f1": 0.8968820909320111,
+      "average_precision": 0.9676148771596702,
+      "roc_auc": 0.9628978055555557,
+      "confusion_matrix_labels_0_1": [
+        [
+          5437,
+          563
+        ],
+        [
+          664,
+          5336
+        ]
+      ],
+      "true_negatives": 5437,
+      "false_positives": 563,
+      "false_negatives": 664,
+      "true_positives": 5336,
+      "illustrative_precision_at_assumed_prevalence": {
+        "0.01": 0.08737085127634142,
+        "0.05": 0.3328135720077341,
+        "0.1": 0.5129289627991925
+      }
+    },
+    "limitations": [
+      "The data is synthetic and cannot establish performance on real beneficiaries.",
+      "The balanced label mix is not the expected operational prevalence; assumed-prevalence precision values are illustrative only.",
+      "The holdout is independently generated from the same simulator, not an external organization or reviewed real-world sample.",
+      "Review confirmed pairs from separate entities before using this model to make operational decisions."
+    ],
+    "sklearn_version": "1.9.0"
+  },
+  "pre_audit_raw_xgboost": {
+    "hyperparameters": {
+      "n_estimators": 250,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "subsample": 0.9,
+      "colsample_bytree": 0.9,
+      "reg_lambda": 1.0,
+      "objective": "binary:logistic",
+      "eval_metric": "logloss",
+      "tree_method": "hist",
+      "random_state": 20261021,
+      "n_jobs": -1
+    },
+    "preprocessing": "median SimpleImputer in train-fitted pipeline; feature columns are complete",
+    "features": [
+      "jaro_winkler",
+      "dob_match",
+      "school_match",
+      "guardian_match",
+      "upi_match",
+      "birth_certificate_match"
+    ],
+    "threshold": 0.5,
+    "metrics_same_test": {
+      "accuracy": 0.9045,
+      "precision": 0.921793534932221,
+      "recall": 0.884,
+      "f1": 0.9025012761613068,
+      "roc_auc": 0.9709805,
+      "pr_auc_average_precision": 0.9753202181297125,
+      "confusion_matrix_rows_actual_0_1_columns_predicted_0_1": [
+        [
+          925,
+          75
+        ],
+        [
+          116,
+          884
+        ]
+      ],
+      "true_negatives": 925,
+      "false_positives": 75,
+      "false_negatives": 116,
+      "true_positives": 884
+    }
+  },
+  "pre_audit_raw_random_forest": {
+    "parameters": {
+      "n_estimators": 200,
+      "random_state": 20261021,
+      "n_jobs": -1
+    },
+    "threshold": 0.5,
+    "metrics_same_test": {
+      "accuracy": 0.8895,
+      "precision": 0.9070010449320794,
+      "recall": 0.868,
+      "f1": 0.8870720490546755,
+      "roc_auc": 0.957718,
+      "pr_auc_average_precision": 0.9633437140261014,
+      "confusion_matrix_rows_actual_0_1_columns_predicted_0_1": [
+        [
+          911,
+          89
+        ],
+        [
+          132,
+          868
+        ]
+      ],
+      "true_negatives": 911,
+      "false_positives": 89,
+      "false_negatives": 132,
+      "true_positives": 868
+    }
+  },
+  "audited_xgboost": {
+    "algorithm": "XGBClassifier",
+    "selected_parameters": {
+      "subsample": 1.0,
+      "reg_lambda": 1.0,
+      "n_estimators": 500,
+      "min_child_weight": 1,
+      "max_depth": 3,
+      "learning_rate": 0.03,
+      "gamma": 0.1,
+      "colsample_bytree": 1.0
+    },
+    "effective_parameters": {
+      "objective": "binary:logistic",
+      "base_score": null,
+      "booster": "gbtree",
+      "callbacks": null,
+      "colsample_bylevel": null,
+      "colsample_bynode": null,
+      "colsample_bytree": 1.0,
+      "device": null,
+      "early_stopping_rounds": null,
+      "enable_categorical": false,
+      "eval_metric": "logloss",
+      "feature_types": null,
+      "feature_weights": null,
+      "gamma": 0.1,
+      "grow_policy": null,
+      "importance_type": null,
+      "interaction_constraints": null,
+      "learning_rate": 0.03,
+      "max_bin": null,
+      "max_cat_threshold": null,
+      "max_cat_to_onehot": null,
+      "max_delta_step": null,
+      "max_depth": 3,
+      "max_leaves": null,
+      "min_child_weight": 1,
+      "missing": null,
+      "monotone_constraints": null,
+      "multi_strategy": null,
+      "n_estimators": 500,
+      "n_jobs": 1,
+      "num_parallel_tree": null,
+      "random_state": 20261021,
+      "reg_alpha": null,
+      "reg_lambda": 1.0,
+      "sampling_method": null,
+      "scale_pos_weight": 1,
+      "subsample": 1.0,
+      "tree_method": "hist",
+      "validate_parameters": null,
+      "verbosity": 0
+    },
+    "feature_columns": [
+      "jaro_winkler",
+      "dob_match",
+      "school_match",
+      "guardian_match",
+      "upi_match",
+      "birth_certificate_match"
+    ],
+    "preprocessing": "None; features were validated complete, numeric, and in [0,1]",
+    "class_weighting_or_resampling": "None; dataset is exactly balanced 50/50",
+    "threshold": 0.45815494656562805,
+    "threshold_selection": {
+      "method": "maximize F1 on 5-fold group-stratified out-of-fold training probabilities",
+      "cv_split_seed": 20261023,
+      "tie_break": "closest to 0.5",
+      "threshold": 0.45815494656562805,
+      "oof_f1": 0.9014402003757044,
+      "oof_precision": 0.9031367628607277,
+      "oof_recall": 0.89975
+    },
+    "hyperparameter_selection": {
+      "method": "RandomizedSearchCV on training partition only",
+      "cv": "5-fold StratifiedGroupKFold",
+      "cv_seed": 20261022,
+      "scoring": "average_precision",
+      "candidate_draws": 24,
+      "candidate_ranges": {
+        "n_estimators": [
+          100,
+          200,
+          350,
+          500
+        ],
+        "max_depth": [
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "learning_rate": [
+          0.01,
+          0.03,
+          0.05,
+          0.1
+        ],
+        "min_child_weight": [
+          1,
+          3,
+          5,
+          10
+        ],
+        "subsample": [
+          0.7,
+          0.85,
+          1.0
+        ],
+        "colsample_bytree": [
+          0.7,
+          0.85,
+          1.0
+        ],
+        "gamma": [
+          0.0,
+          0.1,
+          0.5,
+          1.0
+        ],
+        "reg_lambda": [
+          0.1,
+          1.0,
+          5.0,
+          10.0
+        ]
+      },
+      "best_mean_cv_average_precision": 0.9696126375879487,
+      "scoring_rationale": "Ranks duplicate candidates across cutoffs; the final classification threshold is selected separately using training-only out-of-fold F1.",
+      "range_rationale": "The search spans shallow-to-moderate tree depths, several boosting budgets and rates, and row/feature sampling and regularization levels; the result is conditional on this finite search space.",
+      "best_n_estimators_at_search_upper_bound": true
+    }
+  },
+  "final_test_metrics": {
+    "threshold": 0.45815494656562805,
+    "accuracy": 0.905,
+    "precision": 0.9158110882956879,
+    "recall": 0.892,
+    "f1": 0.9037487335359676,
+    "roc_auc": 0.9693889999999998,
+    "pr_auc_average_precision": 0.9739414357241318,
+    "confusion_matrix_rows_actual_0_1_columns_predicted_0_1": [
+      [
+        918,
+        82
+      ],
+      [
+        108,
+        892
+      ]
+    ],
+    "true_negatives": 918,
+    "false_positives": 82,
+    "false_negatives": 108,
+    "true_positives": 892
+  },
+  "same_test_comparison": {
+    "pre_audit_fixed_xgb": {
+      "accuracy": 0.9045,
+      "precision": 0.921793534932221,
+      "recall": 0.884,
+      "f1": 0.9025012761613068,
+      "roc_auc": 0.9709805,
+      "pr_auc_average_precision": 0.9753202181297125,
+      "confusion_matrix_rows_actual_0_1_columns_predicted_0_1": [
+        [
+          925,
+          75
+        ],
+        [
+          116,
+          884
+        ]
+      ],
+      "true_negatives": 925,
+      "false_positives": 75,
+      "false_negatives": 116,
+      "true_positives": 884
+    },
+    "audited_cv_selected_xgb": {
+      "threshold": 0.45815494656562805,
+      "accuracy": 0.905,
+      "precision": 0.9158110882956879,
+      "recall": 0.892,
+      "f1": 0.9037487335359676,
+      "roc_auc": 0.9693889999999998,
+      "pr_auc_average_precision": 0.9739414357241318,
+      "confusion_matrix_rows_actual_0_1_columns_predicted_0_1": [
+        [
+          918,
+          82
+        ],
+        [
+          108,
+          892
+        ]
+      ],
+      "true_negatives": 918,
+      "false_positives": 82,
+      "false_negatives": 108,
+      "true_positives": 892
+    },
+    "pre_audit_rf": {
+      "accuracy": 0.8895,
+      "precision": 0.9070010449320794,
+      "recall": 0.868,
+      "f1": 0.8870720490546755,
+      "roc_auc": 0.957718,
+      "pr_auc_average_precision": 0.9633437140261014,
+      "confusion_matrix_rows_actual_0_1_columns_predicted_0_1": [
+        [
+          911,
+          89
+        ],
+        [
+          132,
+          868
+        ]
+      ],
+      "true_negatives": 911,
+      "false_positives": 89,
+      "false_negatives": 132,
+      "true_positives": 868
+    },
+    "test_fold_note": "All three raw-pair runs use the same group-held-out rows; only the audited XGB's parameter/threshold selection was changed to training-only CV."
+  },
+  "audit_findings": [
+    "The previous raw XGBoost used manually specified parameters and a fixed 0.50 threshold; it did not tune on test data, but those choices lacked documented selection rationale.",
+    "The previous and audited XGBoost use the same six comparison features as the current RF. group_id and label are excluded from model inputs.",
+    "The prior SimpleImputer was a no-op because all comparison features are complete; removed from the audited XGBoost path. The production RF also fits directly on the features.",
+    "Missing raw values are handled upstream by the established feature builder as zero similarity/match; the raw CSV stores complete numeric features but does not encode missingness separately.",
+    "Both raw experiment models used no class weights or resampling; this is appropriate for the dataset's balanced classes, though it does not represent operational prevalence.",
+    "No existing estimator or prediction was used for fitting or labels. The production RF artifact was inspected only to verify its effective configuration; historical metrics are read for audit comparison.",
+    "The raw data generator labels from latent identity, but corruption rates are class-conditional (for example positive name errors use 0.22+0.50*difficulty versus 0.10 for negatives; UPI corruption uses 0.25+0.50*difficulty versus 0.025). This simulator-specific pattern may be learnable from features. The scenario column is not present in raw_pairs.csv and was not a model input.",
+    "raw_pairs.csv has precomputed features. It lacks the original birth-certificate values, so birth_certificate_match cannot be independently recomputed from this file."
+  ],
+  "timing_seconds": {
+    "hyperparameter_search_and_refit": 56.42689400000381,
+    "threshold_oof_generation_and_selection": 4.4915818000008585,
+    "final_test_evaluation": 0.05441820000123698
+  },
+  "limitations": [
+    "The dataset is synthetic and balanced; results do not establish real-world accuracy or operational precision.",
+    "There are no canonical student IDs in raw_pairs.csv; grouping by group_id and checking exact record/pair signatures prevents detectable overlap but cannot prove all person identities are disjoint.",
+    "The final test fold was previously scored in earlier experiments, so although it was excluded from this run's tuning, it is not a pristine first-use holdout.",
+    "F1 treats precision and recall symmetrically. A production threshold should be chosen from adjudicated operational costs and prevalence when available."
+  ],
+  "artifacts": {
+    "model": "raw_pair_xgboost_audited.joblib",
+    "model_sha256": "3ae431deedfb328d2d52edd14f247c0b5f024cacb7a2f5b9eda20096ee05d85f",
+    "report": "raw_pair_xgboost_audited_metrics.json",
+    "cv_search_results": "raw_pair_xgboost_search_cv.csv",
+    "split_manifest": "raw_pair_xgboost_audited_split.csv",
+    "production_configuration_snapshot": "production_rf_config_snapshot.json",
+    "pre_audit_fixed_runner": "train_evaluate_xgboost_pre_audit.py"
+  },
+  "versions": {
+    "xgboost": "3.2.0",
+    "scikit_learn": "1.9.0",
+    "pandas": "3.0.5"
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "source_model_file": "ml-service/model/rf_duplicate_model.joblib",
+  "source_model_sha256": "f81e6214d14ebabb37c4234e215e1493b8b0d90a1c55a4c0249f4448cf686482",
+  "inspection_only_model_not_used_for_training_or_prediction": true,
+  "algorithm": "RandomForestClassifier",
+  "effective_parameters": {
+    "bootstrap": true,
+    "ccp_alpha": 0.0,
+    "class_weight": null,
+    "criterion": "gini",
+    "max_depth": 10,
+    "max_features": "sqrt",
+    "max_leaf_nodes": null,
+    "max_samples": null,
+    "min_impurity_decrease": 0.0,
+    "min_samples_leaf": 8,
+    "min_samples_split": 2,
+    "min_weight_fraction_leaf": 0.0,
+    "monotonic_cst": null,
+    "n_estimators": 160,
+    "n_jobs": -1,
+    "oob_score": false,
+    "random_state": 876441,
+    "verbose": 0,
+    "warm_start": false
+  },
+  "fitted_feature_names": [
+    "jaro_winkler",
+    "dob_match",
+    "school_match",
+    "guardian_match",
+    "upi_match",
+    "birth_certificate_match"
+  ],
+  "training_file": "training\\realistic_pairs_train.csv",
+  "training_sha256": "7b58568076865f9197505636b9ef293d754fbe8403ddb7e91ebaa787e0e9d6a5",
+  "training_rows": 12000,
+  "selected_by": "5-fold StratifiedGroupKFold, F1 selected on training partition only; threshold fixed at 0.5",
+  "selected_parameters": {
+    "class_weight": null,
+    "max_depth": 10,
+    "min_samples_leaf": 8,
+    "n_estimators": 160
+  },
+  "threshold": 0.5,
+  "feature_semantics": "Names compare direct and token-order-tolerant Jaro-Winkler; DOB tolerates common formats and small day errors; IDs compare normalized text and fuzzy transcription similarity; school codes compare normalized exact values.",
+  "holdout_file": "evaluation\\realistic_pairs_holdout.csv",
+  "holdout_sha256": "533e1fc7e23afb5a1dd0000e03d0b8555659714249f8ae6f9fcecbca894935ee",
+  "holdout_metrics": {
+    "threshold": 0.5,
+    "accuracy": 0.89775,
+    "balanced_accuracy": 0.89775,
+    "precision": 0.9045600949313443,
+    "recall": 0.8893333333333333,
+    "f1": 0.8968820909320111,
+    "average_precision": 0.9676148771596702,
+    "roc_auc": 0.9628978055555557,
+    "confusion_matrix_labels_0_1": [
+      [
+        5437,
+        563
+      ],
+      [
+        664,
+        5336
+      ]
+    ],
+    "true_negatives": 5437,
+    "false_positives": 563,
+    "false_negatives": 664,
+    "true_positives": 5336,
+    "illustrative_precision_at_assumed_prevalence": {
+      "0.01": 0.08737085127634142,
+      "0.05": 0.3328135720077341,
+      "0.1": 0.5129289627991925
+    }
+  },
+  "limitations": [
+    "The data is synthetic and cannot establish performance on real beneficiaries.",
+    "The balanced label mix is not the expected operational prevalence; assumed-prevalence precision values are illustrative only.",
+    "The holdout is independently generated from the same simulator, not an external organization or reviewed real-world sample.",
+    "Review confirmed pairs from separate entities before using this model to make operational decisions."
+  ],
+  "sklearn_version": "1.9.0"
+}

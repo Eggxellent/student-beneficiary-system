@@ -14,3 +14,5 @@ ml-service/data/features.csv
 backend/reports/*.pdf
 __pycache__/
 *.py[cod]
+ml-service/experiments/febrl_4a_4b/data/*.csv
+ml-service/experiments/febrl_4a_4b/outputs/*.joblib

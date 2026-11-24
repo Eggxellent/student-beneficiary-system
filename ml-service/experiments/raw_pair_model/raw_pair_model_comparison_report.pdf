@@ -1,0 +1,69 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 2586 >>
+stream
+BT
+/F1 19 Tf 1 0 0 1 48 790 Tm (SBMS Duplicate Detection: Model Comparison) Tj
+/F1 10 Tf 1 0 0 1 48 760 Tm (Raw pair CSV | Same held-out test split) Tj
+0.12 0.32 0.50 rg
+/F1 12 Tf 1 0 0 1 48 736 Tm (Summary) Tj
+0 0 0 rg
+/F1 9 Tf 1 0 0 1 48 716 Tm (Audited XGBoost outperformed the Random Forest on this test split: 23 fewer) Tj
+/F1 9 Tf 1 0 0 1 48 701 Tm (errors overall, including 24 fewer missed duplicate pairs. Both models were) Tj
+/F1 9 Tf 1 0 0 1 48 686 Tm (evaluated on the same 2,000 held-out rows.) Tj
+0.12 0.32 0.50 rg
+/F1 12 Tf 1 0 0 1 48 671 Tm (Held-out test results) Tj
+0 0 0 rg
+/F1 9 Tf 1 0 0 1 54 651 Tm (Metric                         Random Forest       Audited XGBoost) Tj
+/F1 9 Tf 1 0 0 1 54 637 Tm (Accuracy                       88.95%              90.50%) Tj
+/F1 9 Tf 1 0 0 1 54 623 Tm (Precision                      90.70%              91.58%) Tj
+/F1 9 Tf 1 0 0 1 54 609 Tm (Recall                         86.80%              89.20%) Tj
+/F1 9 Tf 1 0 0 1 54 595 Tm (F1 score                       88.71%              90.37%) Tj
+/F1 9 Tf 1 0 0 1 54 581 Tm (ROC-AUC                        95.77%              96.94%) Tj
+/F1 9 Tf 1 0 0 1 54 567 Tm (PR-AUC                         96.33%              97.39%) Tj
+/F1 9 Tf 1 0 0 1 48 553 Tm (Errors \(FP + FN\)                221                  190) Tj
+/F1 9 Tf 1 0 0 1 48 538 Tm (False positives / negatives    89 / 132              82 / 108) Tj
+0.12 0.32 0.50 rg
+/F1 12 Tf 1 0 0 1 48 523 Tm (Evaluation setup) Tj
+0 0 0 rg
+/F1 9 Tf 1 0 0 1 48 503 Tm (Dataset: 10,000 synthetic pairs, evenly split between labels.) Tj
+/F1 9 Tf 1 0 0 1 48 488 Tm (Split: 8,000 train / 2,000 test; grouped and stratified) Tj
+/F1 9 Tf 1 0 0 1 48 473 Tm (by pair group \(seed 20261021\). The audited XGBoost threshold was 0.4582,) Tj
+/F1 9 Tf 1 0 0 1 48 458 Tm (selected by F1 on grouped out-of-fold training predictions. Test labels were) Tj
+/F1 9 Tf 1 0 0 1 48 443 Tm (not used for its tuning.) Tj
+0.12 0.32 0.50 rg
+/F1 12 Tf 1 0 0 1 48 428 Tm (Limitations) Tj
+0 0 0 rg
+/F1 9 Tf 1 0 0 1 48 408 Tm (The data is synthetic and balanced; it does not establish accuracy on real) Tj
+/F1 9 Tf 1 0 0 1 48 393 Tm (beneficiary records or operational precision. There are no canonical student) Tj
+/F1 9 Tf 1 0 0 1 48 378 Tm (IDs to verify all identities are separate across the split. This test fold was) Tj
+/F1 9 Tf 1 0 0 1 48 363 Tm (reported in earlier experiments, so it is not a pristine first-use holdout.) Tj
+/F1 7 Tf 1 0 0 1 48 348 Tm (Source: experiment/raw-pair-model-training | Metrics from raw_pair_xgboost_audited_metrics.json) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+2949
+%%EOF

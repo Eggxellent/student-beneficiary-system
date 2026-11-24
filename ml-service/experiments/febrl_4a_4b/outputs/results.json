@@ -1,0 +1,526 @@
+{
+  "experiment": "FEBRL 4A/4B fresh entity-disjoint Random Forest pair classifier",
+  "created_at_utc": "2026-11-24T08:40:13.978401+00:00",
+  "branch_expected": "experiment/raw-pair-model-training",
+  "seed": 20261022,
+  "dataset": {
+    "4A": {
+      "records": 5000,
+      "columns": [
+        "rec_id",
+        "given_name",
+        "surname",
+        "street_number",
+        "address_1",
+        "address_2",
+        "suburb",
+        "postcode",
+        "state",
+        "date_of_birth",
+        "soc_sec_id"
+      ],
+      "inferred_pandas_types": {
+        "rec_id": "str",
+        "given_name": "str",
+        "surname": "str",
+        "street_number": "str",
+        "address_1": "str",
+        "address_2": "str",
+        "suburb": "str",
+        "postcode": "str",
+        "state": "str",
+        "date_of_birth": "str",
+        "soc_sec_id": "str"
+      },
+      "experiment_load_types": "all columns loaded as strings to preserve leading zeroes and treat empty cells consistently",
+      "missing_by_column": {
+        "rec_id": 0,
+        "given_name": 112,
+        "surname": 48,
+        "street_number": 158,
+        "address_1": 98,
+        "address_2": 420,
+        "suburb": 55,
+        "postcode": 0,
+        "state": 50,
+        "date_of_birth": 94,
+        "soc_sec_id": 0
+      },
+      "duplicate_full_rows": 0,
+      "duplicate_record_ids": 0,
+      "entity_ids": 5000,
+      "sha256": "07c7cb3f0a8d88180e80317f2a60499dee4e8324a44c38059f4e7fed0a8b4488"
+    },
+    "4B": {
+      "records": 5000,
+      "columns": [
+        "rec_id",
+        "given_name",
+        "surname",
+        "street_number",
+        "address_1",
+        "address_2",
+        "suburb",
+        "postcode",
+        "state",
+        "date_of_birth",
+        "soc_sec_id"
+      ],
+      "inferred_pandas_types": {
+        "rec_id": "str",
+        "given_name": "str",
+        "surname": "str",
+        "street_number": "str",
+        "address_1": "str",
+        "address_2": "str",
+        "suburb": "str",
+        "postcode": "str",
+        "state": "str",
+        "date_of_birth": "str",
+        "soc_sec_id": "str"
+      },
+      "experiment_load_types": "all columns loaded as strings to preserve leading zeroes and treat empty cells consistently",
+      "missing_by_column": {
+        "rec_id": 0,
+        "given_name": 234,
+        "surname": 102,
+        "street_number": 287,
+        "address_1": 220,
+        "address_2": 851,
+        "suburb": 106,
+        "postcode": 0,
+        "state": 107,
+        "date_of_birth": 199,
+        "soc_sec_id": 0
+      },
+      "duplicate_full_rows": 0,
+      "duplicate_record_ids": 0,
+      "entity_ids": 5000,
+      "sha256": "2eed76c99fa2237be3ec013a123427926d4158abcb3a8f65874d6c7f1358cf2c"
+    }
+  },
+  "dataset_source_metadata": {
+    "dataset": "FEBRL 4A/4B",
+    "retrieved_at_utc": "2026-10-22T07:14:56.669470+00:00",
+    "documentation_url": "https://recordlinkage.readthedocs.io/en/stable/guides/link_two_dataframes.html",
+    "source_repository": "https://github.com/J535D165/recordlinkage",
+    "source_files": {
+      "dataset4a.csv": {
+        "url": "https://raw.githubusercontent.com/J535D165/recordlinkage/master/recordlinkage/datasets/febrl/dataset4a.csv",
+        "sha256": "07c7cb3f0a8d88180e80317f2a60499dee4e8324a44c38059f4e7fed0a8b4488",
+        "bytes": 519618
+      },
+      "dataset4b.csv": {
+        "url": "https://raw.githubusercontent.com/J535D165/recordlinkage/master/recordlinkage/datasets/febrl/dataset4b.csv",
+        "sha256": "2eed76c99fa2237be3ec013a123427926d4158abcb3a8f65874d6c7f1358cf2c",
+        "bytes": 515463
+      }
+    },
+    "structure_note": "4A contains originals and 4B contains one corrupted copy per original; the numeric component of rec_id identifies the shared entity, as documented by load_febrl4(return_links=True)."
+  },
+  "ground_truth": "Entity key parsed from documented rec-<integer>-org and rec-<integer>-dup-0 IDs; IDs are used only for labels and grouped splitting.",
+  "split": {
+    "method": "group split on entity IDs before candidate-pair construction",
+    "requested_ratio": "70/15/15",
+    "seed": 20261022,
+    "partitions": {
+      "train": {
+        "entities": 3500,
+        "records_4a": 3500,
+        "records_4b": 3500,
+        "all_possible_cross_pairs": 12250000,
+        "candidate_pairs": 103381,
+        "positive_candidates": 3500,
+        "negative_candidates": 99881,
+        "positive_links_in_partition": 3500,
+        "blocking_candidate_recall": 1.0,
+        "entity_proportion": 0.7,
+        "positive_proportion_of_candidates": 0.03385535059633782,
+        "entity_ids_sha256": "dcbf59cbcceb3f7ad1b73dcaf94cb98ec778307cc2cbfd664b48268e08a47a13"
+      },
+      "validation": {
+        "entities": 750,
+        "records_4a": 750,
+        "records_4b": 750,
+        "all_possible_cross_pairs": 562500,
+        "candidate_pairs": 5148,
+        "positive_candidates": 750,
+        "negative_candidates": 4398,
+        "positive_links_in_partition": 750,
+        "blocking_candidate_recall": 1.0,
+        "entity_proportion": 0.15,
+        "positive_proportion_of_candidates": 0.1456876456876457,
+        "entity_ids_sha256": "806b7ed43e979500cadd58cfa68b57ff20ea31e7bf424cf16db22474fe893edb"
+      },
+      "test": {
+        "entities": 750,
+        "records_4a": 750,
+        "records_4b": 750,
+        "all_possible_cross_pairs": 562500,
+        "candidate_pairs": 5390,
+        "positive_candidates": 750,
+        "negative_candidates": 4640,
+        "positive_links_in_partition": 750,
+        "blocking_candidate_recall": 1.0,
+        "entity_proportion": 0.15,
+        "positive_proportion_of_candidates": 0.1391465677179963,
+        "entity_ids_sha256": "3cebe2465d72c953e41104830083cab7d7de20d6491004e7b3694a65c8e121ed"
+      }
+    },
+    "entity_overlap": {
+      "train_validation": 0,
+      "train_test": 0,
+      "validation_test": 0
+    }
+  },
+  "candidate_generation": {
+    "method": "Cross-file union of exact normalized-value blocks on given_name, surname, date_of_birth, soc_sec_id, postcode, or suburb; all candidates are retained. No all-pairs Cartesian expansion.",
+    "normalization": "casefold and retain ASCII letters and digits; empty values do not block",
+    "positive_pairs_are_not_injected": true,
+    "limitation": "Evaluation covers candidate pairs admitted by this blocker. Blocking recall is reported separately; model recall multiplied by test blocking recall approximates end-to-end recall on FEBRL links."
+  },
+  "model": {
+    "name": "sklearn.ensemble.RandomForestClassifier",
+    "parameters": {
+      "n_estimators": 300,
+      "criterion": "gini",
+      "max_depth": null,
+      "min_samples_split": 2,
+      "min_samples_leaf": 2,
+      "max_features": "sqrt",
+      "class_weight": "balanced_subsample",
+      "random_state": 20261022,
+      "n_jobs": -1
+    },
+    "class_balance": "balanced_subsample class weights; no resampling",
+    "training_seconds": 6.066528299998026,
+    "test_prediction_seconds": 0.1804647999961162
+  },
+  "features": {
+    "columns": [
+      "given_name_jaro_winkler",
+      "given_name_exact",
+      "given_name_both_missing",
+      "given_name_one_missing",
+      "surname_jaro_winkler",
+      "surname_exact",
+      "surname_both_missing",
+      "surname_one_missing",
+      "street_number_jaro_winkler",
+      "street_number_exact",
+      "street_number_both_missing",
+      "street_number_one_missing",
+      "address_1_jaro_winkler",
+      "address_1_exact",
+      "address_1_both_missing",
+      "address_1_one_missing",
+      "address_2_jaro_winkler",
+      "address_2_exact",
+      "address_2_both_missing",
+      "address_2_one_missing",
+      "suburb_jaro_winkler",
+      "suburb_exact",
+      "suburb_both_missing",
+      "suburb_one_missing",
+      "postcode_jaro_winkler",
+      "postcode_exact",
+      "postcode_both_missing",
+      "postcode_one_missing",
+      "state_jaro_winkler",
+      "state_exact",
+      "state_both_missing",
+      "state_one_missing",
+      "date_of_birth_jaro_winkler",
+      "date_of_birth_exact",
+      "date_of_birth_both_missing",
+      "date_of_birth_one_missing",
+      "soc_sec_id_jaro_winkler",
+      "soc_sec_id_exact",
+      "soc_sec_id_both_missing",
+      "soc_sec_id_one_missing"
+    ],
+    "count": 40,
+    "definitions": "Per available person attribute: normalized Jaro-Winkler similarity, exact normalized agreement, both-missing indicator, and one-missing indicator.",
+    "attributes": [
+      "given_name",
+      "surname",
+      "street_number",
+      "address_1",
+      "address_2",
+      "suburb",
+      "postcode",
+      "state",
+      "date_of_birth",
+      "soc_sec_id"
+    ],
+    "excluded": [
+      "rec_id",
+      "numeric entity key",
+      "row order",
+      "target label",
+      "filenames"
+    ]
+  },
+  "preprocessing": "Deterministic pairwise normalization/similarity only; no learned imputation, scaling, encoding, selection, or transformation fitted on validation/test.",
+  "threshold_selection": {
+    "method": "maximize validation-set F1 over thresholds returned by precision_recall_curve; choose the highest threshold among tied maxima",
+    "threshold": 0.5113269140665527,
+    "validation_f1_at_selected_threshold": 1.0
+  },
+  "test_metrics": {
+    "accuracy": 0.9998144712430427,
+    "precision": 1.0,
+    "recall": 0.9986666666666667,
+    "f1": 0.9993328885923949,
+    "roc_auc": 0.9999999999999999,
+    "pr_auc_average_precision": 1.0,
+    "threshold": 0.5113269140665527,
+    "confusion_matrix": {
+      "true_negative": 4640,
+      "false_positive": 0,
+      "false_negative": 1,
+      "true_positive": 749
+    },
+    "positive_count": 750,
+    "negative_count": 4640,
+    "model_recall_times_blocking_candidate_recall": 0.9986666666666667
+  },
+  "test_exact_agreement_diagnostics": {
+    "given_name": {
+      "positive_agreement_rate": 0.6746666666666666,
+      "negative_agreement_rate": 0.38318965517241377,
+      "positive_fraction_when_exact_agreement": 0.22154115586690018,
+      "exact_agreement_candidate_count": 2284
+    },
+    "surname": {
+      "positive_agreement_rate": 0.6706666666666666,
+      "negative_agreement_rate": 0.390948275862069,
+      "positive_fraction_when_exact_agreement": 0.2170910660336642,
+      "exact_agreement_candidate_count": 2317
+    },
+    "street_number": {
+      "positive_agreement_rate": 0.804,
+      "negative_agreement_rate": 0.014870689655172414,
+      "positive_fraction_when_exact_agreement": 0.8973214285714286,
+      "exact_agreement_candidate_count": 672
+    },
+    "address_1": {
+      "positive_agreement_rate": 0.724,
+      "negative_agreement_rate": 0.00021551724137931034,
+      "positive_fraction_when_exact_agreement": 0.9981617647058824,
+      "exact_agreement_candidate_count": 544
+    },
+    "address_2": {
+      "positive_agreement_rate": 0.5653333333333334,
+      "negative_agreement_rate": 0.0,
+      "positive_fraction_when_exact_agreement": 1.0,
+      "exact_agreement_candidate_count": 424
+    },
+    "suburb": {
+      "positive_agreement_rate": 0.78,
+      "negative_agreement_rate": 0.11206896551724138,
+      "positive_fraction_when_exact_agreement": 0.5294117647058824,
+      "exact_agreement_candidate_count": 1105
+    },
+    "postcode": {
+      "positive_agreement_rate": 0.8346666666666667,
+      "negative_agreement_rate": 0.11530172413793104,
+      "positive_fraction_when_exact_agreement": 0.5391903531438416,
+      "exact_agreement_candidate_count": 1161
+    },
+    "state": {
+      "positive_agreement_rate": 0.944,
+      "negative_agreement_rate": 0.2254310344827586,
+      "positive_fraction_when_exact_agreement": 0.40364880273660203,
+      "exact_agreement_candidate_count": 1754
+    },
+    "date_of_birth": {
+      "positive_agreement_rate": 0.892,
+      "negative_agreement_rate": 0.001939655172413793,
+      "positive_fraction_when_exact_agreement": 0.9867256637168141,
+      "exact_agreement_candidate_count": 678
+    },
+    "soc_sec_id": {
+      "positive_agreement_rate": 0.9146666666666666,
+      "negative_agreement_rate": 0.0,
+      "positive_fraction_when_exact_agreement": 1.0,
+      "exact_agreement_candidate_count": 686
+    }
+  },
+  "model_feature_importances": [
+    {
+      "feature": "soc_sec_id_jaro_winkler",
+      "importance": 0.15369698205439497
+    },
+    {
+      "feature": "soc_sec_id_exact",
+      "importance": 0.13130740526931522
+    },
+    {
+      "feature": "date_of_birth_jaro_winkler",
+      "importance": 0.12641299084791374
+    },
+    {
+      "feature": "date_of_birth_exact",
+      "importance": 0.10306454256925598
+    },
+    {
+      "feature": "address_1_jaro_winkler",
+      "importance": 0.08736330296400127
+    },
+    {
+      "feature": "postcode_jaro_winkler",
+      "importance": 0.08343216927759534
+    },
+    {
+      "feature": "street_number_jaro_winkler",
+      "importance": 0.053072153510149704
+    },
+    {
+      "feature": "street_number_exact",
+      "importance": 0.05189777403978189
+    },
+    {
+      "feature": "suburb_jaro_winkler",
+      "importance": 0.0489750934669129
+    },
+    {
+      "feature": "address_2_jaro_winkler",
+      "importance": 0.03793076852341823
+    },
+    {
+      "feature": "address_1_exact",
+      "importance": 0.030170403993861512
+    },
+    {
+      "feature": "state_jaro_winkler",
+      "importance": 0.0280414763632959
+    },
+    {
+      "feature": "postcode_exact",
+      "importance": 0.02126142922276308
+    },
+    {
+      "feature": "address_2_exact",
+      "importance": 0.012111032675123794
+    },
+    {
+      "feature": "state_exact",
+      "importance": 0.010782793620584786
+    },
+    {
+      "feature": "suburb_exact",
+      "importance": 0.00870829659188624
+    },
+    {
+      "feature": "surname_jaro_winkler",
+      "importance": 0.004521345207735599
+    },
+    {
+      "feature": "given_name_jaro_winkler",
+      "importance": 0.0026849386233697503
+    },
+    {
+      "feature": "given_name_exact",
+      "importance": 0.0020127201727000604
+    },
+    {
+      "feature": "surname_exact",
+      "importance": 0.0014613842085707091
+    },
+    {
+      "feature": "address_1_both_missing",
+      "importance": 0.00026811991716651617
+    },
+    {
+      "feature": "address_2_both_missing",
+      "importance": 0.00025632915412420257
+    },
+    {
+      "feature": "date_of_birth_both_missing",
+      "importance": 0.00016008585299342757
+    },
+    {
+      "feature": "state_both_missing",
+      "importance": 7.366342910745366e-05
+    },
+    {
+      "feature": "street_number_both_missing",
+      "importance": 6.828927849539954e-05
+    },
+    {
+      "feature": "address_2_one_missing",
+      "importance": 5.47553177183296e-05
+    },
+    {
+      "feature": "date_of_birth_one_missing",
+      "importance": 4.6524253553329866e-05
+    },
+    {
+      "feature": "address_1_one_missing",
+      "importance": 4.645599719794984e-05
+    },
+    {
+      "feature": "state_one_missing",
+      "importance": 2.531240237174625e-05
+    },
+    {
+      "feature": "street_number_one_missing",
+      "importance": 2.300388266121288e-05
+    },
+    {
+      "feature": "given_name_both_missing",
+      "importance": 2.2028893058406235e-05
+    },
+    {
+      "feature": "suburb_both_missing",
+      "importance": 1.6168182166056143e-05
+    },
+    {
+      "feature": "given_name_one_missing",
+      "importance": 1.4807381383147949e-05
+    },
+    {
+      "feature": "suburb_one_missing",
+      "importance": 7.472384247127094e-06
+    },
+    {
+      "feature": "surname_both_missing",
+      "importance": 4.275404964627655e-06
+    },
+    {
+      "feature": "surname_one_missing",
+      "importance": 3.7050661605100692e-06
+    },
+    {
+      "feature": "postcode_both_missing",
+      "importance": 0.0
+    },
+    {
+      "feature": "postcode_one_missing",
+      "importance": 0.0
+    },
+    {
+      "feature": "soc_sec_id_both_missing",
+      "importance": 0.0
+    },
+    {
+      "feature": "soc_sec_id_one_missing",
+      "importance": 0.0
+    }
+  ],
+  "software": {
+    "python": "3.11.9",
+    "pandas": "3.0.5",
+    "scikit_learn": "1.9.0",
+    "jellyfish": "unknown"
+  },
+  "validity": {
+    "fresh_fit": true,
+    "existing_model_loaded": false,
+    "test_used_for_fit_or_threshold": false,
+    "same_entity_cross_partition": false,
+    "synthetic_data": true,
+    "real_world_accuracy_claim": false
+  }
+}
