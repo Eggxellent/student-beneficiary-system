@@ -44,7 +44,10 @@ function Divider() {
 
 function PasswordField({ id, name, label, placeholder, visible, onToggle }) {
   return (
-    <div className="grid gap-2">
+    // content-start keeps the label and input pinned to the top of their grid cell. Without it the
+    // grid stretches this column to the height of the password hint beside it and pushes the
+    // Confirm Password input down out of line.
+    <div className="grid gap-2 content-start">
       <label htmlFor={id} className={LABEL_CLASS}>
         {label} <RequiredMark />
       </label>
