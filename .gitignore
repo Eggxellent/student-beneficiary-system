@@ -26,3 +26,8 @@ deploy/azure/.state.json
 deploy/azure/backups/
 # Container-registry token, dropped here by the operator and never committed or printed.
 deploy/azure/.ghcr-token
+
+# Local dev stack runtime files
+.server.pid
+.server.out.log
+.server.err.log
