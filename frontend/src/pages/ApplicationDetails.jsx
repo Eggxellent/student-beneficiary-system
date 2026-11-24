@@ -5,24 +5,18 @@ import {
   Check,
   Clock3,
   Eye,
+  FileText,
   Flag,
   LockKeyhole,
 } from "lucide-react";
 
-import {
-  GUARDIAN_PATHS,
-  GuardianFooter,
-  GuardianHeader,
-  guardianSectionNav,
-} from "../components/GuardianChrome";
+import { GUARDIAN_PATHS, GuardianLayout } from "../components/GuardianChrome";
 import { useAuth } from "../context/AuthContext";
 import { fetchGuardianApplication, apiErrorMessage } from "../services/guardian";
 
 // Guardian application details (read-only). The record is fetched from
 // GET /api/guardian/applications/:reference, which only returns applications owned by the
 // signed-in guardian; a reference belonging to another guardian resolves to 404.
-
-const NAV_ITEMS = guardianSectionNav("applications");
 
 // Rows are loaded from the API in the component below.
 
@@ -109,8 +103,7 @@ export default function ApplicationDetails() {
 
   if (!application) {
     return (
-      <div className="min-h-screen w-full bg-background text-foreground">
-        <GuardianHeader navItems={NAV_ITEMS} guardianName={guardianName} initials={initials || "GW"} />
+      <GuardianLayout activeItem="applications" guardianName={guardianName} initials={initials || "GW"}>
         <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:p-10">
           <Link to={GUARDIAN_PATHS.myApplications} className="text-sm font-medium text-primary hover:underline">
             Back to My Applications
@@ -123,8 +116,7 @@ export default function ApplicationDetails() {
             <p className="mt-6 text-sm text-muted-foreground">Loading application...</p>
           )}
         </main>
-        <GuardianFooter maxWidthClass="max-w-7xl" />
-      </div>
+      </GuardianLayout>
     );
   }
 
@@ -135,9 +127,7 @@ export default function ApplicationDetails() {
       : "pending";
 
   return (
-    <div className="min-h-screen w-full bg-background text-foreground">
-      <GuardianHeader navItems={NAV_ITEMS} guardianName={guardianName} initials={initials || "GW"} />
-
+    <GuardianLayout activeItem="applications" guardianName={guardianName} initials={initials || "GW"}>
       <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:p-10">
         <nav aria-label="Breadcrumb" className="mb-7">
           <ol className="flex flex-wrap items-center gap-2 text-sm">
@@ -191,7 +181,7 @@ export default function ApplicationDetails() {
 
             {application.decisionNote && (
               <p className="mt-4 max-w-xl rounded-md border border-border bg-accent/60 px-4 py-3 text-xs leading-5 text-foreground">
-                Assessment note: {application.decisionNote}
+                Review note: {application.decisionNote}
               </p>
             )}
           </div>
@@ -261,7 +251,7 @@ export default function ApplicationDetails() {
             <DetailItem label="Date of birth" value={application.student.dateOfBirth} />
             <DetailItem label="Gender" value={application.student.gender} />
             <DetailItem
-              label="National ID / birth certificate number"
+              label="Birth certificate number"
               value={application.student.identification}
               fullWidth
             />
@@ -305,6 +295,22 @@ export default function ApplicationDetails() {
             <DetailItem
               label="Approximate monthly household income"
               value={application.household.monthlyIncome}
+            />
+            <DetailItem
+              label="Outstanding school fee balance"
+              value={application.household.feeBalance}
+            />
+            <DetailItem
+              label="Siblings currently in school"
+              value={application.household.siblingsInSchool}
+            />
+            <DetailItem
+              label="Vulnerability status"
+              value={application.household.vulnerabilityStatus}
+            />
+            <DetailItem
+              label="Prior bursary history"
+              value={application.household.priorBursaryHistory}
               fullWidth
             />
           </DetailCard>
@@ -324,12 +330,12 @@ export default function ApplicationDetails() {
                   request supporting documents during assessment.
                 </p>
               )}
-              {application.documents.map((document) => {
-                const Icon = document.icon;
+              {application.documents.map((document, index) => {
+                const Icon = document.icon || FileText;
 
                 return (
                   <div
-                    key={document.name}
+                    key={`${document.name}-${index}`}
                     className="flex items-center justify-between gap-3 py-4"
                   >
                     <div className="flex min-w-0 items-center gap-3">
@@ -373,8 +379,6 @@ export default function ApplicationDetails() {
           </Link>
         </div>
       </main>
-
-      <GuardianFooter />
-    </div>
+    </GuardianLayout>
   );
 }

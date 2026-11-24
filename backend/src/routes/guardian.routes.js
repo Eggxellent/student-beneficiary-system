@@ -21,11 +21,12 @@ router.get('/applications', requireRole('guardian'), asyncHandler(controller.lis
 router.post('/applications', requireRole('guardian'), asyncHandler(controller.createApplication));
 router.get('/applications/:reference', requireRole('guardian'), asyncHandler(controller.getApplication));
 
-// Staff review of guardian applications. Field officers can see the queue; only an administrator
-// records the decision. Existing admin and field-officer workflows are untouched.
+// Staff review of guardian applications. This is the administrator's queue: Field Officers work
+// from the registered-student views (duplicate-cleared and assessed only) and never see a raw
+// application. Only an administrator records the decision.
 router.get(
   '/staff/applications',
-  requireRole('admin', 'field_officer'),
+  requireRole('admin'),
   asyncHandler(controller.staffQueue),
 );
 router.patch(

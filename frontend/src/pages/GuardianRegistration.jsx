@@ -12,12 +12,18 @@ import { registerGuardian, apiErrorMessage } from "../services/guardian";
 const ACCOUNT_TYPES = [
   { label: "Parent", value: "parent" },
   { label: "Legal Guardian", value: "legal_guardian" },
-  { label: "Adult Student (18+)", value: "adult_student" },
   { label: "Authorised Caregiver", value: "authorised_caregiver" },
 ];
 
 const LABEL_CLASS = "font-medium text-foreground text-sm";
 const FIELD_CLASS = "rounded-md bg-card text-sm border border-input px-3 h-11 w-full text-foreground";
+
+// Registration rules, mirrored by POST /api/guardian/register in backend/src/controllers/guardian.controller.js:
+// the phone number is exactly 10 digits and the identification field takes at most 9 letters/digits
+// (national IDs are up to 9 digits, passports up to 9 characters).
+const PHONE_PATTERN = /^\d{10}$/;
+const IDENTIFICATION_PATTERN = /^[A-Za-z0-9]{1,9}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function RequiredMark() {
   return <span className="text-destructive">*</span>;
@@ -58,7 +64,7 @@ function PasswordField({ id, name, label, placeholder, visible, onToggle }) {
           aria-label={`${visible ? "Hide" : "Show"} ${label.toLowerCase()}`}
           aria-pressed={visible}
           onClick={onToggle}
-          className="-ml-11 grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted"
+          className="-ml-11 grid size-8 shrink-0 place-items-center rounded-md text-foreground/70 hover:bg-muted"
         >
           <Eye className="size-4" aria-hidden="true" />
         </button>
@@ -81,22 +87,68 @@ export default function GuardianRegistration() {
     const form = event.currentTarget;
     setError("");
 
+    const fullName = form.fullName.value.trim();
+    const accountType = form.accountType.value;
+    const nationalId = form.nationalId.value.trim();
+    const phone = form.phone.value.trim();
     const email = form.email.value.trim();
     const password = form.password.value;
-    if (password !== form.confirmPassword.value) {
+    const confirmPassword = form.confirmPassword.value;
+
+    if (!fullName) {
+      setError("Enter your full legal name.");
+      return;
+    }
+    if (!accountType) {
+      setError("Select the account type you are registering as.");
+      return;
+    }
+    if (!nationalId) {
+      setError("Enter your national ID or passport number.");
+      return;
+    }
+    if (!IDENTIFICATION_PATTERN.test(nationalId)) {
+      setError("National ID or passport number must be at most 9 letters or digits.");
+      return;
+    }
+    if (!phone) {
+      setError("Enter your phone number.");
+      return;
+    }
+    if (!PHONE_PATTERN.test(phone)) {
+      setError("Phone number must be exactly 10 digits, for example 0712345678.");
+      return;
+    }
+    if (!email) {
+      setError("Enter your email address.");
+      return;
+    }
+    if (!EMAIL_PATTERN.test(email)) {
+      setError("Enter a valid email address, for example name@gmail.com.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (password !== confirmPassword) {
       setError("Passwords do not match.");
+      return;
+    }
+    if (!form.privacyConsent.checked) {
+      setError("Accept the privacy notice to create your account.");
       return;
     }
 
     setSubmitting(true);
     try {
       await registerGuardian({
-        full_name: form.fullName.value.trim(),
+        full_name: fullName,
         email,
         password,
-        phone: form.phone.value.trim(),
-        national_id: form.nationalId.value.trim(),
-        relationship_to_student: form.accountType.value,
+        phone,
+        national_id: nationalId,
+        relationship_to_student: accountType,
         privacy_consent: form.privacyConsent.checked,
       });
       await login(email, password);
@@ -109,21 +161,16 @@ export default function GuardianRegistration() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-background text-foreground w-full min-h-screen overflow-x-hidden">
-      <header className="bg-card border-b border-border flex flex-wrap px-4 sm:px-6 lg:px-12 justify-between items-center min-h-20 py-4 gap-4">
+    <form onSubmit={handleSubmit} className="sbms-auth-backdrop text-foreground w-full min-h-screen overflow-x-hidden">
+      <header className="bg-card/60 border-b border-border backdrop-blur-sm flex flex-wrap px-4 sm:px-6 lg:px-12 justify-between items-center min-h-20 py-4 gap-4">
         <div aria-label="SBMS graduation-cap logo" className="flex items-center gap-3 min-w-0">
           <div className="rounded-lg bg-primary text-primary-foreground flex justify-center items-center size-10 shrink-0">
             <GraduationCap className="size-5" aria-hidden="true" />
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2 min-w-0">
-            <span className="font-semibold text-primary text-xl tracking-tight">SBMS</span>
-            <span className="font-medium uppercase text-muted-foreground text-[10px] sm:text-xs tracking-widest">
-              Student Beneficiary Management System
-            </span>
-          </div>
+          <span className="font-semibold text-primary text-xl tracking-tight truncate">SBMS</span>
         </div>
 
-        <div className="text-muted-foreground text-sm flex items-center gap-2">
+        <div className="text-foreground/75 text-sm flex items-center gap-2">
           <span>Already have an account?</span>
           <Link to="/login" className="font-medium text-primary hover:underline">
             Sign in
@@ -132,30 +179,21 @@ export default function GuardianRegistration() {
       </header>
 
       <main className="flex px-4 sm:px-6 py-8 sm:py-12 justify-center items-start min-h-[calc(100vh-5rem)]">
-        <div className="shadow-sm bg-card border border-border rounded-xl w-full max-w-2xl">
-          <div className="border-b border-border px-5 sm:px-10 pt-7 sm:pt-9 pb-7 flex flex-col gap-2">
-            <div className="flex items-center gap-2">
+        <div className="bg-card/40 border border-border shadow-lg backdrop-blur-sm rounded-xl w-full max-w-2xl">
+          <div className="border-b border-border px-5 sm:px-10 pt-7 sm:pt-9 pb-4 flex flex-col items-center gap-2 text-center">
+            <div className="flex items-center justify-center gap-2">
               <span className="rounded-full bg-primary w-8 h-1.5" />
-              <span className="font-semibold uppercase text-muted-foreground text-xs tracking-widest">
+              <span className="font-semibold uppercase text-foreground/80 text-xs tracking-widest">
                 Account Registration
               </span>
             </div>
 
-            <h1 className="font-semibold text-foreground text-2xl sm:text-3xl tracking-tight pt-2">
+            <h1 className="font-semibold text-foreground text-2xl sm:text-3xl tracking-tight">
               Create Your Account
             </h1>
-
-            <p className="text-muted-foreground text-sm leading-6 max-w-xl">
-              Register to access and manage bursary applications through SBMS.
-            </p>
-
-            <p className="text-muted-foreground text-sm leading-6">
-              One account can manage applications for multiple children or your own application as an
-              adult student.
-            </p>
           </div>
 
-          <div className="px-5 sm:px-10 py-7 sm:py-8">
+          <div className="px-5 sm:px-10 pt-5 sm:pt-6 pb-7 sm:pb-8">
             <Section legend="Account Holder Information">
               <div className="grid gap-5 grid-cols-1 md:grid-cols-2">
                 <div className="grid gap-2">
@@ -205,9 +243,15 @@ export default function GuardianRegistration() {
                     placeholder="Enter ID or passport number"
                     type="text"
                     autoComplete="off"
+                    maxLength={9}
+                    pattern="[A-Za-z0-9]{1,9}"
+                    title="Up to 9 letters or digits: up to 9 digits for a national ID, up to 9 characters for a passport."
                     required
                     className={FIELD_CLASS}
                   />
+                  <p className="text-foreground/70 text-xs">
+                    National ID: up to 9 digits. Passport: up to 9 characters.
+                  </p>
                 </div>
 
                 <div className="grid gap-2">
@@ -217,14 +261,18 @@ export default function GuardianRegistration() {
                   <input
                     id="phone"
                     name="phone"
-                    placeholder="+254 7XX XXX XXX"
+                    placeholder="0712345678"
                     type="tel"
+                    inputMode="numeric"
                     autoComplete="tel"
+                    maxLength={10}
+                    pattern="[0-9]{10}"
+                    title="Enter a 10-digit phone number, for example 0712345678."
                     required
                     className={FIELD_CLASS}
                   />
-                  <p className="text-muted-foreground text-xs">
-                    Use a phone number you can access for account communication.
+                  <p className="text-foreground/70 text-xs">
+                    Enter a 10-digit phone number you can access for account communication.
                   </p>
                 </div>
 
@@ -258,7 +306,7 @@ export default function GuardianRegistration() {
                     visible={showPassword}
                     onToggle={() => setShowPassword((value) => !value)}
                   />
-                  <p className="text-muted-foreground text-xs leading-5">
+                  <p className="text-foreground/70 text-xs leading-5">
                     Use a strong password with at least 8 characters.
                   </p>
                 </div>
@@ -286,7 +334,7 @@ export default function GuardianRegistration() {
               />
               <label
                 htmlFor="privacy-consent"
-                className="font-normal text-muted-foreground text-sm leading-6"
+                className="font-normal text-foreground/80 text-sm leading-6"
               >
                 I agree to the{" "}
                 <a href="#" className="font-medium text-primary hover:underline">

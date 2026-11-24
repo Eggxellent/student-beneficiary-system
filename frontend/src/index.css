@@ -352,7 +352,7 @@
 }
 
 .sbms-login-screen {
-  --login-accent: #245747;
+  --login-accent: #1a4238;
   --login-highlight: #c8a45d;
   --login-tint: rgb(23 61 53 / 9%);
   --login-glow: rgb(23 61 53 / 18%);
@@ -382,14 +382,23 @@
   animation: sbms-login-background 28s ease-in-out infinite alternate;
 }
 
+/* The photo backdrop is shared with the registration page so both public auth screens match. */
+.sbms-auth-backdrop {
+  background-color: var(--sbms-forest);
+  background-image: linear-gradient(125deg, rgb(13 39 33 / 74%), rgb(23 61 53 / 48%) 52%, rgb(9 31 27 / 68%)), url('/images/sbms-landscape.jpg');
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
 .sbms-login-panel {
   width: min(100%, 440px);
   padding: clamp(28px, 5vw, 44px);
   border: 1px solid var(--login-panel-border);
   border-radius: 18px;
-  background: rgb(242 248 244 / 42%);
-  -webkit-backdrop-filter: blur(12px) saturate(135%);
-  backdrop-filter: blur(12px) saturate(135%);
+  background: rgb(242 248 244 / 55%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+  backdrop-filter: blur(10px) saturate(130%);
   box-shadow: 0 24px 70px rgb(7 27 23 / 30%), 0 0 42px var(--login-glow);
   color: var(--sbms-text);
   transition: border-color 280ms ease, box-shadow 280ms ease, background-color 280ms ease;
@@ -688,6 +697,28 @@
   border-radius: 3px;
 }
 
+/* The register prompt is one inline sentence, so the label and the link share a baseline. */
+.sbms-auth-register {
+  display: block;
+}
+
+.sbms-auth-register a {
+  color: var(--sbms-forest);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.sbms-auth-register a:hover {
+  color: #0f2c26;
+}
+
+.sbms-auth-register a:focus-visible {
+  outline: 2px solid var(--sbms-gold);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 .sbms-auth-note {
   display: flex;
   align-items: flex-start;
@@ -930,7 +961,7 @@
    elsewhere in the app washes out. These overrides stay inside the panel only. */
 .sbms-login-panel .sbms-auth-subtitle,
 .sbms-login-panel .sbms-auth-note {
-  color: rgb(18 41 63 / 78%);
+  color: rgb(18 41 63 / 92%);
 }
 
 .sbms-login-panel .sbms-auth-note a {

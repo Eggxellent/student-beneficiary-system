@@ -7,21 +7,20 @@ import {
   FilePlusCorner,
   Files,
   Plus,
-  ShieldCheck,
 } from "lucide-react";
-import { GUARDIAN_PATHS, GuardianFooter, GuardianHeader } from "../components/GuardianChrome";
+import { GUARDIAN_PATHS, GuardianLayout } from "../components/GuardianChrome";
 import { useAuth } from "../context/AuthContext";
 import { fetchGuardianDashboard, apiErrorMessage } from "../services/guardian";
 
 // Guardian dashboard (page 2 of the guardian interface). Counts and the recent-application list come
 // from GET /api/guardian/dashboard, which only ever returns the signed-in guardian's own rows. The
 // guardian surface has its own header (no staff sidebar), so it does not use AppLayout like the admin
-// and field-officer screens — those remain untouched. The header, footer and profile menu are shared
-// with the guardian application form through components/GuardianChrome.
+// and field-officer screens — those remain untouched. The header, sidebar and profile menu are
+// shared with the other guardian pages through components/GuardianChrome.
 //
-// The page's call-to-actions point at the remaining guardian pages:
-//   /guardian/applications/new  the new bursary application form (rendered by pages/NewApplication)
-//   /guardian/profile           the guardian account page (rendered by pages/GuardianAccount)
+// The page's call-to-action points at the application form (/guardian/applications/new). Account
+// settings are reached through the Account item in the sidebar and profile menu, not from a
+// dashboard section.
 
 const SUMMARY_CARDS = [
   {
@@ -138,8 +137,8 @@ function StartApplicationDialog({ open, onClose, onContinue }) {
               id="start-application-description"
               className="mt-2 text-sm leading-6 text-muted-foreground"
             >
-              The application form will ask for the student, school and household details needed for
-              bursary assessment — for a child you care for, or for yourself as an adult student.
+              The application form will ask for the student, school and household details needed
+              for bursary assessment.
             </p>
           </div>
         </div>
@@ -202,9 +201,7 @@ export default function GuardianDashboard() {
   }));
 
   return (
-    <div className="min-h-screen w-full bg-background text-foreground">
-      <GuardianHeader guardianName={guardianName} initials={initials || "GW"} />
-
+    <GuardianLayout activeItem="dashboard" guardianName={guardianName} initials={initials || "GW"}>
       <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:p-10">
         <section
           id="dashboard"
@@ -216,10 +213,6 @@ export default function GuardianDashboard() {
             <h1 className="text-3xl font-semibold tracking-tight text-foreground">
               Welcome back, {firstName}
             </h1>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-              Manage bursary applications for your children — or for yourself if you are an adult
-              student — and track their progress from one place.
-            </p>
           </div>
           <button
             type="button"
@@ -235,7 +228,7 @@ export default function GuardianDashboard() {
 
         <section
           aria-label="Application summary"
-          className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
         >
           {SUMMARY_CARDS.map((card) => (
             <SummaryCard
@@ -249,14 +242,13 @@ export default function GuardianDashboard() {
           ))}
         </section>
 
-        <section id="applications" aria-label="My Applications table" className="mt-8">
+        <section id="applications" aria-label="My Applications table" className="mt-6">
           <div className={CARD_CLASS}>
             <div className="flex flex-col gap-3 border-b border-border px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-foreground">My Applications</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  View and track bursary applications for each child, or for yourself as an adult
-                  student.
+                  View and track the bursary applications you submit for your children.
                 </p>
               </div>
               <Badge>{applications.length} applications</Badge>
@@ -310,8 +302,7 @@ export default function GuardianDashboard() {
                   </div>
                   <p className="mt-4 text-base font-semibold text-foreground">No applications yet</p>
                   <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
-                    Start a bursary application for one of your children, or for yourself as an adult
-                    student, to see it listed here.
+                    Start a bursary application for one of your children to see it listed here.
                   </p>
                   <Link
                     to={GUARDIAN_PATHS.newApplication}
@@ -327,39 +318,17 @@ export default function GuardianDashboard() {
         </section>
 
         {error && (
-          <p role="alert" className="mt-6 rounded-lg border border-destructive/30 bg-destructive/10 px-5 py-4 text-sm text-destructive">
+          <p role="alert" className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-5 py-4 text-sm text-destructive">
             {error}
           </p>
         )}
-
-        <section
-          id="account"
-          aria-label="Account status"
-          className="mt-6 flex flex-col items-start gap-3 rounded-lg border border-border bg-card px-5 py-4 sm:flex-row"
-        >
-          <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
-          <div>
-            <p className="text-sm font-medium text-foreground">Your account is ready</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Keep your contact details up to date so we can reach you about your applications.
-            </p>
-          </div>
-          <Link
-            to={GUARDIAN_PATHS.profile}
-            className="shrink-0 text-sm font-medium text-primary hover:underline sm:ml-auto"
-          >
-            Manage account
-          </Link>
-        </section>
       </main>
-
-      <GuardianFooter />
 
       <StartApplicationDialog
         open={isDialogOpen}
         onClose={() => setIsDialogOpen(false)}
         onContinue={() => navigate(GUARDIAN_PATHS.newApplication)}
       />
-    </div>
+    </GuardianLayout>
   );
 }

@@ -1,4 +1,4 @@
-jest.mock('../src/config/db', () => ({ connect: jest.fn() }));
+jest.mock('../src/config/db', () => ({ connect: jest.fn(), query: jest.fn() }));
 jest.mock('../src/services/auditLog', () => jest.fn());
 jest.mock('../src/services/notifications', () => ({
   notifyAwardSubmitted: jest.fn(),
@@ -65,7 +65,7 @@ describe('bursary award proposals (isolated; no database)', () => {
     created_at: '2026-01-05T09:00:00.000Z',
   };
 
-  function setupCreateClient({ existingAward = null, createdAt = new Date().toISOString() } = {}) {
+  function setupCreateClient({ existingAward = null, createdAt = new Date().toISOString(), studentRow = {} } = {}) {
     const created = {
       id: awardId,
       student_id: studentId,
@@ -82,7 +82,7 @@ describe('bursary award proposals (isolated; no database)', () => {
         // Order matters: the annual-award lookup embeds a students subquery, so match the award
         // query before the plain student lookup.
         if (/FROM bursary_awards/.test(sql)) return { rows: existingAward ? [existingAward] : [] };
-        if (/FROM students/.test(sql)) return { rows: [{ id: studentId, full_name: 'Test Learner', school_code: 'Nairobi School' }] };
+        if (/FROM students/.test(sql)) return { rows: [{ id: studentId, full_name: 'Test Learner', school_code: 'Nairobi School', ...studentRow }] };
         return { rows: [] };
       }),
     };
@@ -195,6 +195,43 @@ describe('bursary award proposals (isolated; no database)', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.already_submitted).toBe(true);
     expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_awards/.test(sql))).toBe(false);
+  });
+
+  test('refuses a proposal while the student is held by an open duplicate case', async () => {
+    const client = setupCreateClient({ studentRow: { has_open_case: true, has_confirmed_case: false } });
+    const res = makeResponse();
+
+    await controller.create({ body: { student_id: studentId, requested_amount: 25000 }, user: { id: actorId } }, res, jest.fn());
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe('ELIGIBILITY_BLOCKED_BY_DUPLICATE');
+    expect(res.body.message).toMatch(/duplicate case/i);
+    expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_awards/.test(sql))).toBe(false);
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  test('refuses a proposal while a confirmed duplicate case is still unresolved', async () => {
+    const client = setupCreateClient({ studentRow: { has_open_case: false, has_confirmed_case: true } });
+    const res = makeResponse();
+
+    await controller.create({ body: { student_id: studentId, requested_amount: 25000 }, user: { id: actorId } }, res, jest.fn());
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe('ELIGIBILITY_BLOCKED_BY_DUPLICATE');
+    expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_awards/.test(sql))).toBe(false);
+  });
+
+  test('the award list hides duplicate-held students from Field Officers only', async () => {
+    pool.query.mockResolvedValue({ rows: [] });
+    const officer = makeResponse();
+    await controller.list({ user: { role: 'field_officer' } }, officer, jest.fn());
+    expect(officer.statusCode).toBe(200);
+    expect(pool.query.mock.calls[0][1]).toEqual([true]);
+
+    const admin = makeResponse();
+    await controller.list({ user: { role: 'admin' } }, admin, jest.fn());
+    expect(admin.statusCode).toBe(200);
+    expect(pool.query.mock.calls[1][1]).toEqual([false]);
   });
 });
 

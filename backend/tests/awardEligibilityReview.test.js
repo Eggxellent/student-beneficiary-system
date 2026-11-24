@@ -180,5 +180,49 @@ describe('administrator award review shows the saved eligibility assessment', ()
     expect(response.statusCode).toBe(403);
   });
 
+  test('an incomplete assessment recorded later does not replace the completed one under review', async () => {
+    const student = await createStudent('Review Complete Then Incomplete');
+    await assess(student.id);
+    await pool.query(
+      `INSERT INTO eligibility_assessments
+         (student_id, status, missing_inputs, trigger, trigger_reference, recorded_via, assessed_at)
+       VALUES ($1, 'incomplete', ARRAY['fee_balance']::text[], 'registration_screening', gen_random_uuid(),
+               'automatic_assessment', NOW() + INTERVAL '1 minute')`,
+      [student.id]
+    );
+
+    const proposal = await propose(student.id, 20000);
+    expect(proposal.statusCode).toBe(201);
+
+    const response = await review(proposal.body.award.id);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.eligibility).toMatchObject({
+      score: 72,
+      category: 'high',
+      fee_balance: 45000,
+      household_income: 18000,
+    });
+  });
+
+  test('financial fields the completed assessment never recorded are null, not zero', async () => {
+    const student = await createStudent('Review Unknown Financials');
+    // A completed assessment can still lack optional monetary inputs; the review must say "not
+    // recorded" instead of presenting a confident KSh 0 the officer never entered.
+    await pool.query(
+      `INSERT INTO eligibility_assessments (student_id, score, category, fee_balance, household_income, status, recorded_via)
+       VALUES ($1, 50, 'moderate', NULL, NULL, 'complete', 'eligibility_form')`,
+      [student.id]
+    );
+
+    const proposal = await propose(student.id, 10000);
+    expect(proposal.statusCode).toBe(201);
+
+    const response = await review(proposal.body.award.id);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.eligibility.score).toBe(50);
+    expect(response.body.eligibility.fee_balance).toBeNull();
+    expect(response.body.eligibility.household_income).toBeNull();
+  });
+
 });
 

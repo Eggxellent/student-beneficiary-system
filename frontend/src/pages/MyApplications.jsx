@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  CircleAlert,
   CircleCheck,
   Clock3,
   FileSearch,
@@ -8,22 +9,14 @@ import {
   LockKeyhole,
   Plus,
   Search,
-  Send,
 } from "lucide-react";
 
-import {
-  GUARDIAN_PATHS,
-  GuardianFooter,
-  GuardianHeader,
-  guardianSectionNav,
-} from "../components/GuardianChrome";
+import { GUARDIAN_PATHS, GuardianLayout } from "../components/GuardianChrome";
 import { useAuth } from "../context/AuthContext";
 import { fetchGuardianApplications, apiErrorMessage } from "../services/guardian";
 
 // Guardian application list. Rows come from GET /api/guardian/applications (already scoped to the
 // signed-in guardian), and the search, status filter and summary counts work on that live data.
-
-const NAV_ITEMS = guardianSectionNav("applications");
 
 const STATUS_STYLES = {
   submitted: "border-border bg-muted text-muted-foreground",
@@ -98,12 +91,14 @@ export default function MyApplications() {
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     fetchGuardianApplications()
-      .then((rows) => { if (active) setApplications(rows); })
-      .catch((err) => { if (active) setError(apiErrorMessage(err, "Could not load your applications.")); });
+      .then((rows) => { if (active) setApplications(Array.isArray(rows) ? rows : []); })
+      .catch((err) => { if (active) setError(apiErrorMessage(err, "Could not load your applications.")); })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
@@ -124,22 +119,29 @@ export default function MyApplications() {
         application.student.toLowerCase().includes(query) ||
         application.reference.toLowerCase().includes(query);
 
-      const matchesStatus = statusFilter === "all" || application.statusKey === statusFilter;
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "review"
+          ? application.statusKey === "review" || application.statusKey === "submitted"
+          : application.statusKey === statusFilter);
 
       return matchesSearch && matchesStatus;
     });
   }, [applications, searchTerm, statusFilter]);
 
-  const submittedCount = applications.filter(
-    (application) => application.statusKey === "submitted",
-  ).length;
-
+  // Applications are recorded as Under Review the moment they are submitted; older rows that still
+  // carry the legacy `submitted` value are counted in the same bucket.
   const reviewCount = applications.filter(
-    (application) => application.statusKey === "review",
+    (application) =>
+      application.statusKey === "review" || application.statusKey === "submitted",
   ).length;
 
   const approvedCount = applications.filter(
     (application) => application.statusKey === "approved",
+  ).length;
+
+  const rejectedCount = applications.filter(
+    (application) => application.statusKey === "rejected",
   ).length;
 
   // Application details are read-only for guardians; opening a row loads it by reference.
@@ -148,9 +150,7 @@ export default function MyApplications() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-background text-foreground">
-      <GuardianHeader navItems={NAV_ITEMS} guardianName={guardianName} initials={initials || "GW"} />
-
+    <GuardianLayout activeItem="applications" guardianName={guardianName} initials={initials || "GW"}>
       <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:p-10">
         <section
           aria-label="My Applications heading"
@@ -188,20 +188,14 @@ export default function MyApplications() {
         >
           <SummaryCard
             label="Total Applications"
-            count={APPLICATIONS.length}
+            count={applications.length}
             description="For students you support"
             icon={Files}
           />
           <SummaryCard
-            label="Submitted"
-            count={submittedCount}
-            description="Awaiting assessment"
-            icon={Send}
-          />
-          <SummaryCard
             label="Under Review"
             count={reviewCount}
-            description="Being assessed"
+            description="Awaiting assessment"
             icon={Clock3}
           />
           <SummaryCard
@@ -209,6 +203,12 @@ export default function MyApplications() {
             count={approvedCount}
             description="Successfully approved"
             icon={CircleCheck}
+          />
+          <SummaryCard
+            label="Rejected"
+            count={rejectedCount}
+            description="Not successful"
+            icon={CircleAlert}
           />
         </section>
 
@@ -222,7 +222,7 @@ export default function MyApplications() {
             </div>
 
             <span className="w-fit rounded-md bg-accent px-2 py-1 text-xs font-medium text-accent-foreground">
-              {APPLICATIONS.length} applications
+              {applications.length} applications
             </span>
           </div>
 
@@ -257,7 +257,6 @@ export default function MyApplications() {
                   className={`${CONTROL_CLASS} min-w-48 flex-1 px-3 lg:flex-none`}
                 >
                   <option value="all">All Applications</option>
-                  <option value="submitted">Submitted</option>
                   <option value="review">Under Review</option>
                   <option value="approved">Approved</option>
                   <option value="rejected">Rejected</option>
@@ -265,7 +264,29 @@ export default function MyApplications() {
               </div>
             </div>
 
-            {filteredApplications.length > 0 ? (
+            {loading ? (
+              <p className="mt-8 rounded-lg border border-dashed border-border bg-muted/40 px-6 py-12 text-center text-sm text-muted-foreground">
+                Loading your applications...
+              </p>
+            ) : applications.length === 0 ? (
+              <div className="mx-auto mt-8 flex max-w-md flex-col items-center rounded-lg border border-dashed border-border bg-muted/40 px-6 py-12 text-center">
+                <div className="grid size-12 place-items-center rounded-full bg-accent text-accent-foreground">
+                  <Files className="size-5" aria-hidden="true" />
+                </div>
+                <h3 className="mt-4 text-base font-semibold text-foreground">No applications yet</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Start a bursary application for a student you support; it will appear here once
+                  submitted.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate(GUARDIAN_PATHS.newApplication)}
+                  className="mt-4 text-sm font-semibold text-primary hover:underline"
+                >
+                  Start a new application
+                </button>
+              </div>
+            ) : filteredApplications.length > 0 ? (
               <>
                 {/* Desktop table; the card list below carries the same rows on small screens. */}
                 <div className="mt-6 hidden overflow-x-auto rounded-lg border border-border md:block">
@@ -379,8 +400,6 @@ export default function MyApplications() {
           </div>
         </section>
       </main>
-
-      <GuardianFooter />
-    </div>
+    </GuardianLayout>
   );
 }

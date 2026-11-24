@@ -2,19 +2,14 @@ import { useEffect, useState } from "react";
 import { LockKeyhole, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
-import {
-  GUARDIAN_PATHS,
-  GuardianFooter,
-  GuardianHeader,
-  guardianSectionNav,
-} from "../components/GuardianChrome";
+import { GUARDIAN_PATHS, GuardianLayout } from "../components/GuardianChrome";
 import { useAuth } from "../context/AuthContext";
 import { fetchGuardianProfile, apiErrorMessage } from "../services/guardian";
 
 // Guardian account page. Details are read from GET /api/guardian/me, which returns the signed-in
 // guardian's users row; Sign Out clears the stored token and returns to the shared sign-in form.
 
-const NAV_ITEMS = guardianSectionNav("account");
+const CARD_CLASS = "rounded-xl border border-border bg-card shadow-sm";
 
 const RELATIONSHIP_LABELS = {
   parent: "Parent",
@@ -115,13 +110,7 @@ export default function GuardianAccount() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-background text-foreground">
-      <GuardianHeader
-        navItems={NAV_ITEMS}
-        guardianName={account.name}
-        initials={initials}
-      />
-
+    <GuardianLayout activeItem="account" guardianName={account.name} initials={initials}>
       <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:py-10">
         <nav aria-label="Breadcrumb" className="mb-7 text-sm">
           <Link
@@ -152,6 +141,12 @@ export default function GuardianAccount() {
           </p>
         )}
 
+        {!profile && !error && (
+          <p className="mb-6 rounded-lg border border-border bg-muted/40 px-5 py-4 text-sm text-muted-foreground">
+            Loading your account details...
+          </p>
+        )}
+
         <section
           aria-label="Account summary"
           className={`flex flex-col gap-5 ${CARD_CLASS} p-6 sm:flex-row sm:items-center sm:justify-between`}
@@ -179,7 +174,7 @@ export default function GuardianAccount() {
             <ShieldCheck className="size-5 shrink-0 text-primary" aria-hidden="true" />
             <div>
               <p className="text-xs font-medium text-foreground">Account status</p>
-              <p className="mt-0.5 text-sm font-semibold text-primary">Active and secure</p>
+              <p className="mt-0.5 text-sm font-semibold text-primary">Active</p>
             </div>
           </div>
         </section>
@@ -241,8 +236,6 @@ export default function GuardianAccount() {
         </section>
 
       </main>
-
-      <GuardianFooter />
-    </div>
+    </GuardianLayout>
   );
 }

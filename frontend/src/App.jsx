@@ -5,7 +5,7 @@ import Verification from "./pages/Verification";
 import CertificateVerification from "./pages/CertificateVerification";
 import AdminDashboard from "./pages/AdminDashboard";
 import Students from "./pages/Students";
-import StudentRegistration from "./pages/StudentRegistration";
+import Applications from "./pages/Applications";
 import DuplicateReview from "./pages/DuplicateReview";
 import Awards from "./pages/Awards";
 import Eligibility from "./pages/Eligibility";
@@ -111,10 +111,10 @@ export default function App() {
         }
       />
       <Route
-        path="/students/register"
+        path="/applications"
         element={
-          <ProtectedPage allowedRoles={["field_officer"]}>
-            <StudentRegistration />
+          <ProtectedPage allowedRoles={["admin"]}>
+            <Applications />
           </ProtectedPage>
         }
       />

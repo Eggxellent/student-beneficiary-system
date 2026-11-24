@@ -81,6 +81,31 @@ describe('Admin and Field Officer authorization', () => {
     expect(listing.body.every(({ password_hash }) => password_hash === undefined)).toBe(true);
     expect(listing.body.every(({ role }) => ['admin', 'field_officer'].includes(role))).toBe(true);
 
+    // Guardian accounts live in the same table but must not appear in the staff directory,
+    // otherwise the role dropdown mislabels them as Field Officers.
+    const guardianEmail = `guardian-${emailSuffix}@example.test`;
+    createdEmails.push(guardianEmail);
+    const guardian = await pool.query(
+      `INSERT INTO users (full_name, email, password_hash, role, phone, national_id)
+       VALUES ($1, $2, $3, 'guardian', $4, $5) RETURNING id`,
+      ['Role Test Guardian', guardianEmail, await bcrypt.hash('TestPassword123!', 4), '0700000001', `GUARD-${emailSuffix}`]
+    );
+    createdIds.push(guardian.rows[0].id);
+
+    const staffListing = await request(app).get('/api/users').set('Authorization', `Bearer ${adminToken}`);
+    expect(staffListing.statusCode).toBe(200);
+    expect(staffListing.body.some(({ id }) => id === guardian.rows[0].id)).toBe(false);
+    expect((await request(app).patch(`/api/users/${guardian.rows[0].id}/role`)
+      .set('Authorization', `Bearer ${adminToken}`).send({ role: 'field_officer' })).statusCode).toBe(404);
+
+    // Staff user management must not deactivate a guardian account either: the guardian portal is
+    // a separate identity surface, and deactivating here would silently disable a family's access.
+    const guardianDeactivation = await request(app).delete(`/api/users/${guardian.rows[0].id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(guardianDeactivation.statusCode).toBe(404);
+    const guardianAfter = await pool.query('SELECT is_active FROM users WHERE id = $1', [guardian.rows[0].id]);
+    expect(guardianAfter.rows[0].is_active).toBe(true);
+
     const adminCreatedEmail = `created-${emailSuffix}@example.test`;
     createdEmails.push(adminCreatedEmail);
     const created = await request(app).post('/api/users').set('Authorization', `Bearer ${adminToken}`).send({
@@ -125,6 +150,17 @@ describe('Admin and Field Officer authorization', () => {
     const dashboard = await request(app).get('/api/admin/dashboard').set('Authorization', `Bearer ${adminToken}`);
     expect(dashboard.statusCode).toBe(200);
     expect(dashboard.body.syntheticStudents).toBe(expected.rows[0].count);
+    // The dashboard links administrators to the guardian review queue, so the summary must carry the
+    // queue counts instead of leaving the card to guess.
+    const applications = await pool.query(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE status IN ('submitted', 'under_review'))::int AS awaiting_review
+         FROM guardian_applications`,
+    );
+    expect(dashboard.body.guardianApplications).toEqual({
+      total: applications.rows[0].total,
+      awaitingReview: applications.rows[0].awaiting_review,
+    });
     expect((await request(app).get('/api/admin/dashboard').set('Authorization', `Bearer ${officerToken}`)).statusCode).toBe(403);
   });
 
@@ -139,6 +175,9 @@ describe('Admin and Field Officer authorization', () => {
     expect((await request(app).get('/api/students')).statusCode).toBe(401);
     expect((await request(app).get('/api/students/schools')).statusCode).toBe(401);
     expect((await request(app).get(`/api/students/${absentStudentId}`)).statusCode).toBe(401);
+    // Student registration is not exposed at all: guardians register students through the Guardian
+    // Portal, so no staff role can POST a student record. Unauthenticated staff routes answer 401
+    // because the router authenticates before route resolution.
     expect((await request(app).post('/api/students').send({})).statusCode).toBe(401);
 
     const adminRefusals = await Promise.all([
@@ -147,6 +186,9 @@ describe('Admin and Field Officer authorization', () => {
       request(app).get(`/api/students/${absentStudentId}`).set('Authorization', `Bearer ${adminToken}`),
       request(app).post('/api/students').set('Authorization', `Bearer ${adminToken}`).send({}),
     ]);
+    // The router guards every method before route resolution, so a staff POST is refused by the
+    // role check rather than falling through to 404; a Field Officer (who passes the guard) reaches
+    // no matching route and gets 404, which tests/guardianPipeline.test.js pins.
     expect(adminRefusals.map(({ statusCode }) => statusCode)).toEqual([403, 403, 403, 403]);
 
     const listing = await request(app).get('/api/students').set('Authorization', `Bearer ${officerToken}`);

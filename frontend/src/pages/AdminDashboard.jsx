@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ArrowRight, BadgeCheck, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, Plus, Settings, ShieldAlert, Users, Wallet } from "lucide-react";
+import { ArrowRight, BadgeCheck, ChevronDown, ChevronUp, ClipboardList, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, Plus, Settings, ShieldAlert, Users, Wallet } from "lucide-react";
 import HeaderActions from "../components/HeaderActions";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 
 const navigation = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+  { name: "Applications", path: "/applications", icon: ClipboardList },
   { name: "Duplicate Review", path: "/duplicate-review", icon: ShieldAlert },
   { name: "Awards", path: "/awards", icon: Wallet },
   { name: "Audit Logs", path: "/audit", icon: Clock3 },
@@ -71,6 +72,7 @@ export default function AdminDashboard() {
   const [loadError, setLoadError] = useState("");
   const [lastUpdated, setLastUpdated] = useState(() => cachedDashboard?.lastUpdated ? new Date(cachedDashboard.lastUpdated) : null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(true);
 
   async function loadDashboard({ silent = false } = {}) {
     try {
@@ -111,6 +113,7 @@ export default function AdminDashboard() {
   const eligibleStudents = cachedDashboard?.eligibleStudents ?? 0;
   const duplicateCount = cachedDashboard?.duplicateCount ?? 0;
   const awards = cachedDashboard?.awards || {};
+  const guardianApplications = cachedDashboard?.guardianApplications || { total: 0, awaitingReview: 0 };
   const awardCards = [
     { label: "Approved awards", value: Number(awards.approved_awards || 0).toLocaleString() },
     { label: "Proposed, awaiting approval", value: Number(awards.submitted_awards || 0).toLocaleString() },
@@ -240,6 +243,28 @@ export default function AdminDashboard() {
             ))}
           </section>
 
+          <Link
+            to="/applications"
+            className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50/40"
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded bg-emerald-50 text-emerald-600">
+                <ClipboardList size={16} strokeWidth={1.8} aria-hidden="true" />
+              </span>
+              <div>
+                <p className="text-[9px] font-medium uppercase text-slate-500">Guardian applications</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  {Number(guardianApplications.awaitingReview || 0).toLocaleString()} awaiting review
+                  {" · "}
+                  {Number(guardianApplications.total || 0).toLocaleString()} submitted in total
+                </p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+              Review applications <ArrowRight size={13} aria-hidden="true" />
+            </span>
+          </Link>
+
           <div className="mt-4 grid gap-4">
             <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between">
@@ -321,24 +346,39 @@ export default function AdminDashboard() {
             </div>
 
             <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
-              <h3 className="text-lg font-semibold text-slate-800">Recent Activity</h3>
-
-              <div className="mt-6 divide-y divide-slate-100">
-                {activities.slice(0, 4).map((activity) => {
-                  const details = activityDetails(activity.action);
-                  return (
-                    <div key={activity.id} className="flex items-center gap-4 py-4">
-                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${details.color}`}><details.icon size={17} aria-hidden="true" /></div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-800">{details.label}</p>
-                        <p className="mt-1 text-xs text-slate-500">{details.detail}</p>
-                      </div>
-                      <span className="shrink-0 text-xs text-slate-400">{formatRelativeTime(activity.created_at)}</span>
-                    </div>
-                  );
-                })}
-                {activities.length === 0 && <p className="py-6 text-sm text-slate-500">No recent activity.</p>}
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-slate-800">Recent Activity</h3>
+                <button
+                  type="button"
+                  onClick={() => setActivityOpen((open) => !open)}
+                  aria-expanded={activityOpen}
+                  aria-controls="recent-activity-list"
+                  aria-label={activityOpen ? "Collapse recent activity" : "Expand recent activity"}
+                  title={activityOpen ? "Collapse recent activity" : "Expand recent activity"}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                >
+                  {activityOpen ? <ChevronUp size={17} aria-hidden="true" /> : <ChevronDown size={17} aria-hidden="true" />}
+                </button>
               </div>
+
+              {activityOpen && (
+                <div id="recent-activity-list" className="mt-4 divide-y divide-slate-100">
+                  {activities.slice(0, 4).map((activity) => {
+                    const details = activityDetails(activity.action);
+                    return (
+                      <div key={activity.id} className="flex items-center gap-4 py-4">
+                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${details.color}`}><details.icon size={17} aria-hidden="true" /></div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-slate-800">{details.label}</p>
+                          <p className="mt-1 text-xs text-slate-500">{details.detail}</p>
+                        </div>
+                        <span className="shrink-0 text-xs text-slate-400">{formatRelativeTime(activity.created_at)}</span>
+                      </div>
+                    );
+                  })}
+                  {activities.length === 0 && <p className="py-6 text-sm text-slate-500">No recent activity.</p>}
+                </div>
+              )}
             </div>
           </div>
         </section>

@@ -2,8 +2,6 @@ const request = require("supertest");
 const bcrypt = require("bcrypt");
 const app = require("../src/index");
 const pool = require("../src/config/db");
-const { buildDuplicateFeatures, calculateDuplicateScore } = require("../src/services/duplicateCheck");
-const { getMlReviewScoreThreshold, getDuplicateThreshold } = require("../src/config/settings");
 
 describe("Students API", () => {
   jest.setTimeout(30000);
@@ -57,11 +55,17 @@ describe("Students API", () => {
     expect(response.body).toEqual(["Nairobi School", "Alliance High", "Bishop Gatimu", "Loreto Limuru", "Maranda"]);
   });
 
-  test("student registration rejects schools outside the approved list", async () => {
-    const response = await request(app).post("/api/students").set("Authorization", `Bearer ${token}`).send({
-      full_name: "Invalid School Student", school_code: "Other Academy",
-    });
-    expect(response.statusCode).toBe(400);
+  // Student registration is a Guardian Portal action: the staff route was removed with the
+  // guardian pipeline, so a Field Officer who reaches it gets 404 and no row is created.
+  test("staff cannot register a student; registration belongs to the guardian portal", async () => {
+    const before = await pool.query("SELECT COUNT(*)::int AS total FROM students");
+    const response = await request(app)
+      .post("/api/students")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ full_name: "Invalid School Student", school_code: "Other Academy" });
+    expect(response.statusCode).toBe(404);
+    const after = await pool.query("SELECT COUNT(*)::int AS total FROM students");
+    expect(after.rows[0].total).toBe(before.rows[0].total);
   });
 
   test("admin cannot access field-officer student or eligibility APIs", async () => {
@@ -88,156 +92,4 @@ describe("Students API", () => {
     }
   });
 
-  test("POST /api/students should persist the birth certificate number", async () => {
-    const student = {
-      full_name: `Certificate Test ${Date.now()}`,
-      date_of_birth: "2010-05-14",
-      school_code: "Nairobi School",
-      guardian_id: "G-CERT-01",
-      upi: `UPI-CERT-${Date.now()}`,
-      birth_certificate_number: `BC-CERT-${Date.now()}`,
-      is_synthetic: true,
-    };
-
-    const response = await request(app)
-      .post("/api/students")
-      .set("Authorization", `Bearer ${token}`)
-      .send(student);
-
-    expect(response.statusCode).toBe(201);
-    expect(response.body.student.birth_certificate_number).toBe(student.birth_certificate_number);
-    expect(response.body.student.is_synthetic).toBe(false);
-
-    await pool.query("DELETE FROM students WHERE id = $1", [response.body.student.id]);
-  });
-
-  test("POST /api/students should register reused UPIs for admin review", async () => {
-    const upi = `UPI-REUSED-${Date.now()}`;
-    const firstResponse = await request(app)
-      .post("/api/students")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ full_name: "UPI Baseline Student", upi, school_code: "Nairobi School" });
-
-    const duplicateResponse = await request(app)
-      .post("/api/students")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ full_name: "Different Student", upi, school_code: "Nairobi School" });
-
-    expect(firstResponse.statusCode).toBe(201);
-    expect(duplicateResponse.statusCode).toBe(201);
-    expect(duplicateResponse.body.duplicate_flags).toHaveLength(1);
-    expect(duplicateResponse.body.duplicate_flags[0].risk_level).toBe('review');
-    expect(duplicateResponse.body.duplicate_flags[0].review_reason).toMatch(/exact UPI match/i);
-    // Contract shared with the admin queue: severity is `priority`, and the exact
-    // identifier list is published as evidence instead of being parsed out of prose.
-    expect(duplicateResponse.body.duplicate_flags[0].priority).toBe('high');
-    expect(duplicateResponse.body.duplicate_flags[0].exact_identifier_matches).toEqual(['UPI']);
-    const screening = duplicateResponse.body.duplicate_screening;
-    expect(screening.aggregation_policy).toBeTruthy();
-    expect(screening.candidates_considered).toBeGreaterThanOrEqual(1);
-    expect(screening.candidates_qualifying).toBeGreaterThanOrEqual(1);
-    expect(screening.candidates_suppressed).toBe(0);
-    expect(screening.review_threshold).toBe(getMlReviewScoreThreshold());
-    expect(screening.high_priority_threshold).toBe(getDuplicateThreshold());
-    expect(screening.thresholds_validated).toBe(false);
-    expect(screening.score_is_calibrated_probability).toBe(false);
-    expect(duplicateResponse.body.message).toBe("Student registered successfully");
-
-    const flags = await pool.query(
-      "SELECT probability, status FROM duplicate_flags WHERE student_id = $1 AND matched_student_id = $2",
-      [duplicateResponse.body.student.id, firstResponse.body.student.id]
-    );
-    expect(flags.rows).toHaveLength(1);
-    expect(Number(flags.rows[0].probability)).toBe(duplicateResponse.body.duplicate_flags[0].model_score);
-    expect(flags.rows[0].status).toBe("pending");
-
-    await pool.query("DELETE FROM duplicate_flags WHERE student_id = $1 OR student_id = $2", [firstResponse.body.student.id, duplicateResponse.body.student.id]);
-    await pool.query("DELETE FROM students WHERE id = $1 OR id = $2", [firstResponse.body.student.id, duplicateResponse.body.student.id]);
-  });
-
-  test("POST /api/students should prioritize an exact birth certificate match", async () => {
-    const suffix = Date.now();
-    const firstResponse = await request(app)
-      .post("/api/students")
-      .set("Authorization", `Bearer ${token}`)
-      .send({
-        full_name: "Nia Wanjiku",
-        date_of_birth: "2009-03-12",
-        school_code: "Alliance High",
-        guardian_id: "G-481725",
-        birth_certificate_number: `BC-2009-${suffix}`,
-        upi: `UPI-${Math.floor(10000000 + Math.random() * 90000000)}`,
-      });
-    const secondResponse = await request(app)
-      .post("/api/students")
-      .set("Authorization", `Bearer ${token}`)
-      .send({
-        full_name: "Tendo Kiptoo",
-        date_of_birth: "2012-09-24",
-        school_code: "Maranda",
-        guardian_id: "G-735402",
-        birth_certificate_number: `BC-2009-${suffix}`,
-        upi: `UPI-${Math.floor(10000000 + Math.random() * 90000000)}`,
-      });
-
-    expect(firstResponse.statusCode).toBe(201);
-    expect(secondResponse.statusCode).toBe(201);
-    const duplicateFlag = await pool.query(
-      "SELECT probability, status FROM duplicate_flags WHERE student_id = $1 AND matched_student_id = $2",
-      [secondResponse.body.student.id, firstResponse.body.student.id]
-    );
-    expect(duplicateFlag.rows).toHaveLength(1);
-    expect(duplicateFlag.rows[0].probability).toBeDefined();
-    expect(duplicateFlag.rows[0].status).toBe("pending");
-    expect(secondResponse.body.duplicate_flags[0].review_reason).toMatch(/exact birth certificate number match/i);
-
-    await pool.query("DELETE FROM duplicate_flags WHERE student_id = $1 OR student_id = $2", [firstResponse.body.student.id, secondResponse.body.student.id]);
-    await pool.query("DELETE FROM students WHERE id = $1 OR id = $2", [firstResponse.body.student.id, secondResponse.body.student.id]);
-  });
-
-  test("POST /api/students should keep non-unique matches in review", async () => {
-    const suffix = Date.now();
-    const shared = {
-      date_of_birth: "2010-05-14",
-      school_code: "Loreto Limuru",
-      guardian_id: "G-384720",
-    };
-    const firstResponse = await request(app)
-      .post("/api/students")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ ...shared, full_name: "Miriam Chebet", upi: `UPI-${Math.floor(10000000 + Math.random() * 90000000)}`, birth_certificate_number: `BC-2010-${Math.floor(100000 + Math.random() * 900000)}` });
-    const secondResponse = await request(app)
-      .post("/api/students")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ ...shared, full_name: "Miriam Chebet", upi: `UPI-${Math.floor(10000000 + Math.random() * 90000000)}`, birth_certificate_number: `BC-2011-${Math.floor(100000 + Math.random() * 900000)}` });
-
-    const studentIds = [firstResponse.body.student?.id, secondResponse.body.student?.id].filter(Boolean);
-    try {
-      expect(firstResponse.statusCode).toBe(201);
-      expect(secondResponse.statusCode).toBe(201);
-      const baselineFeatures = buildDuplicateFeatures(firstResponse.body.student, secondResponse.body.student);
-      expect(baselineFeatures).toEqual({
-        jaro_winkler: 1,
-        dob_match: 1,
-        school_match: 1,
-        guardian_match: 1,
-        upi_match: 0,
-        birth_certificate_match: 0,
-        national_id_match: 0,
-      });
-      expect(calculateDuplicateScore(baselineFeatures)).toBe(0.2);
-      const baselineMatch = await pool.query(
-        "SELECT probability, status FROM duplicate_flags WHERE student_id = $1 AND matched_student_id = $2",
-        [secondResponse.body.student.id, firstResponse.body.student.id]
-      );
-      expect(baselineMatch.rows).toHaveLength(1);
-      expect(Number(baselineMatch.rows[0].probability)).toBeGreaterThanOrEqual(secondResponse.body.duplicate_screening.review_threshold);
-      expect(baselineMatch.rows[0].status).toBe("pending");
-    } finally {
-      if (studentIds.length) {
-        await pool.query("DELETE FROM duplicate_flags WHERE student_id = ANY($1::uuid[]) OR matched_student_id = ANY($1::uuid[])", [studentIds]);
-        await pool.query("DELETE FROM students WHERE id = ANY($1::uuid[])", [studentIds]);
-      }
-    }
-  });
 });

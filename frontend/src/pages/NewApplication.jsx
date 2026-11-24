@@ -1,54 +1,21 @@
 import { useState } from "react";
-import { BadgeDollarSign, ChevronDown, FileText, IdCard, Info, Upload } from "lucide-react";
+import { ChevronDown, Info } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  GUARDIAN_PATHS,
-  GuardianFooter,
-  GuardianHeader,
-  guardianSectionNav,
-} from "../components/GuardianChrome";
+import { GUARDIAN_PATHS, GuardianLayout } from "../components/GuardianChrome";
 import { useAuth } from "../context/AuthContext";
 import { submitGuardianApplication, apiErrorMessage } from "../services/guardian";
 
 // Guardian application form (page 3 of the guardian interface). Submitting POSTs the form to
 // /api/guardian/applications, which stores the application against the signed-in guardian and
-// returns a reference such as APP-2026-01004. Supporting documents are not uploaded yet: the file
-// tiles stay placeholders and the API stores an empty documents list.
-
-const FORM_NAV_ITEMS = guardianSectionNav("applications");
+// returns a reference such as APP-2026-01004. Initial submissions carry no supporting documents:
+// the form asks for student, school and household information only. Documents are requested later
+// by an authorised officer through the More Info Required workflow when they are actually needed.
 
 const CARD_CLASS = "rounded-xl border border-border bg-card shadow-sm";
 
 // Shared control styling: same height, border and focus treatment as the guardian registration form.
 const CONTROL_CLASS =
   "h-11 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-secondary focus:outline-none focus:ring-2 focus:ring-ring/30";
-
-const DOCUMENT_SLOTS = [
-  {
-    icon: FileText,
-    title: "Student identification document",
-    required: true,
-    hint: "Birth Certificate or National ID · PDF, JPG or PNG · Max 5 MB",
-  },
-  {
-    icon: Upload,
-    title: "School admission letter or proof of enrolment",
-    required: true,
-    hint: "PDF, JPG or PNG · Max 5 MB",
-  },
-  {
-    icon: IdCard,
-    title: "Parent / Guardian identification document",
-    required: false,
-    hint: "Where applicable · PDF, JPG or PNG · Max 5 MB",
-  },
-  {
-    icon: BadgeDollarSign,
-    title: "Household income supporting document",
-    required: false,
-    hint: "Where required · PDF, JPG or PNG · Max 5 MB",
-  },
-];
 
 function FormCard({ title, description, children, contentClassName = "p-6" }) {
   return (
@@ -85,10 +52,16 @@ function Input({ className = "", ...props }) {
 
 // Native <select> with the chevron drawn by the wrapper: the project has no select component, and a
 // native control keeps keyboard and mobile behaviour intact.
-function Select({ id, name, defaultValue, options }) {
+function Select({ id, name, defaultValue, options, required = false }) {
   return (
     <div className="relative">
-      <select id={id} name={name || id} defaultValue={defaultValue} className={`${CONTROL_CLASS} appearance-none pr-10`}>
+      <select
+        id={id}
+        name={name || id}
+        defaultValue={defaultValue}
+        required={required}
+        className={`${CONTROL_CLASS} appearance-none pr-10`}
+      >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -139,8 +112,13 @@ export default function NewApplication() {
       household_size: values.get("household-size"),
       income_source: values.get("income-source"),
       monthly_income: values.get("monthly-income"),
+      // Eligibility inputs scored automatically after duplicate screening. The API coerces the
+      // numeric strings; the selects submit the engine's own vocabulary values.
+      fee_balance: values.get("fee-balance"),
+      vulnerability_status: values.get("vulnerability-status"),
+      siblings_in_school: values.get("siblings-in-school"),
+      prior_bursary_history: values.get("prior-bursary-history"),
       declaration: values.get("declaration") === "on",
-      documents: [],
     };
 
     setSubmitting(true);
@@ -155,9 +133,11 @@ export default function NewApplication() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-background text-foreground">
-      <GuardianHeader navItems={FORM_NAV_ITEMS} guardianName={guardianName || "Guardian"} initials={initials || "GW"} />
-
+    <GuardianLayout
+      activeItem="new-application"
+      guardianName={guardianName || "Guardian"}
+      initials={initials || "GW"}
+    >
       <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:p-10">
         <nav aria-label="Breadcrumb" className="mb-6">
           <ol className="flex flex-wrap items-center gap-2 text-sm">
@@ -202,8 +182,8 @@ export default function NewApplication() {
           <div>
             <p className="text-sm font-semibold text-foreground">One student per application</p>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Each application is for one student. You can submit separate applications for each
-              child, or apply for yourself if you are an adult student.
+              Each application is for one student. Submit a separate application for each child you
+              are the parent or legal guardian of.
             </p>
           </div>
         </div>
@@ -243,11 +223,11 @@ export default function NewApplication() {
                 />
               </Field>
 
-              <Field label="National ID / Birth Certificate Number" htmlFor="student-id">
+              <Field label="Birth Certificate Number" htmlFor="student-id">
                 <Input
                   id="student-id"
                   name="student-id"
-                  placeholder="Enter ID or birth certificate number"
+                  placeholder="Enter birth certificate number"
                 />
               </Field>
 
@@ -258,7 +238,6 @@ export default function NewApplication() {
                   options={[
                     { value: "parent", label: "Parent" },
                     { value: "guardian", label: "Legal Guardian" },
-                    { value: "self", label: "Self" },
                     { value: "caregiver", label: "Authorised Caregiver" },
                   ]}
                 />
@@ -365,37 +344,82 @@ export default function NewApplication() {
           </FormCard>
 
           <FormCard
-            title="Supporting Documents"
-            description="Upload clear copies of the documents that support this application."
-            contentClassName="grid grid-cols-1 gap-4 p-6 md:grid-cols-2"
+            title="Bursary Eligibility Information"
+            description="These five details are scored automatically to work out the student’s bursary need level."
           >
-            {DOCUMENT_SLOTS.map(({ icon: Icon, title, required, hint }) => (
-              <div key={title} className="rounded-lg border border-dashed border-border bg-muted/30 p-5">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-md bg-accent p-2 text-accent-foreground">
-                    <Icon className="size-5" aria-hidden="true" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground">
-                      {title}
-                      {required && (
-                        <span className="ml-1 text-destructive" aria-hidden="true">
-                          *
-                        </span>
-                      )}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{hint}</p>
-                    {/* Placeholder only: no file input and no upload wiring in this phase. */}
-                    <button
-                      type="button"
-                      className="mt-4 inline-flex h-9 items-center justify-center rounded-md border border-primary px-3 text-sm font-medium text-primary transition hover:bg-primary/10"
-                    >
-                      Choose file
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <Field
+                label="Outstanding School Fee Balance (KES)"
+                htmlFor="fee-balance"
+                required
+                description="Total school fees still unpaid at the time of this application. Enter 0 if the fees are fully paid."
+              >
+                <Input
+                  id="fee-balance"
+                  name="fee-balance"
+                  type="number"
+                  min="0"
+                  max="1000000000"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="e.g. 15000"
+                />
+              </Field>
+
+              <Field
+                label="Number of Siblings Currently in School"
+                htmlFor="siblings-in-school"
+                required
+                description="Other children in the household attending school or college. Enter 0 if there are none."
+              >
+                <Input
+                  id="siblings-in-school"
+                  name="siblings-in-school"
+                  type="number"
+                  min="0"
+                  max="20"
+                  step="1"
+                  inputMode="numeric"
+                  placeholder="e.g. 2"
+                />
+              </Field>
+
+              <Field
+                label="Vulnerability Status"
+                htmlFor="vulnerability-status"
+                required
+                description="Low: stable household. Medium: some hardship, such as illness or irregular income. High: severe hardship, such as orphanhood, disability or extreme poverty."
+              >
+                <Select
+                  id="vulnerability-status"
+                  required
+                  options={[
+                    { value: "", label: "Select vulnerability status" },
+                    { value: "low", label: "Low" },
+                    { value: "medium", label: "Medium" },
+                    { value: "high", label: "High" },
+                  ]}
+                />
+              </Field>
+
+              <Field
+                label="Prior Bursary History"
+                htmlFor="prior-bursary-history"
+                required
+                description="Whether this student has received bursary assistance before."
+              >
+                <Select
+                  id="prior-bursary-history"
+                  required
+                  options={[
+                    { value: "", label: "Select prior bursary history" },
+                    { value: "none", label: "No – no previous bursary" },
+                    { value: "low", label: "Yes – limited assistance" },
+                    { value: "high", label: "Yes – substantial assistance" },
+                  ]}
+                />
+              </Field>
+            </div>
           </FormCard>
 
           <FormCard title="Declaration">
@@ -442,8 +466,6 @@ export default function NewApplication() {
           </div>
         </form>
       </main>
-
-      <GuardianFooter maxWidthClass="max-w-6xl" />
-    </div>
+    </GuardianLayout>
   );
 }

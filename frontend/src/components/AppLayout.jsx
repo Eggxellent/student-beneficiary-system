@@ -1,11 +1,12 @@
 import { Link, useLocation } from "react-router-dom";
-import { BadgeCheck, FileText, GraduationCap, LayoutDashboard, Settings, ShieldAlert, UserCog, UserPlus, Users, Wallet } from "lucide-react";
+import { BadgeCheck, ClipboardList, FileText, GraduationCap, LayoutDashboard, Settings, ShieldAlert, UserCog, Users, Wallet } from "lucide-react";
 import HeaderActions from "./HeaderActions";
 import { useAuth } from "../context/AuthContext";
 
 const navigationByRole = {
   admin: [
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+    { name: "Applications", path: "/applications", icon: ClipboardList },
     { name: "Duplicate Review", path: "/duplicate-review", icon: ShieldAlert },
     { name: "Awards", path: "/awards", icon: Wallet },
     { name: "Audit Logs", path: "/audit", icon: FileText },
@@ -16,7 +17,6 @@ const navigationByRole = {
   field_officer: [
     { name: "Dashboard", path: "/field-officer", icon: LayoutDashboard },
     { name: "Students", path: "/students", icon: Users },
-    { name: "Register Student", path: "/students/register", icon: UserPlus },
     { name: "Eligibility", path: "/eligibility", icon: BadgeCheck },
     { name: "Awards", path: "/awards", icon: Wallet },
   ],

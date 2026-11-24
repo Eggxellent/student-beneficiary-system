@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { ArrowRight, Eye, EyeOff, KeyRound } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -186,8 +186,8 @@ export default function Login() {
                 </button>
               </form>
 
-              <p className="sbms-auth-note">
-                Accounts are issued by an administrator. Ask them for access or a one-time password reset link.
+              <p className="sbms-auth-note sbms-auth-register">
+                Don&apos;t have an account? <Link to="/guardian/register">Register here</Link>
               </p>
           </div>
         </section>

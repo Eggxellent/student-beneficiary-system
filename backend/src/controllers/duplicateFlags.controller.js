@@ -9,6 +9,11 @@ const { scorePairs, exactNationalIdMatch, exactReviewIdentifierMatches, reviewPr
 const { z } = require('zod');
 const { APPROVED_SCHOOLS } = require('../config/schools');
 const { normalizeAggregationPolicy } = require('../services/duplicateAggregation');
+const {
+  assessAutomatically,
+  guardianStudentInCase,
+  latestApplicationForStudent,
+} = require('../services/automaticAssessment');
 
 const decisionSchema = z.object({
   decision: z.enum(['confirmed_duplicate', 'not_duplicate', 'needs_verification']),
@@ -523,8 +528,28 @@ async function update(req, res, next) {
         review_threshold: flag.review_threshold,
       }]
     );
+
+    // Clearing a false positive releases the eligibility hold the flag imposed. The assessment runs
+    // inside the same transaction, so the decision is never recorded without it and a retry after a
+    // failure is the normal resubmission of the review action.
+    let automaticAssessment = null;
+    if (decision === 'not_duplicate') {
+      const guardianStudent = await guardianStudentInCase(client, flag);
+      if (guardianStudent) {
+        const application = await latestApplicationForStudent(client, guardianStudent.id);
+        automaticAssessment = await assessAutomatically({
+          client,
+          studentId: guardianStudent.id,
+          trigger: 'duplicate_clearance',
+          triggerReference: flag.id,
+          application,
+          actorId: reviewerId,
+        });
+      }
+    }
+
     await client.query('COMMIT');
-    res.json({ message: 'Review decision recorded', flag });
+    res.json({ message: 'Review decision recorded', flag, automatic_assessment: automaticAssessment });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);

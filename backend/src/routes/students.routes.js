@@ -7,8 +7,10 @@ const router = express.Router();
 
 router.use(authenticateToken, requireRole('field_officer'));
 router.get('/schools', controller.listSchools);
+router.get('/registered', controller.listRegistered);
+router.get('/registered/overview', controller.overview);
+router.get('/eligibility-findings', controller.listEligibilityFindings);
 router.get('/', controller.list);
 router.get('/:id', controller.get);
-router.post('/', controller.create);
 
 module.exports = router;

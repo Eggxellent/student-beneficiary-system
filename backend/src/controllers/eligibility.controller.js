@@ -37,6 +37,35 @@ async function calculate(req, res, next) {
   }
 
   try {
+    // A confirmed or still-unresolved duplicate case blocks eligibility, including a manual
+    // calculation; the automatic assessments use the same rule.
+    const eligibilityState = await pool.query(
+      `SELECT s.id, s.duplicate_of_student_id,
+              EXISTS (
+                SELECT 1 FROM duplicate_flags f
+                 WHERE (f.student_id = s.id OR f.matched_student_id = s.id)
+                   AND f.status IN ('pending', 'needs_verification')
+              ) AS has_open_case,
+              EXISTS (
+                SELECT 1 FROM duplicate_flags f
+                 WHERE (f.student_id = s.id OR f.matched_student_id = s.id)
+                   AND f.status = 'confirmed_duplicate'
+                   AND NOT EXISTS (SELECT 1 FROM duplicate_resolutions r WHERE r.duplicate_flag_id = f.id)
+              ) AS has_confirmed_case
+         FROM students s WHERE s.id = $1`,
+      [student_id],
+    );
+    if (!eligibilityState.rows.length) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+    const studentState = eligibilityState.rows[0];
+    if (studentState.duplicate_of_student_id || studentState.has_open_case || studentState.has_confirmed_case) {
+      return res.status(409).json({
+        message: 'Eligibility is blocked while this student has an unresolved or confirmed duplicate case.',
+        code: 'ELIGIBILITY_BLOCKED_BY_DUPLICATE',
+      });
+    }
+
     const assessment = calculateEligibility({
       fee_balance,
       household_income,

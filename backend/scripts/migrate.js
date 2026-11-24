@@ -2,7 +2,32 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const MIGRATIONS_DIR = path.join(__dirname, '..', 'src', 'db', 'migrations');
-const TEST_DATABASE = Object.freeze({ name: 'sbms_test', user: 'sbms_test_runner' });
+const LEDGER_TABLE = 'public.sbms_schema_migrations';
+const LOCAL_DATABASE_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
+// Two local targets, each pinned to one database name. The test target keeps its existing double
+// confirmation. The development target is the database `backend/.env` points at, so a fresh local
+// checkout can be built from the same migration chain the test database uses instead of drifting
+// behind it. Neither target can name an Azure or production database: the name must match exactly.
+const TARGETS = Object.freeze({
+  test: Object.freeze({
+    key: 'test',
+    database: 'sbms_test',
+    username: 'sbms_test_runner',
+    approval: 'sbms_test',
+    confirmationFlag: '--confirm-sbms-test',
+    label: 'local test database',
+  }),
+  dev: Object.freeze({
+    key: 'dev',
+    database: 'student_beneficiary_system',
+    username: null,
+    approval: 'student_beneficiary_system',
+    confirmationFlag: '--confirm-local-dev',
+    label: 'local development database',
+  }),
+});
+const TEST_DATABASE = TARGETS.test;
 
 // Explicit dependency order. The primary-account policy migration is intentionally
 // excluded: it changes existing user activation state and requires a separate decision.
@@ -27,6 +52,8 @@ const MIGRATION_ORDER = Object.freeze([
   '20261115_password_reset_tokens.sql',
   '20261115_eligibility_assessments_and_duplicate_resolution.sql',
   '20261119_guardian_accounts.sql',
+  '20261122_guardian_student_pipeline.sql',
+  '20261123_guardian_eligibility_inputs.sql',
 ]);
 
 const MANUAL_MIGRATIONS = Object.freeze([
@@ -44,21 +71,81 @@ const RETIRED_MIGRATIONS = Object.freeze([
   '20261117_application_closure.sql',
 ]);
 
-function validateTargetDatabaseUrl(value) {
-  if (!value) throw new Error('Set SBMS_MIGRATION_DATABASE_URL to the approved local sbms_test URL.');
+function validateTargetDatabaseUrl(value, target = TEST_DATABASE) {
+  if (!value) {
+    throw new Error(`Set the ${target.database} connection URL explicitly before migrating.`);
+  }
   let url;
-  try { url = new URL(value); } catch { throw new Error('SBMS_MIGRATION_DATABASE_URL must be a valid PostgreSQL URL.'); }
+  try { url = new URL(value); } catch { throw new Error('The migration database URL must be a valid PostgreSQL URL.'); }
   const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   const database = decodeURIComponent(url.pathname.slice(1));
+  const username = decodeURIComponent(url.username);
   if (!['postgres:', 'postgresql:'].includes(url.protocol)
-    || !['localhost', '127.0.0.1', '::1'].includes(host)
-    || database !== TEST_DATABASE.name
-    || decodeURIComponent(url.username) !== TEST_DATABASE.user
+    || !LOCAL_DATABASE_HOSTS.has(host)
+    || database !== target.database
+    || (target.username !== null && username !== target.username)
     || url.search || url.hash
-    || url.pathname !== `/${TEST_DATABASE.name}`) {
-    throw new Error('Refusing migration connection: only the local sbms_test database using sbms_test_runner is allowed.');
+    || url.pathname !== `/${target.database}`) {
+    const role = target.username ? ` using ${target.username}` : '';
+    throw new Error(`Refusing migration connection: only the local ${target.database} database${role} is allowed.`);
   }
-  return url;
+  return value;
+}
+
+function parseTarget(args) {
+  const requested = args.find((arg) => arg.startsWith('--target='));
+  if (!requested) return TEST_DATABASE;
+  const key = requested.slice('--target='.length);
+  if (!Object.hasOwn(TARGETS, key)) {
+    throw new Error(`Unknown migration target: ${key}. Use --target=test or --target=dev.`);
+  }
+  return TARGETS[key];
+}
+
+function readEnvFile() {
+  try {
+    return require('dotenv').parse(fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+// The test target must be pointed at explicitly by the test tooling. The development target always
+// comes from the application's own .env, because the ambient shell in this workspace inherits the
+// test database URL: reading the file directly is what keeps `npm start` and the migration pointed
+// at the same database.
+function resolveConnectionString(target) {
+  if (target.key === 'test') return process.env.SBMS_MIGRATION_DATABASE_URL;
+  return readEnvFile().DATABASE_URL;
+}
+
+async function createMigrationLedger(client) {
+  await client.query(`CREATE TABLE IF NOT EXISTS ${LEDGER_TABLE} (
+    name TEXT PRIMARY KEY,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+}
+
+function assertMigrationOwnsItsTransaction(name, sql) {
+  if (/^\s*BEGIN\s*;/im.test(sql) || /^\s*COMMIT\s*;/im.test(sql)) {
+    throw new Error(`Migration ${name} contains transaction control; runner owns transactions.`);
+  }
+}
+
+// One migration, one transaction, one ledger row. Exported so the local setup script builds the
+// development database with the same rules the test database was built with.
+async function applyMigrationFile(client, name) {
+  const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8');
+  assertMigrationOwnsItsTransaction(name, sql);
+  try {
+    await client.query('BEGIN');
+    await client.query(sql);
+    await client.query(`INSERT INTO ${LEDGER_TABLE}(name) VALUES ($1)`, [name]);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw new Error(`Migration failed and was rolled back: ${name}: ${error.message}`, { cause: error });
+  }
 }
 
 function listMigrationFiles(directory = MIGRATIONS_DIR) {
@@ -90,24 +177,32 @@ function parseAdoptionList(value, files = listMigrationFiles()) {
 async function run() {
   const command = process.argv[2];
   const args = process.argv.slice(3);
-  const confirm = args.includes('--confirm-sbms-test');
+  const migrationTarget = parseTarget(args);
+  const confirm = args.includes(migrationTarget.confirmationFlag);
   const confirmBaseline = args.includes('--confirm-schema-baseline');
   const markAppliedArg = args.find((arg) => arg.startsWith('--mark-applied='));
   if (!['status', 'dry-run', 'adopt', 'apply'].includes(command)) {
-    throw new Error('Usage: node scripts/migrate.js <status|dry-run|adopt|apply> [confirmation flags]');
+    throw new Error('Usage: node scripts/migrate.js <status|dry-run|adopt|apply> [--target=test|dev] [confirmation flags]');
   }
+
+  const connectionString = resolveConnectionString(migrationTarget);
+  validateTargetDatabaseUrl(connectionString, migrationTarget);
   if (['apply', 'adopt'].includes(command) && !confirm) {
-    throw new Error(`${command} requires the explicit --confirm-sbms-test flag.`);
+    throw new Error(`${command} requires the explicit ${migrationTarget.confirmationFlag} flag.`);
   }
   if (command === 'adopt' && !confirmBaseline) {
     throw new Error('Schema adoption requires --confirm-schema-baseline after reviewing prior migration history.');
   }
-  if (['apply', 'adopt'].includes(command) && process.env.SBMS_MIGRATIONS_APPROVED !== 'sbms_test') {
-    throw new Error(`${command} also requires SBMS_MIGRATIONS_APPROVED=sbms_test.`);
+  const approvedByEnv = process.env.SBMS_MIGRATIONS_APPROVED === migrationTarget.approval;
+  // The development database is pinned by name to the one `.env` names as expected, so an operator
+  // rebuilding their own checkout only needs the explicit target flag. The test database keeps the
+  // separate approval variable because it shares a cluster with other local verification tooling.
+  const approvedByExpectedName = migrationTarget.key === 'dev'
+    && (readEnvFile().SBMS_EXPECTED_DATABASE_NAME || '').trim() === migrationTarget.database;
+  if (['apply', 'adopt'].includes(command) && !approvedByEnv && !approvedByExpectedName) {
+    throw new Error(`${command} also requires SBMS_MIGRATIONS_APPROVED=${migrationTarget.approval}.`);
   }
 
-  const connectionString = process.env.SBMS_MIGRATION_DATABASE_URL;
-  validateTargetDatabaseUrl(connectionString);
   const files = listMigrationFiles();
   const { Client } = require('pg');
   const client = new Client({ connectionString });
@@ -115,18 +210,19 @@ async function run() {
 
   try {
     await client.connect();
-    const target = await client.query('SELECT current_database() AS database, current_user AS username');
-    if (target.rows[0].database !== TEST_DATABASE.name || target.rows[0].username !== TEST_DATABASE.user) {
-      throw new Error('Connected database identity did not match the approved local sbms_test target.');
+    const identity = await client.query('SELECT current_database() AS database, current_user AS username');
+    if (identity.rows[0].database !== migrationTarget.database
+      || (migrationTarget.username !== null && identity.rows[0].username !== migrationTarget.username)) {
+      throw new Error(`Connected database identity did not match the approved local ${migrationTarget.database} target.`);
     }
     if (['adopt', 'apply'].includes(command)) {
       await client.query("SELECT pg_advisory_lock(hashtext('sbms.schema.migrations'))");
       migrationLockAcquired = true;
     }
 
-    const ledgerExists = await client.query("SELECT to_regclass('public.sbms_schema_migrations') IS NOT NULL AS exists");
+    const ledgerExists = await client.query(`SELECT to_regclass('${LEDGER_TABLE}') IS NOT NULL AS exists`);
     const applied = ledgerExists.rows[0].exists
-      ? await client.query('SELECT name FROM public.sbms_schema_migrations ORDER BY name')
+      ? await client.query(`SELECT name FROM ${LEDGER_TABLE} ORDER BY name`)
       : { rows: [] };
     const appliedNames = new Set(applied.rows.map((row) => row.name));
     const knownNames = new Set([...files.map((item) => item.name), ...RETIRED_MIGRATIONS]);
@@ -136,7 +232,7 @@ async function run() {
     const pending = files.filter((item) => !item.manual && !appliedNames.has(item.name));
 
     if (command === 'status' || command === 'dry-run') {
-      console.log(`Target: ${TEST_DATABASE.name} (local test database)`);
+      console.log(`Target: ${migrationTarget.database} (${migrationTarget.label})`);
       console.log(`Ledger: ${ledgerExists.rows[0].exists ? 'present' : 'not created'}`);
       console.log(`Applied migrations: ${appliedNames.size}`);
       console.log(`Pending migrations: ${pending.length ? pending.map((item) => item.name).join(', ') : 'none'}`);
@@ -168,12 +264,9 @@ async function run() {
       const adoptedNames = parseAdoptionList(markAppliedArg?.slice('--mark-applied='.length), files);
       try {
         await client.query('BEGIN');
-        await client.query(`CREATE TABLE public.sbms_schema_migrations (
-          name TEXT PRIMARY KEY,
-          applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )`);
+        await createMigrationLedger(client);
         for (const name of adoptedNames) {
-          await client.query('INSERT INTO public.sbms_schema_migrations(name) VALUES ($1)', [name]);
+          await client.query(`INSERT INTO ${LEDGER_TABLE}(name) VALUES ($1)`, [name]);
         }
         await client.query('COMMIT');
         console.log(`Ledger initialized; adopted as already applied: ${adoptedNames.length ? adoptedNames.join(', ') : 'none'}`);
@@ -186,20 +279,8 @@ async function run() {
     }
 
     for (const { name } of pending) {
-      const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8');
-      if (/^\s*BEGIN\s*;/im.test(sql) || /^\s*COMMIT\s*;/im.test(sql)) {
-        throw new Error(`Migration ${name} contains transaction control; runner owns transactions.`);
-      }
-      try {
-        await client.query('BEGIN');
-        await client.query(sql);
-        await client.query('INSERT INTO public.sbms_schema_migrations(name) VALUES ($1)', [name]);
-        await client.query('COMMIT');
-        console.log(`Applied ${name}`);
-      } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
-        throw new Error(`Migration failed and was rolled back: ${name}: ${error.message}`, { cause: error });
-      }
+      await applyMigrationFile(client, name);
+      console.log(`Applied ${name}`);
     }
     console.log(`Migration run complete. Applied ${pending.length} migration(s).`);
     if (retiredApplied.length) console.log(`Retired migrations left untouched: ${retiredApplied.join(', ')}`);
@@ -220,5 +301,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  listMigrationFiles, parseAdoptionList, validateTargetDatabaseUrl, MIGRATION_ORDER, MANUAL_MIGRATIONS, RETIRED_MIGRATIONS,
+  listMigrationFiles, parseAdoptionList, parseTarget, validateTargetDatabaseUrl,
+  resolveConnectionString, applyMigrationFile, createMigrationLedger,
+  MIGRATIONS_DIR, TARGETS, MIGRATION_ORDER, MANUAL_MIGRATIONS, RETIRED_MIGRATIONS, LEDGER_TABLE,
 };

@@ -21,7 +21,7 @@ const monthlyTrendQuery = (table, dateColumn) => `
 
 async function getSummary(req, res, next) {
   try {
-    const [studentCounts, duplicateCounts, studentTrend, activities, awardCounts] = await Promise.all([
+    const [studentCounts, duplicateCounts, studentTrend, activities, awardCounts, guardianApplications] = await Promise.all([
       pool.query(`
         SELECT
           COUNT(*)::int AS total_students,
@@ -37,6 +37,14 @@ async function getSummary(req, res, next) {
            (SELECT COUNT(*)::int FROM bursary_awards WHERE status = 'approved') AS approved_awards,
            (SELECT COUNT(*)::int FROM bursary_awards WHERE status = 'submitted') AS submitted_awards`
       ),
+      // Guardian submissions are reviewed on their own screen; the dashboard only reports how many
+      // still wait for a decision so the queue cannot be missed.
+      pool.query(
+        `SELECT
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE status IN ('submitted', 'under_review'))::int AS awaiting_review
+         FROM guardian_applications`
+      ),
     ]);
 
     res.json({
@@ -47,6 +55,10 @@ async function getSummary(req, res, next) {
       trend: studentTrend.rows,
       activities: activities.rows,
       awards: awardCounts.rows[0],
+      guardianApplications: {
+        total: guardianApplications.rows[0].total,
+        awaitingReview: guardianApplications.rows[0].awaiting_review,
+      },
       lastUpdated: new Date().toISOString(),
     });
   } catch (error) {

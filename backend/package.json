@@ -10,10 +10,15 @@
     "test": "jest --runInBand tests",
     "test:smoke": "node --test test/api.smoke.test.js",
     "migrate": "node scripts/migrate.js",
+    "migrate:dev": "node scripts/migrate.js apply --target=dev --confirm-local-dev",
+    "migrate:dev:status": "node scripts/migrate.js status --target=dev",
+    "db:setup-local": "node scripts/setup-local-database.js",
+    "db:link-guardian-applications": "node scripts/link-pending-guardian-applications.js",
     "db:provision-test": "node scripts/provision-test-database.js",
     "db:bootstrap-empty": "node scripts/bootstrap-production-schema.js",
     "seed:synthetic": "node scripts/seed-kenyan-demo-data.js",
     "reset:synthetic": "node scripts/reset-kenyan-demo-data.js",
+    "reset:students": "node scripts/reset-student-data.js",
     "seed:verification": "node scripts/seed-verification-accounts.js"
   },
   "dependencies": {

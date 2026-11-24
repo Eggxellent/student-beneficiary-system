@@ -84,7 +84,10 @@ async function runTransaction(work) {
 
 async function list(req, res, next) {
   try {
-    const { rows } = await pool.query('SELECT id, full_name, email, role, created_at FROM users WHERE is_active = TRUE ORDER BY created_at DESC');
+    // Staff directory only. Guardian accounts are managed from the guardian portal, not here.
+    const { rows } = await pool.query(
+      "SELECT id, full_name, email, role, created_at FROM users WHERE is_active = TRUE AND role IN ('admin', 'field_officer') ORDER BY created_at DESC"
+    );
     res.json(rows);
   } catch (error) { next(error); }
 }
@@ -123,7 +126,10 @@ async function updateRole(req, res, next) {
   try {
     const outcome = await runTransaction(async (client) => {
       await client.query('SELECT pg_advisory_xact_lock(8831, 7745)');
-      const target = await client.query('SELECT id, role FROM users WHERE id = $1 AND is_active = TRUE FOR UPDATE', [req.params.id]);
+      const target = await client.query(
+        "SELECT id, role FROM users WHERE id = $1 AND is_active = TRUE AND role IN ('admin', 'field_officer') FOR UPDATE",
+        [req.params.id]
+      );
       if (!target.rows.length) {
         return respondAfterRollback(404, { message: 'User not found.' });
       }
@@ -158,8 +164,11 @@ async function updateRole(req, res, next) {
 async function remove(req, res, next) {
   try {
     const outcome = await runTransaction(async (client) => {
+      // Staff directory only: a guardian account is never a deactivation target here, even when
+      // its id is supplied directly, because the same guard as the role change applies.
+
       await client.query('SELECT pg_advisory_xact_lock(8831, 7745)');
-      const target = await client.query('SELECT id, full_name, email, role FROM users WHERE id = $1 AND is_active = TRUE FOR UPDATE', [req.params.id]);
+      const target = await client.query("SELECT id, full_name, email, role FROM users WHERE id = $1 AND is_active = TRUE AND role IN ('admin', 'field_officer') FOR UPDATE", [req.params.id]);
       if (!target.rows.length) {
         return respondAfterRollback(404, { message: 'User not found.' });
       }

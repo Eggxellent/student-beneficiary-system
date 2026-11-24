@@ -63,6 +63,10 @@ const OPEN_REPORT_SQL = `
 
 async function list(req, res, next) {
   try {
+    // The award list is shared with Field Officers. Their view must not reveal a student who is
+    // held by an open or unresolved duplicate case, so the same rule as the student roster is
+    // applied here rather than relying on the client to hide the row.
+    const hideDuplicateStudents = req.user?.role === 'field_officer';
     const { rows } = await pool.query(
       `SELECT a.*, s.full_name AS student_name, s.upi,
               s.duplicate_of_student_id AS student_duplicate_of_student_id,
@@ -89,12 +93,30 @@ async function list(req, res, next) {
            AND (f.status IN ('pending', 'needs_verification')
                 OR (f.status = 'confirmed_duplicate' AND resolved.id IS NULL))
        ) duplicates ON TRUE
-       ORDER BY a.created_at DESC`
+       WHERE $1::boolean = FALSE
+          OR (s.duplicate_of_student_id IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM duplicate_flags f
+                 WHERE (f.student_id = a.student_id OR f.matched_student_id = a.student_id)
+                   AND (f.status IN ('pending', 'needs_verification')
+                        OR (f.status = 'confirmed_duplicate'
+                            AND NOT EXISTS (
+                              SELECT 1 FROM duplicate_resolutions r WHERE r.duplicate_flag_id = f.id
+                            )))
+              ))
+       ORDER BY a.created_at DESC`,
+      [hideDuplicateStudents]
     );
     res.json({ awards: rows });
   } catch (error) {
     next(error);
   }
+}
+
+// A saved value that was never recorded stays null; Number(null) would quietly become 0 and make an
+// unknown fee balance or household income look like a real zero on the review screen.
+function savedNumber(value) {
+  return value == null ? null : Number(value);
 }
 
 // The administrator's decision has to be informed by the eligibility assessment that was actually
@@ -124,7 +146,7 @@ async function detail(req, res, next) {
          SELECT ea.*, assessor.full_name AS assessed_by_name
          FROM eligibility_assessments ea
          LEFT JOIN users assessor ON assessor.id = ea.assessed_by
-         WHERE ea.student_id = a.student_id
+         WHERE ea.student_id = a.student_id AND ea.status = 'complete'
          ORDER BY ea.assessed_at DESC, ea.created_at DESC
          LIMIT 1
        ) e ON TRUE
@@ -146,8 +168,8 @@ async function detail(req, res, next) {
       score: award.eligibility_score,
       max_score: 100,
       category: award.eligibility_category,
-      fee_balance: Number(award.fee_balance),
-      household_income: Number(award.household_income),
+      fee_balance: savedNumber(award.fee_balance),
+      household_income: savedNumber(award.household_income),
       vulnerability_status: award.vulnerability_status,
       siblings_in_school: award.siblings_in_school,
       prior_bursary_history: award.prior_bursary_history,
@@ -201,7 +223,21 @@ async function create(req, res, next) {
   try {
     await client.query('BEGIN');
     const student = await client.query(
-      'SELECT id, full_name, school_code, duplicate_of_student_id FROM students WHERE id = $1 FOR UPDATE',
+      `SELECT s.id, s.full_name, s.school_code, s.duplicate_of_student_id,
+              EXISTS (
+                SELECT 1 FROM duplicate_flags f
+                 WHERE (f.student_id = s.id OR f.matched_student_id = s.id)
+                   AND f.status IN ('pending', 'needs_verification')
+              ) AS has_open_case,
+              EXISTS (
+                SELECT 1 FROM duplicate_flags f
+                 WHERE (f.student_id = s.id OR f.matched_student_id = s.id)
+                   AND f.status = 'confirmed_duplicate'
+                   AND NOT EXISTS (
+                     SELECT 1 FROM duplicate_resolutions r WHERE r.duplicate_flag_id = f.id
+                   )
+              ) AS has_confirmed_case
+         FROM students s WHERE s.id = $1 FOR UPDATE`,
       [parsed.data.student_id]
     );
     if (!student.rows.length) {
@@ -215,6 +251,16 @@ async function create(req, res, next) {
         code: 'DUPLICATE_RECORD',
         message: 'This student record is marked as a duplicate of another record. Propose the bursary against the canonical record instead; a duplicate record cannot receive an award.',
         canonical_student_id: student.rows[0].duplicate_of_student_id,
+      });
+    }
+    // A student held by an open or unresolved duplicate case cannot be proposed for an award: the
+    // eligibility assessment that would support the amount is blocked by the same rule, and acting
+    // on the record would let the award screen bypass the duplicate queue.
+    if (student.rows[0].has_open_case || student.rows[0].has_confirmed_case) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'ELIGIBILITY_BLOCKED_BY_DUPLICATE',
+        message: 'This student has an unresolved or confirmed duplicate case. A bursary cannot be proposed until an administrator resolves it.',
       });
     }
     if (!student.rows[0].school_code) {
