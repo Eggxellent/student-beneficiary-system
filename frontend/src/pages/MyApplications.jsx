@@ -71,6 +71,9 @@ function ApplicationCard({ application, onView }) {
         </div>
         <StatusBadge status={application.status} statusKey={application.statusKey} />
       </div>
+      {application.statusKey === "rejected" && application.decisionNote && (
+        <p className="mt-3 text-xs leading-5 text-destructive">Reason: {application.decisionNote}</p>
+      )}
 
       <button
         type="button"
@@ -332,6 +335,9 @@ export default function MyApplications() {
                               status={application.status}
                               statusKey={application.statusKey}
                             />
+                            {application.statusKey === "rejected" && application.decisionNote && (
+                              <p className="mt-2 max-w-xs text-xs leading-5 text-destructive">Reason: {application.decisionNote}</p>
+                            )}
                           </td>
                           <td className="p-5 text-right">
                             <button

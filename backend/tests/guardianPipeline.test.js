@@ -13,6 +13,8 @@ jest.setTimeout(30000);
 
 describe("Guardian submission pipeline", () => {
   const suffix = randomUUID().replace(/-/g, "").slice(0, 10);
+  const guardianNationalId = String(Number.parseInt(suffix.slice(0, 8), 16) % 100_000_000).padStart(8, "0");
+  const otherGuardianNationalId = String((Number(guardianNationalId) + 1) % 100_000_000).padStart(8, "0");
   const createdUserIds = [];
   const createdEmails = [];
   const identifier = `BC-${suffix.toUpperCase()}`;
@@ -96,7 +98,7 @@ describe("Guardian submission pipeline", () => {
       email: `pipeline-guardian-${suffix}@example.test`,
       password: "GuardianPass123!",
       phone: "0712345678",
-      national_id: `N${suffix.slice(0, 8).toUpperCase()}`,
+      national_id: guardianNationalId,
       relationship_to_student: "parent",
       privacy_consent: true,
     });
@@ -163,11 +165,65 @@ describe("Guardian submission pipeline", () => {
     expect(row).toBeTruthy();
     expect(row.student_id).toBe(primaryStudentId);
     expect(row.registeredStudent.id).toBe(primaryStudentId);
-    expect(row.duplicate).toBeNull();
+    expect(row.duplicate.status).toBe("cleared");
     expect(row.assessment.status).toBe("complete");
     expect(row.assessment.score).toBe(92);
     expect(row.assessment.missing_inputs).toEqual([]);
     expect(row.detail.student.name).toBe(`Pipeline Child ${suffix}`);
+  });
+
+  test("a linked historical application without a screening audit is not treated as cleared", async () => {
+    const student = await pool.query(
+      `INSERT INTO students (full_name, date_of_birth, school_code, school_name, guardian_id)
+       VALUES ($1, '2011-08-09', 'Nairobi School', 'Nairobi School', $2) RETURNING id`,
+      [`Unscreened Historical ${suffix}`, guardianUserId],
+    );
+    const reference = `APP-U-${suffix}`;
+    await pool.query(
+      `INSERT INTO guardian_applications
+         (reference, user_id, student_id, student_full_name, school_name, guardian_full_name, guardian_phone)
+       VALUES ($1, $2, $3, $4, 'Nairobi School', $4, '0712345678')`,
+      [reference, guardianUserId, student.rows[0].id, `Unscreened Historical ${suffix}`],
+    );
+
+    const queue = await request(app)
+      .get('/api/guardian/staff/applications')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const application = queue.body.applications.find((row) => row.reference === reference);
+    expect(application.duplicate.status).toBe('not_screened');
+
+    const staffDecision = await request(app)
+      .patch(`/api/guardian/staff/applications/${application.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'approved' });
+    expect(staffDecision.statusCode).toBe(409);
+    expect(staffDecision.body.code).toBe('DUPLICATE_SCREENING_REQUIRED');
+
+    const eligibility = await request(app)
+      .post('/api/eligibility')
+      .set('Authorization', `Bearer ${officerToken}`)
+      .send({
+        student_id: student.rows[0].id,
+        fee_balance: 20000,
+        household_income: 18000,
+        vulnerability_status: 'high',
+        siblings_in_school: 2,
+        prior_bursary_history: 'none',
+      });
+    expect(eligibility.statusCode).toBe(403);
+    expect(eligibility.body.code).toBe('ELIGIBILITY_ASSESSMENT_READ_ONLY');
+
+    const award = await request(app)
+      .post('/api/awards')
+      .set('Authorization', `Bearer ${officerToken}`)
+      .send({ student_id: student.rows[0].id, requested_amount: 15000 });
+    expect(award.statusCode).toBe(409);
+    expect(award.body.code).toBe('DUPLICATE_SCREENING_REQUIRED');
+
+    const directRead = await request(app)
+      .get(`/api/students/${student.rows[0].id}`)
+      .set('Authorization', `Bearer ${officerToken}`);
+    expect(directRead.statusCode).toBe(404);
   });
 
   test("Field Officers cannot read the guardian application queue", async () => {
@@ -182,7 +238,6 @@ describe("Guardian submission pipeline", () => {
     const before = await pool.query("SELECT COUNT(*)::int AS total FROM students WHERE guardian_id = $1", [guardianUserId]);
 
     const response = await submit(applicationPayload({
-      documents: [{ name: "report-card.pdf", description: "Report" }],
     }));
 
     expect(response.statusCode).toBe(200);
@@ -260,13 +315,26 @@ describe("Guardian submission pipeline", () => {
     expect(Number(record.application.fee_balance)).toBe(45000);
   });
 
-  test("a submission matching an existing child is blocked from assessment and hidden from the officer", async () => {
+  test("a submission matching an existing child uses guardian National ID from the account, not request data", async () => {
+    const otherGuardian = await pool.query(
+      `INSERT INTO users (full_name, email, password_hash, role, phone, national_id)
+       VALUES ($1, $2, $3, 'guardian', '0712345679', $4) RETURNING id`,
+      [`Other Guardian ${suffix}`, `other-guardian-${suffix}@example.test`, await bcrypt.hash("GuardianPass123!", 4), otherGuardianNationalId],
+    );
+    createdUserIds.push(otherGuardian.rows[0].id);
+
     const candidate = await pool.query(
       `INSERT INTO students (full_name, date_of_birth, school_code, school_name, birth_certificate_number)
        VALUES ($1, $2, 'Nairobi School', 'Nairobi School', $3) RETURNING id`,
       [`Pipeline Existing ${suffix}`, "2011-03-09", `EXIST-${suffix}`],
     );
     candidateIds.push(candidate.rows[0].id);
+    await pool.query(
+      `INSERT INTO guardian_applications
+         (reference, user_id, student_id, student_full_name, school_name, guardian_full_name, guardian_phone)
+       VALUES ($1, $2, $3, $4, 'Nairobi School', $5, '0712345679')`,
+      [`APP-TEST-${suffix}`, otherGuardian.rows[0].id, candidate.rows[0].id, `Pipeline Existing ${suffix}`, `Other Guardian ${suffix}`],
+    );
 
     const response = await submit(applicationPayload({
       student_full_name: `Pipeline Existing ${suffix}`,
@@ -274,6 +342,7 @@ describe("Guardian submission pipeline", () => {
       student_identifier: `EXIST-${suffix}`,
       admission_number: `EXIST-ADM-${suffix}`,
       school_name: "Nairobi School",
+      guardian_national_id: otherGuardianNationalId,
     }));
 
     expect(response.statusCode).toBe(201);
@@ -283,12 +352,36 @@ describe("Guardian submission pipeline", () => {
     expect(await assessmentRows(flaggedStudentId)).toHaveLength(0);
 
     const flags = await pool.query(
-      "SELECT id, status FROM duplicate_flags WHERE student_id = $1 ORDER BY created_at DESC",
+      "SELECT id, matched_student_id, status, comparison_features FROM duplicate_flags WHERE student_id = $1 ORDER BY created_at DESC",
       [flaggedStudentId],
     );
     expect(flags.rows.length).toBeGreaterThanOrEqual(1);
     expect(flags.rows[0].status).toBe("pending");
     flaggedFlagId = flags.rows[0].id;
+
+    const candidateFlag = flags.rows.find((flag) => flag.matched_student_id === candidate.rows[0].id);
+    expect(candidateFlag).toBeTruthy();
+    expect(candidateFlag.comparison_features.review_evidence.comparisons.guardian_context).toMatchObject({
+      national_id_match: false,
+      match_type: "different_guardian_national_ids_context",
+      evidence_role: "guardian_context_only",
+    });
+    expect(JSON.stringify(candidateFlag.comparison_features)).not.toContain(guardianNationalId);
+    expect(JSON.stringify(candidateFlag.comparison_features)).not.toContain(otherGuardianNationalId);
+
+    const adminQueue = await request(app)
+      .get(`/api/duplicate-flags?status=pending&search=Pipeline Existing ${suffix}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    const queuedCase = adminQueue.body.cases.find((flag) => flag.id === candidateFlag.id);
+    expect(queuedCase.evidence.near_match_review.comparisons.guardian_context).toMatchObject({
+      national_id_match: false,
+      evidence_role: "guardian_context_only",
+    });
+    expect(JSON.stringify(queuedCase)).not.toContain(guardianNationalId);
+    expect(JSON.stringify(queuedCase)).not.toContain(otherGuardianNationalId);
+
+    const studentRow = await pool.query("SELECT national_id_number FROM students WHERE id = $1", [flaggedStudentId]);
+    expect(studentRow.rows[0].national_id_number).toBeNull();
 
     const overview = await request(app)
       .get("/api/students/registered/overview")
@@ -315,6 +408,8 @@ describe("Guardian submission pipeline", () => {
 
     expect(response.statusCode).toBe(201);
     expect(response.body.duplicate_screening.flagged).toBe(true);
+    expect(response.body.application.status_code).toBe("under_review");
+    expect(response.body.application.duplicateScreeningStatus).toBe("under_review");
     expect(response.body.assessment.status).toBe("blocked");
     const flag = await pool.query(
       `SELECT status, comparison_features FROM duplicate_flags
@@ -324,6 +419,13 @@ describe("Guardian submission pipeline", () => {
     );
     expect(flag.rows[0]?.status).toBe("pending");
     expect(Number(flag.rows[0]?.comparison_features?.admission_number_match)).toBe(1);
+
+    const guardianView = await request(app)
+      .get(`/api/guardian/applications/${response.body.application.reference}`)
+      .set("Authorization", `Bearer ${guardianToken}`);
+    expect(guardianView.statusCode).toBe(200);
+    expect(guardianView.body.application.status).toBe("Under Review");
+    expect(guardianView.body.application.duplicateScreeningStatus).toBe("under_review");
   });
 
   test("two children of one guardian are not flagged from guardian similarity alone", async () => {
@@ -377,11 +479,12 @@ describe("Guardian submission pipeline", () => {
 
   test("a confirmed duplicate keeps the student blocked and manual eligibility returns 409", async () => {
     // Reusing the first child's birth certificate number is an exact identifier match.
-    const response = await submit(applicationPayload({
+    const duplicatePayload = applicationPayload({
       student_full_name: `Pipeline Duplicate ${suffix}`,
       student_date_of_birth: "2013-01-20",
       student_identifier: identifier,
-    }));
+    });
+    const response = await submit(duplicatePayload);
 
     expect(response.statusCode).toBe(201);
     secondFlaggedStudentId = response.body.student.id;
@@ -399,6 +502,55 @@ describe("Guardian submission pipeline", () => {
       .send({ decision: "confirmed_duplicate", reason: "Same birth certificate number, same child." });
     expect(decision.statusCode).toBe(200);
 
+    const rejectedApplication = await pool.query(
+      `SELECT id, reference, status, decision_note, decided_at
+         FROM guardian_applications WHERE student_id = $1`,
+      [secondFlaggedStudentId],
+    );
+    expect(rejectedApplication.rows).toHaveLength(1);
+    expect(rejectedApplication.rows[0]).toMatchObject({
+      status: "rejected",
+      decision_note: "Same birth certificate number, same child.",
+    });
+    expect(rejectedApplication.rows[0].decided_at).toBeTruthy();
+    const reviewEvent = await pool.query(
+      `SELECT reviewer_id, reason, created_at FROM duplicate_review_events
+        WHERE duplicate_flag_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [secondFlagId],
+    );
+    expect(reviewEvent.rows[0].reviewer_id).toBe(jwt.decode(adminToken).id);
+    expect(reviewEvent.rows[0].reason).toBe("Same birth certificate number, same child.");
+    expect(reviewEvent.rows[0].created_at).toBeTruthy();
+
+    const guardianApplication = await request(app)
+      .get(`/api/guardian/applications/${rejectedApplication.rows[0].reference}`)
+      .set("Authorization", `Bearer ${guardianToken}`);
+    expect(guardianApplication.statusCode).toBe(200);
+    expect(guardianApplication.body.application.statusKey).toBe("rejected");
+    expect(guardianApplication.body.application.duplicateScreeningStatus).toBe("confirmed_duplicate");
+    expect(guardianApplication.body.application.decisionNote).toBe("Duplicate application detected.");
+    expect(guardianApplication.body.application.rejectionMessage).toBe(
+      "Your application was unsuccessful. If you have any questions or need clarification, please contact our support team. You may also submit a new application.",
+    );
+    expect(guardianApplication.body.application.decisionNote).not.toContain("Same birth certificate");
+
+    const contradictoryResolution = await request(app)
+      .post(`/api/duplicate-flags/${secondFlagId}/resolution`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        canonical_student_id: secondFlaggedStudentId,
+        reason: "Do not preserve the record whose application was rejected.",
+      });
+    expect(contradictoryResolution.statusCode).toBe(409);
+
+    const resubmission = await submit(duplicatePayload);
+    expect(resubmission.statusCode).toBe(409);
+    expect(resubmission.body.code).toBe("DUPLICATE_APPLICATION_READ_ONLY");
+    const guardianApplications = await request(app)
+      .get("/api/guardian/applications")
+      .set("Authorization", `Bearer ${guardianToken}`);
+    expect(guardianApplications.body.applications.some((application) => application.reference === primaryReference)).toBe(true);
+
     const eligibility = await request(app)
       .post("/api/eligibility")
       .set("Authorization", `Bearer ${officerToken}`)
@@ -411,9 +563,16 @@ describe("Guardian submission pipeline", () => {
         prior_bursary_history: "none",
       });
 
-    expect(eligibility.statusCode).toBe(409);
-    expect(eligibility.body.code).toBe("ELIGIBILITY_BLOCKED_BY_DUPLICATE");
+    expect(eligibility.statusCode).toBe(403);
+    expect(eligibility.body.code).toBe("ELIGIBILITY_ASSESSMENT_READ_ONLY");
     expect(await assessmentRows(secondFlaggedStudentId)).toHaveLength(0);
+
+    const adminCorrection = await request(app)
+      .patch(`/api/eligibility/${secondFlaggedStudentId}/correction`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ fee_balance: 20000, reason: "Try correction before duplicate resolution" });
+    expect(adminCorrection.statusCode).toBe(409);
+    expect(adminCorrection.body.code).toBe("ELIGIBILITY_BLOCKED_BY_DUPLICATE");
 
     // A confirmed duplicate also holds the matched child: the case is unresolved for both records
     // until an administrator records a resolution.
@@ -428,8 +587,8 @@ describe("Guardian submission pipeline", () => {
         siblings_in_school: 3,
         prior_bursary_history: "none",
       });
-    expect(matched.statusCode).toBe(409);
-    expect(matched.body.code).toBe("ELIGIBILITY_BLOCKED_BY_DUPLICATE");
+    expect(matched.statusCode).toBe(403);
+    expect(matched.body.code).toBe("ELIGIBILITY_ASSESSMENT_READ_ONLY");
   });
 
   test("clearing a case between two guardian-registered students assesses the newly flagged record", async () => {
@@ -437,11 +596,12 @@ describe("Guardian submission pipeline", () => {
     // flagged side is the guardian's own new submission and is the record that needs the clearance
     // assessment; the canonical side already has its own.
     const secondGuardianEmail = `pipeline-guardian2-${suffix}@example.test`;
+    const secondGuardianNationalId = String((Number(guardianNationalId) + 2) % 100_000_000).padStart(8, "0");
     createdEmails.push(secondGuardianEmail);
     const secondGuardian = await pool.query(
       `INSERT INTO users (full_name, email, password_hash, role, phone, national_id)
        VALUES ($1, $2, $3, 'guardian', '0700000002', $4) RETURNING id`,
-      [`Pipeline Second Guardian ${suffix}`, secondGuardianEmail, await bcrypt.hash("GuardianPass123!", 4), `G2-${suffix.toUpperCase()}`],
+      [`Pipeline Second Guardian ${suffix}`, secondGuardianEmail, await bcrypt.hash("GuardianPass123!", 4), secondGuardianNationalId],
     );
     createdUserIds.push(secondGuardian.rows[0].id);
 

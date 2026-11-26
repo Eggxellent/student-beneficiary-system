@@ -44,6 +44,11 @@ describe("Field Officer registered students", () => {
       ]
     );
     createdStudentIds.push(rows[0].id);
+    await pool.query(
+      `INSERT INTO audit_logs (user_id, action, table_name, record_id, details)
+       VALUES ($1, 'CREATE', 'students', $2, $3)`,
+      [officerId, rows[0].id, { duplicate_model_version: 'test-screened', duplicate_flags_created: 0 }],
+    );
     return rows[0];
   }
 
@@ -300,7 +305,7 @@ describe("Field Officer registered students", () => {
         siblings_in_school: 2,
         prior_bursary_history: "none",
       });
-    expect(assessmentAttempt.statusCode).toBe(409);
-    expect(assessmentAttempt.body.code).toBe("ELIGIBILITY_BLOCKED_BY_DUPLICATE");
+    expect(assessmentAttempt.statusCode).toBe(403);
+    expect(assessmentAttempt.body.code).toBe("ELIGIBILITY_ASSESSMENT_READ_ONLY");
   });
 });

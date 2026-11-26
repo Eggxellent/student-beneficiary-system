@@ -20,12 +20,13 @@ describe("Guardian API", () => {
 
   function registrationPayload(overrides = {}) {
     const suffix = randomUUID().replace(/-/g, "").slice(0, 10);
+    const nationalId = String(Number.parseInt(suffix.slice(0, 8), 16) % 100_000_000).padStart(8, "0");
     return {
       full_name: "Jane Wanjiku",
       email: `guardian-${suffix}@example.com`,
       password,
       phone: "0712345678",
-      national_id: `N${suffix.slice(0, 8).toUpperCase()}`,
+      national_id: nationalId,
       relationship_to_student: "parent",
       privacy_consent: true,
       ...overrides,
@@ -53,6 +54,7 @@ describe("Guardian API", () => {
     expect(response.body.user.role).toBe("guardian");
     expect(typeof response.body.token).toBe("string");
     expect(response.body.user.password_hash).toBeUndefined();
+    expect(response.body.user.national_id).toBeUndefined();
     firstToken = response.body.token;
   });
 
@@ -82,8 +84,12 @@ describe("Guardian API", () => {
       { phone: "07123456789" }, // 11 digits
       { phone: "071234567x" }, // letters
       { phone: "" }, // required
-      { national_id: "1234567890" }, // 10 digits
-      { national_id: "ID-123456" }, // punctuation
+      { national_id: "1234567" }, // 7 digits
+      { national_id: "123456789" }, // 9 digits
+      { national_id: "1234 5678" }, // whitespace
+      { national_id: "1234-5678" }, // punctuation
+      { national_id: "1234567a" }, // letters
+      { national_id: 12345678 }, // numeric JSON value must not be converted to a string
       { national_id: "" }, // required
       { password: "short7!" }, // under 8 characters
       { email: "" }, // required
@@ -102,16 +108,22 @@ describe("Guardian API", () => {
     const phoneMessage = await attempt({ phone: "071234567" });
     expect(phoneMessage.body.error).toMatch(/exactly 10 digits/i);
 
-    const idMessage = await attempt({ national_id: "1234567890" });
-    expect(idMessage.body.error).toMatch(/at most 9/i);
+    const idMessage = await attempt({ national_id: "1234 5678" });
+    expect(idMessage.body.error).toMatch(/exactly 8 digits/i);
 
+    const leadingZeroId = `0${String(Number.parseInt(randomUUID().replace(/-/g, "").slice(0, 7), 16) % 10_000_000).padStart(7, "0")}`;
     const accepted = await attempt({
       phone: "0711223344",
-      national_id: String(Math.floor(100000000 + Math.random() * 899999999)),
+      national_id: leadingZeroId,
       email: `guardian-gmail-${randomUUID().replace(/-/g, "").slice(0, 8)}@gmail.com`,
     });
     expect(accepted.statusCode).toBe(201);
-    expect(accepted.body.user.national_id).toMatch(/^\d{9}$/);
+    expect(accepted.body.user.national_id).toBeUndefined();
+    const acceptedProfile = await request(app)
+      .get("/api/guardian/me")
+      .set("Authorization", `Bearer ${accepted.body.token}`);
+    expect(acceptedProfile.statusCode).toBe(200);
+    expect(acceptedProfile.body.national_id).toBe(leadingZeroId);
   });
 
   test("a guardian signs in through the shared login endpoint", async () => {
@@ -144,6 +156,13 @@ describe("Guardian API", () => {
 
     expect(profile.statusCode).toBe(200);
     expect(profile.body.email).toBe(firstGuardian.email);
+    expect(profile.body.national_id).toBe(firstGuardian.national_id);
+
+    const authProfile = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${firstToken}`);
+    expect(authProfile.statusCode).toBe(200);
+    expect(authProfile.body.national_id).toBeUndefined();
 
     const updated = await request(app)
       .patch("/api/guardian/me")
@@ -152,6 +171,14 @@ describe("Guardian API", () => {
 
     expect(updated.statusCode).toBe(200);
     expect(updated.body.phone).toBe("0798765432");
+
+    for (const national_id of ["1234567", "123456789", "1234 5678", "1234-5678", "1234567a"]) {
+      const invalid = await request(app)
+        .patch("/api/guardian/me")
+        .set("Authorization", `Bearer ${firstToken}`)
+        .send({ national_id });
+      expect(invalid.statusCode).toBe(400);
+    }
   });
 
 
@@ -182,8 +209,6 @@ describe("Guardian API", () => {
   }
 
   test("a guardian submits a bursary application with a generated reference", async () => {
-    // No supporting documents are attached at initial submission: the payload deliberately omits
-    // any documents key and the API must still accept and store the application.
     const response = await request(app)
       .post("/api/guardian/applications")
       .set("Authorization", `Bearer ${firstToken}`)
@@ -196,12 +221,37 @@ describe("Guardian API", () => {
     expect(response.body.application.statusKey).toBe("review");
     expect(response.body.application.status).toBe("Under Review");
     expect(response.body.application.status_code).toBe("under_review");
-    expect(response.body.application.documents).toEqual([]);
+    expect(response.body.application.duplicateScreeningStatus).toBe("cleared");
+    expect(response.body.application.documents).toBeUndefined();
     applicationReference = response.body.application.reference;
     applicationId = response.body.application.id;
   });
 
-  test("supporting documents attached to a submission are readable in the guardian's own record", async () => {
+  test("a Guardian can download only their own application submission receipt", async () => {
+    const receipt = await request(app)
+      .get(`/api/guardian/applications/${applicationReference}/receipt.pdf`)
+      .set("Authorization", `Bearer ${firstToken}`)
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => callback(null, Buffer.concat(chunks)));
+      });
+
+    expect(receipt.statusCode).toBe(200);
+    expect(receipt.headers["content-type"]).toMatch(/application\/pdf/);
+    expect(receipt.body.subarray(0, 4).toString()).toBe("%PDF");
+    expect(receipt.body.toString("utf8")).not.toContain(firstGuardian.national_id);
+
+    const otherAccount = await registerGuardianAccount(registrationPayload());
+    expect(otherAccount.statusCode).toBe(201);
+    const otherGuardian = await request(app)
+      .get(`/api/guardian/applications/${applicationReference}/receipt.pdf`)
+      .set("Authorization", `Bearer ${otherAccount.body.token}`);
+    expect(otherGuardian.statusCode).toBe(404);
+  });
+
+  test("obsolete supporting-document payloads are not stored or exposed", async () => {
     const submitted = await request(app)
       .post("/api/guardian/applications")
       .set("Authorization", `Bearer ${firstToken}`)
@@ -211,22 +261,19 @@ describe("Guardian API", () => {
         }),
       );
 
-    // A resubmission of the same child is an idempotent retrieval, not a second application.
     expect(submitted.statusCode).toBe(200);
     expect(submitted.body.duplicate_submission).toBe(true);
     expect(submitted.body.application.statusKey).toBe("review");
-    expect(submitted.body.application.documents).toEqual([
-      { name: "birth-certificate.pdf", description: "Birth certificate" },
-    ]);
+    expect(submitted.body.application.documents).toBeUndefined();
 
     const fetched = await request(app)
       .get(`/api/guardian/applications/${submitted.body.application.reference}`)
       .set("Authorization", `Bearer ${firstToken}`);
 
     expect(fetched.statusCode).toBe(200);
-    expect(fetched.body.application.documents).toEqual([
-      { name: "birth-certificate.pdf", description: "Birth certificate" },
-    ]);
+    expect(fetched.body.application.documents).toBeUndefined();
+    const stored = await pool.query("SELECT details FROM guardian_applications WHERE id = $1", [applicationId]);
+    expect(stored.rows[0].details).toEqual({});
   });
 
   test("application submission validates required fields and the declaration", async () => {
@@ -368,6 +415,28 @@ describe("Guardian API", () => {
     expect(signIn.statusCode).toBe(200);
     const adminToken = signIn.body.token;
 
+    const application = await pool.query(
+      "SELECT student_id FROM guardian_applications WHERE id = $1",
+      [applicationId],
+    );
+    const matched = await pool.query(
+      "INSERT INTO students (full_name) VALUES ($1) RETURNING id",
+      [`Pending match ${randomUUID()}`],
+    );
+    const pendingFlag = await pool.query(
+      `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
+       VALUES ($1, $2, 0.9, 'pending') RETURNING id`,
+      [application.rows[0].student_id, matched.rows[0].id],
+    );
+    const blockedApproval = await request(app)
+      .patch(`/api/guardian/staff/applications/${applicationId}/status`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: "approved", note: "Cannot bypass duplicate review." });
+    expect(blockedApproval.statusCode).toBe(409);
+    expect(blockedApproval.body.code).toBe("DUPLICATE_REVIEW_REQUIRED");
+    await pool.query("DELETE FROM duplicate_flags WHERE id = $1", [pendingFlag.rows[0].id]);
+    await pool.query("DELETE FROM students WHERE id = $1", [matched.rows[0].id]);
+
     const queue = await request(app)
       .get("/api/guardian/staff/applications")
       .set("Authorization", `Bearer ${adminToken}`);
@@ -378,18 +447,59 @@ describe("Guardian API", () => {
     const decision = await request(app)
       .patch(`/api/guardian/staff/applications/${applicationId}/status`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ status: "approved", note: "Household income verified." });
+      .send({ status: "rejected", note: "Household income did not meet the programme criteria." });
 
     expect(decision.statusCode).toBe(200);
-    expect(decision.body.application.statusKey).toBe("approved");
+    expect(decision.body.application.statusKey).toBe("rejected");
 
     const refreshed = await request(app)
       .get(`/api/guardian/applications/${applicationReference}`)
       .set("Authorization", `Bearer ${firstToken}`);
 
     expect(refreshed.statusCode).toBe(200);
-    expect(refreshed.body.application.statusKey).toBe("approved");
-    expect(refreshed.body.application.decisionNote).toBe("Household income verified.");
+    expect(refreshed.body.application.statusKey).toBe("rejected");
+    expect(refreshed.body.application.decisionNote).toBe("Household income did not meet the programme criteria.");
+    expect(refreshed.body.application.rejectionMessage).toBe(
+      "Your application was unsuccessful. If you have any questions or need clarification, please contact our support team. You may also submit a new application.",
+    );
+
+    const reopen = await request(app)
+      .patch(`/api/guardian/staff/applications/${applicationId}/status`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: "under_review" });
+    expect(reopen.statusCode).toBe(409);
+    expect(reopen.body.code).toBe("REJECTED_APPLICATION_READ_ONLY");
+
+    const rejectedStudent = await pool.query("SELECT student_id FROM guardian_applications WHERE id = $1", [applicationId]);
+    const correction = await request(app)
+      .patch(`/api/eligibility/${rejectedStudent.rows[0].student_id}/correction`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ fee_balance: 1000, reason: "Attempt to alter rejected application" });
+    expect(correction.statusCode).toBe(409);
+    expect(correction.body.code).toBe("REJECTED_APPLICATION_READ_ONLY");
+
+    const resubmission = await request(app)
+      .post("/api/guardian/applications")
+      .set("Authorization", `Bearer ${firstToken}`)
+      .send(applicationPayload());
+    expect(resubmission.statusCode).toBe(201);
+    expect(resubmission.body.application.statusKey).toBe("review");
+    expect(resubmission.body.student).toBeTruthy();
+    expect(resubmission.body.application.duplicateScreeningStatus).toBe("under_review");
+    const duplicateFlags = await pool.query("SELECT id FROM duplicate_flags WHERE student_id = $1", [resubmission.body.student.id]);
+    expect(duplicateFlags.rows.length).toBeGreaterThan(0);
+    const screeningAudit = await pool.query(
+      `SELECT 1 FROM audit_logs
+        WHERE action = 'GUARDIAN_APPLICATION_LINKED_STUDENT' AND record_id = $1`,
+      [resubmission.body.application.id],
+    );
+    expect(screeningAudit.rows).toHaveLength(1);
+
+    const preserved = await pool.query("SELECT status, decision_note FROM guardian_applications WHERE id = $1", [applicationId]);
+    expect(preserved.rows[0]).toEqual({
+      status: "rejected",
+      decision_note: "Household income did not meet the programme criteria.",
+    });
   });
 
   afterAll(async () => {

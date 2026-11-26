@@ -1,11 +1,13 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const PDFDocument = require('pdfkit');
 const { z } = require('zod');
 const pool = require('../config/db');
 const { getJwtSecret } = require('../config/jwtSecret');
 const logAudit = require('../services/auditLog');
 const { DuplicateScreeningUnavailableError } = require('../services/studentRegistration');
 const { linkGuardianApplicationStudent } = require('../services/guardianApplicationLink');
+const { GUARDIAN_NATIONAL_ID_PATTERN, presentGuardianProfile } = require('../services/guardianNationalId');
 
 // Guardian status vocabulary. The database keeps snake_case values; the guardian pages use the
 // shorter `statusKey` they were designed around ('review' for 'under_review').
@@ -26,6 +28,35 @@ const STATUS_KEYS = Object.freeze({
   approved: 'approved',
   rejected: 'rejected',
 });
+const GUARDIAN_REJECTION_MESSAGE = 'Your application was unsuccessful. If you have any questions or need clarification, please contact our support team. You may also submit a new application.';
+const GUARDIAN_DUPLICATE_REASON = 'Duplicate application detected.';
+
+const APPLICATION_DUPLICATE_STATUS_SQL = `CASE
+  WHEN s.id IS NULL THEN 'not_screened'
+  WHEN s.duplicate_of_student_id IS NOT NULL THEN 'confirmed_duplicate'
+  WHEN EXISTS (
+    SELECT 1 FROM duplicate_flags f
+     WHERE (f.student_id = s.id OR f.matched_student_id = s.id)
+       AND f.status IN ('pending', 'needs_verification')
+  ) THEN 'under_review'
+  WHEN EXISTS (
+    SELECT 1 FROM duplicate_flags f
+     WHERE f.student_id = s.id AND f.status = 'confirmed_duplicate'
+       AND NOT EXISTS (SELECT 1 FROM duplicate_resolutions r WHERE r.duplicate_flag_id = f.id)
+  ) THEN 'confirmed_duplicate'
+  WHEN EXISTS (
+    SELECT 1 FROM duplicate_flags f
+     WHERE f.matched_student_id = s.id AND f.status = 'confirmed_duplicate'
+       AND NOT EXISTS (SELECT 1 FROM duplicate_resolutions r WHERE r.duplicate_flag_id = f.id)
+  ) THEN 'under_review'
+  WHEN EXISTS (
+    SELECT 1 FROM audit_logs screening
+     WHERE screening.table_name = 'guardian_applications'
+       AND screening.record_id = a.id
+       AND screening.action = 'GUARDIAN_APPLICATION_LINKED_STUDENT'
+  ) THEN 'cleared'
+  ELSE 'not_screened'
+END`;
 const ACCOUNT_TYPES = Object.freeze([
   'parent',
   'legal_guardian',
@@ -70,11 +101,8 @@ function requiredNumber({ message, max, integer = false }) {
   );
 }
 
-// Public registration rules agreed with the field team: the phone number is exactly 10 digits and the
-// identification field accepts at most 9 letters/digits (national IDs are up to 9 digits, passports
-// up to 9 characters). The same rules are mirrored in frontend/src/pages/GuardianRegistration.jsx.
+// Guardian National IDs are eight decimal digits; keep them as strings so leading zeroes survive.
 const PHONE_RULE = /^\d{10}$/;
-const IDENTIFICATION_RULE = /^[A-Za-z0-9]{1,9}$/;
 
 const registerSchema = z.object({
   full_name: z.string().trim().min(2, 'Full legal name is required').max(255),
@@ -93,12 +121,7 @@ const registerSchema = z.object({
     .regex(PHONE_RULE, 'Phone number must be exactly 10 digits, for example 0712345678'),
   national_id: z
     .string()
-    .trim()
-    .min(1, 'National ID or passport number is required')
-    .regex(
-      IDENTIFICATION_RULE,
-      'National ID or passport number must be at most 9 letters or digits',
-    ),
+    .regex(GUARDIAN_NATIONAL_ID_PATTERN, 'National ID must be exactly 8 digits'),
   relationship_to_student: z.enum(ACCOUNT_TYPES),
   privacy_consent: z.literal(true),
 });
@@ -106,7 +129,7 @@ const registerSchema = z.object({
 const profileSchema = z.object({
   full_name: z.string().trim().min(2).max(255).optional(),
   phone: z.string().trim().min(7).max(30).optional(),
-  national_id: z.string().trim().min(4).max(100).optional(),
+  national_id: z.string().regex(GUARDIAN_NATIONAL_ID_PATTERN, 'National ID must be exactly 8 digits').optional(),
   relationship_to_student: z.enum(ACCOUNT_TYPES).optional(),
 });
 
@@ -142,12 +165,14 @@ const applicationSchema = z.object({
   }),
   prior_bursary_history: z.enum(PRIOR_BURSARY_LEVELS, { error: 'Select the prior bursary history' }),
   declaration: z.literal(true),
-  documents: z.array(z.any()).max(10).optional(),
 });
 
 const decisionSchema = z.object({
   status: z.enum(['under_review', 'approved', 'rejected']),
   note: z.string().trim().max(2000).optional(),
+}).refine((value) => value.status !== 'rejected' || Boolean(value.note && value.note.length >= 5), {
+  message: 'A reason of at least 5 characters is required when rejecting an application.',
+  path: ['note'],
 });
 
 function formatDate(value, style = 'long') {
@@ -170,28 +195,26 @@ function presentSummary(row) {
     status: STATUS_LABELS[row.status] || 'Submitted',
     statusKey,
     status_code: row.status,
+    duplicateScreeningStatus: row.duplicate_screening_status || 'not_screened',
     student: row.student_full_name,
     school: row.school_name,
     date: formatDate(row.created_at, 'short'),
     submittedDate: formatDate(row.created_at),
     submitted_at: row.created_at,
+    decisionNote: row.decision_note || '',
   };
 }
 
-function presentDocuments(details) {
-  const documents = details && Array.isArray(details.documents) ? details.documents : [];
-  return documents
-    .filter(
-      (document) =>
-        document &&
-        typeof document === 'object' &&
-        typeof document.name === 'string' &&
-        document.name.trim() !== '',
-    )
-    .map((document) => ({
-      name: document.name,
-      description: document.description || 'Supporting document',
-    }));
+function presentGuardianSummary(row) {
+  const summary = presentSummary(row);
+  if (row.status !== 'rejected') return { ...summary, decisionNote: '' };
+  return {
+    ...summary,
+    decisionNote: row.duplicate_screening_status === 'confirmed_duplicate'
+      ? GUARDIAN_DUPLICATE_REASON
+      : row.decision_note || '',
+    rejectionMessage: GUARDIAN_REJECTION_MESSAGE,
+  };
 }
 
 function presentDetail(row) {
@@ -233,7 +256,18 @@ function presentDetail(row) {
       priorBursaryHistory: PRIOR_BURSARY_LABELS[row.prior_bursary_history] || '',
     },
     decisionNote: row.decision_note || '',
-    documents: presentDocuments(row.details),
+  };
+}
+
+function presentGuardianDetail(row) {
+  const detail = presentDetail(row);
+  if (row.status !== 'rejected') return { ...detail, decisionNote: '' };
+  return {
+    ...detail,
+    decisionNote: row.duplicate_screening_status === 'confirmed_duplicate'
+      ? GUARDIAN_DUPLICATE_REASON
+      : row.decision_note || '',
+    rejectionMessage: GUARDIAN_REJECTION_MESSAGE,
   };
 }
 
@@ -287,7 +321,7 @@ async function register(req, res) {
     const { rows } = await pool.query(
       `INSERT INTO users (full_name, email, password_hash, role, phone, national_id, relationship_to_student)
        VALUES ($1, $2, $3, 'guardian', $4, $5, $6)
-       RETURNING id, full_name, email, role, phone, national_id, relationship_to_student, created_at`,
+       RETURNING id, full_name, email, role, phone, relationship_to_student, created_at`,
       [full_name, email, password_hash, phone, national_id, relationship_to_student],
     );
     user = rows[0];
@@ -315,7 +349,7 @@ async function me(req, res) {
     [req.user.id],
   );
   if (!rows.length) return res.status(404).json({ error: 'Guardian account not found' });
-  return res.json(rows[0]);
+  return res.json(presentGuardianProfile(rows[0]));
 }
 
 async function dashboard(req, res) {
@@ -327,8 +361,10 @@ async function dashboard(req, res) {
       [req.user.id],
     ),
     pool.query(
-      `SELECT * FROM guardian_applications
-        WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5`,
+      `SELECT a.*, ${APPLICATION_DUPLICATE_STATUS_SQL} AS duplicate_screening_status
+         FROM guardian_applications a
+         LEFT JOIN students s ON s.id = a.student_id
+        WHERE a.user_id = $1 ORDER BY a.created_at DESC LIMIT 5`,
       [req.user.id],
     ),
   ]);
@@ -346,17 +382,19 @@ async function dashboard(req, res) {
   return res.json({
     guardian: guardianResult.rows[0] || null,
     summary,
-    applications: applicationsResult.rows.map(presentSummary),
+    applications: applicationsResult.rows.map(presentGuardianSummary),
   });
 }
 
 async function listApplications(req, res) {
   const { rows } = await pool.query(
-    `SELECT * FROM guardian_applications
-      WHERE user_id = $1 ORDER BY created_at DESC`,
+    `SELECT a.*, ${APPLICATION_DUPLICATE_STATUS_SQL} AS duplicate_screening_status
+       FROM guardian_applications a
+       LEFT JOIN students s ON s.id = a.student_id
+      WHERE a.user_id = $1 ORDER BY a.created_at DESC`,
     [req.user.id],
   );
-  return res.json({ applications: rows.map(presentSummary) });
+  return res.json({ applications: rows.map(presentGuardianSummary) });
 }
 
 async function createApplication(req, res) {
@@ -378,16 +416,43 @@ async function createApplication(req, res) {
       `sbms.guardian.application.${req.user.id}`,
     ]);
 
+    const previouslyConfirmedDuplicate = await client.query(
+      `SELECT a.reference
+         FROM guardian_applications a
+         JOIN students s ON s.id = a.student_id
+        WHERE a.user_id = $1 AND a.status = 'rejected'
+          AND lower(btrim(a.student_full_name)) = lower(btrim($2))
+          AND a.student_date_of_birth IS NOT DISTINCT FROM $3::date
+          AND lower(btrim(a.school_name)) = lower(btrim($4))
+          AND (s.duplicate_of_student_id IS NOT NULL OR EXISTS (
+            SELECT 1 FROM duplicate_flags f
+             WHERE (f.student_id = s.id OR f.matched_student_id = s.id)
+               AND f.status = 'confirmed_duplicate'
+          ))
+        ORDER BY a.created_at DESC LIMIT 1`,
+      [req.user.id, data.student_full_name, data.student_date_of_birth || null, data.school_name],
+    );
+    if (previouslyConfirmedDuplicate.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'DUPLICATE_APPLICATION_READ_ONLY',
+        error: 'This application was rejected after an administrator confirmed a duplicate. It is read-only and cannot be resubmitted.',
+        reference: previouslyConfirmedDuplicate.rows[0].reference,
+      });
+    }
+
     // Identity of the child, not of the submission. A retry, a double click or a resubmission of
     // the same form finds the earlier application and never creates a second student.
     const existing = await client.query(
-      `SELECT * FROM guardian_applications
-        WHERE user_id = $1
-          AND status <> 'rejected'
-          AND lower(btrim(student_full_name)) = lower(btrim($2))
-          AND student_date_of_birth IS NOT DISTINCT FROM $3::date
-          AND lower(btrim(school_name)) = lower(btrim($4))
-        ORDER BY created_at DESC
+      `SELECT a.*, ${APPLICATION_DUPLICATE_STATUS_SQL} AS duplicate_screening_status
+         FROM guardian_applications a
+         LEFT JOIN students s ON s.id = a.student_id
+        WHERE a.user_id = $1
+          AND a.status <> 'rejected'
+          AND lower(btrim(a.student_full_name)) = lower(btrim($2))
+          AND a.student_date_of_birth IS NOT DISTINCT FROM $3::date
+          AND lower(btrim(a.school_name)) = lower(btrim($4))
+        ORDER BY a.created_at DESC
         LIMIT 1`,
       [req.user.id, data.student_full_name, data.student_date_of_birth || null, data.school_name],
     );
@@ -395,28 +460,32 @@ async function createApplication(req, res) {
     let application = existing.rows[0] || null;
 
     if (application && application.student_id) {
-      // The earlier submission already produced a student record. Return that application instead
-      // of screening and registering the same child again. Documents supplied on a resubmission are
-      // merged into the same application so evidence is never lost by a retry.
-      if (data.documents?.length) {
-        const existingDocuments = application.details?.documents || [];
-        const merged = [...existingDocuments];
-        for (const document of data.documents) {
-          const index = merged.findIndex((item) => item.name === document.name);
-          if (index >= 0) merged[index] = document;
-          else merged.push(document);
-        }
-        const updated = await client.query(
-          'UPDATE guardian_applications SET details = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
-          [JSON.stringify({ ...application.details, documents: merged }), application.id],
-        );
-        application = updated.rows[0];
+      const hold = await client.query(
+        `SELECT EXISTS (
+           SELECT 1 FROM duplicate_flags f
+            WHERE (f.student_id = $1 OR f.matched_student_id = $1)
+              AND (f.status IN ('pending', 'needs_verification') OR
+                   (f.status = 'confirmed_duplicate' AND NOT EXISTS (
+                     SELECT 1 FROM duplicate_resolutions r WHERE r.duplicate_flag_id = f.id
+                   )))
+         ) AS held,
+         EXISTS (SELECT 1 FROM students WHERE id = $1 AND duplicate_of_student_id IS NOT NULL) AS marked_duplicate`,
+        [application.student_id],
+      );
+      if (hold.rows[0]?.held || hold.rows[0]?.marked_duplicate) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          code: 'DUPLICATE_APPLICATION_READ_ONLY',
+          error: 'This application is read-only while its duplicate review is unresolved.',
+        });
       }
+      // The earlier submission already produced a student record. Return that application instead
+      // of screening and registering the same unresolved submission again.
       const student = await client.query('SELECT * FROM students WHERE id = $1', [application.student_id]);
       const assessment = await presentLatestAssessment(client, application.student_id);
       await client.query('COMMIT');
       return res.status(200).json({
-        application: presentDetail(application),
+        application: presentGuardianDetail(application),
         duplicate_submission: true,
         student: presentStudentRecord(student.rows[0]),
         assessment,
@@ -463,9 +532,7 @@ async function createApplication(req, res) {
         data.vulnerability_status,
         data.siblings_in_school,
         data.prior_bursary_history,
-        // Initial submissions carry no supporting documents; the column keeps an empty list until
-        // an authorised officer requests evidence through the More Info Required workflow.
-        JSON.stringify({ documents: data.documents || [] }),
+        JSON.stringify({}),
       ],
     );
 
@@ -505,7 +572,7 @@ async function createApplication(req, res) {
     await client.query('COMMIT');
 
     return res.status(201).json({
-      application: presentDetail(application),
+      application: presentGuardianDetail(application),
       duplicate_submission: false,
       student: presentStudentRecord(linkage.student),
       duplicate_screening: linkage.screening,
@@ -521,11 +588,54 @@ async function createApplication(req, res) {
 
 async function getApplication(req, res) {
   const { rows } = await pool.query(
-    `SELECT * FROM guardian_applications WHERE reference = $1 AND user_id = $2`,
+    `SELECT a.*, ${APPLICATION_DUPLICATE_STATUS_SQL} AS duplicate_screening_status
+       FROM guardian_applications a
+       LEFT JOIN students s ON s.id = a.student_id
+      WHERE a.reference = $1 AND a.user_id = $2`,
     [req.params.reference, req.user.id],
   );
   if (!rows.length) return res.status(404).json({ error: 'Application not found' });
-  return res.json({ application: presentDetail(rows[0]) });
+  return res.json({ application: presentGuardianDetail(rows[0]) });
+}
+
+async function downloadReceipt(req, res, next) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.reference, a.created_at, a.status, a.student_full_name, a.school_name,
+              u.full_name AS guardian_name
+         FROM guardian_applications a
+         JOIN users u ON u.id = a.user_id
+        WHERE a.reference = $1 AND a.user_id = $2`,
+      [req.params.reference, req.user.id],
+    );
+    const application = rows[0];
+    if (!application) return res.status(404).json({ error: 'Application not found' });
+
+    const pdf = new PDFDocument({ size: 'A4', margin: 56, info: { Title: `SBMS submission receipt ${application.reference}` } });
+    const chunks = [];
+    pdf.on('data', (chunk) => chunks.push(chunk));
+    pdf.on('error', next);
+    pdf.on('end', () => {
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${application.reference}-receipt.pdf"`,
+        'Cache-Control': 'private, no-store',
+      }).send(Buffer.concat(chunks));
+    });
+    pdf.fontSize(20).fillColor('#174b40').text('SBMS submission receipt');
+    pdf.moveDown(0.5).fontSize(11).fillColor('#222222');
+    pdf.text(`Application reference: ${application.reference}`);
+    pdf.text(`Submitted: ${formatDate(application.created_at)}`);
+    pdf.text(`Guardian: ${application.guardian_name}`);
+    pdf.text(`Student: ${application.student_full_name}`);
+    pdf.text(`School: ${application.school_name}`);
+    pdf.text(`Application status: ${STATUS_LABELS[application.status] || 'Under Review'}`);
+    pdf.moveDown().fontSize(9).fillColor('#555555')
+      .text('This receipt confirms submission only. It is not an eligibility decision or a bursary award.');
+    pdf.end();
+  } catch (error) {
+    next(error);
+  }
 }
 
 async function staffQueue(req, res) {
@@ -537,21 +647,24 @@ async function staffQueue(req, res) {
     `SELECT a.*, u.full_name AS guardian_account_name, u.email AS guardian_email,
             s.full_name AS registered_full_name,
             COALESCE(s.admission_number, a.admission_number) AS registered_admission_number,
-            flag.status AS duplicate_status, flag.probability AS duplicate_probability,
-            assessment.status AS assessment_status, assessment.score AS assessment_score,
-            assessment.category AS assessment_category,
+            ${APPLICATION_DUPLICATE_STATUS_SQL} AS duplicate_screening_status,
+            flag.probability AS duplicate_probability,
+            assessment.id AS assessment_id, assessment.status AS assessment_status,
+            assessment.score AS assessment_score, assessment.category AS assessment_category,
             assessment.missing_inputs AS assessment_missing_inputs
        FROM guardian_applications a
        JOIN users u ON u.id = a.user_id
        LEFT JOIN students s ON s.id = a.student_id
        LEFT JOIN LATERAL (
-         SELECT status, probability FROM duplicate_flags
-          WHERE student_id = a.student_id
-          ORDER BY created_at DESC, id DESC
+         SELECT f.status, f.probability FROM duplicate_flags f
+          WHERE f.student_id = a.student_id OR f.matched_student_id = a.student_id
+          ORDER BY CASE WHEN f.status IN ('pending', 'needs_verification') THEN 0
+                        WHEN f.status = 'confirmed_duplicate' THEN 1 ELSE 2 END,
+                   f.created_at DESC, f.id DESC
           LIMIT 1
        ) flag ON TRUE
        LEFT JOIN LATERAL (
-         SELECT status, score, category, missing_inputs FROM eligibility_assessments
+         SELECT id, status, score, category, missing_inputs FROM eligibility_assessments
           WHERE student_id = a.student_id
           ORDER BY assessed_at DESC, created_at DESC
           LIMIT 1
@@ -572,13 +685,20 @@ async function staffQueue(req, res) {
             admission_number: row.registered_admission_number || null,
           }
         : null,
-      duplicate: row.duplicate_status
+      duplicate: row.student_id
         ? {
-            status: row.duplicate_status,
+            status: row.duplicate_screening_status || 'cleared',
             probability:
               row.duplicate_probability === null ? null : Number(row.duplicate_probability),
           }
         : null,
+      eligibility_inputs: {
+        fee_balance: row.fee_balance == null ? null : Number(row.fee_balance),
+        household_income: row.monthly_income == null ? null : Number(row.monthly_income),
+        vulnerability_status: row.vulnerability_status || null,
+        siblings_in_school: row.siblings_in_school == null ? null : Number(row.siblings_in_school),
+        prior_bursary_history: row.prior_bursary_history || null,
+      },
       assessment: row.assessment_status
         ? {
             status: row.assessment_status,
@@ -597,28 +717,86 @@ async function staffDecision(req, res) {
     return res.status(400).json({ error: 'Invalid decision data', details: result.error.flatten() });
   }
   const { status, note } = result.data;
-  const decided = status === 'approved' || status === 'rejected';
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('sbms.student.registration'))");
+    const { rows: applications } = await client.query(
+      `SELECT a.*, s.duplicate_of_student_id,
+              ${APPLICATION_DUPLICATE_STATUS_SQL} AS duplicate_screening_status,
+              EXISTS (SELECT 1 FROM duplicate_flags f
+                       WHERE (f.student_id = s.id OR f.matched_student_id = s.id)
+                         AND (f.status IN ('pending', 'needs_verification') OR
+                              (f.status = 'confirmed_duplicate' AND NOT EXISTS (
+                                SELECT 1 FROM duplicate_resolutions r WHERE r.duplicate_flag_id = f.id
+                              )))) AS duplicate_review_open
+         FROM guardian_applications a
+         LEFT JOIN students s ON s.id = a.student_id
+        WHERE a.id = $1 FOR UPDATE OF a`,
+      [req.params.id],
+    );
+    const application = applications[0];
+    if (!application) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    const duplicateRejected = application.status === 'rejected' && (
+      application.duplicate_of_student_id || application.duplicate_review_open
+    );
+    if (duplicateRejected) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'DUPLICATE_APPLICATION_READ_ONLY',
+        error: 'This application was rejected after duplicate review and is permanently read-only.',
+      });
+    }
+    if (application.status === 'rejected') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'REJECTED_APPLICATION_READ_ONLY',
+        error: 'Rejected applications are preserved and read-only. Submit a new application instead.',
+      });
+    }
+    if (status !== 'under_review' && application.duplicate_review_open) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'DUPLICATE_REVIEW_REQUIRED',
+        error: 'Resolve duplicate review before approving or rejecting this application.',
+      });
+    }
+    if (status !== 'under_review' && application.duplicate_screening_status !== 'cleared') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'DUPLICATE_SCREENING_REQUIRED',
+        error: 'This application cannot proceed until duplicate screening is explicitly cleared.',
+      });
+    }
 
-  const { rows } = await pool.query(
-    `UPDATE guardian_applications
-        SET status = $1,
-            decision_note = $2,
-            decided_at = CASE WHEN $3 THEN NOW() ELSE NULL END,
-            updated_at = NOW()
-      WHERE id = $4
-      RETURNING *`,
-    [status, note || null, decided, req.params.id],
-  );
-  if (!rows.length) return res.status(404).json({ error: 'Application not found' });
-
-  await logAudit(
-    req.user.id,
-    'GUARDIAN_APPLICATION_DECIDED',
-    'guardian_applications',
-    rows[0].id,
-    { status, reference: rows[0].reference },
-  );
-  return res.json({ application: presentDetail(rows[0]) });
+    const { rows } = await client.query(
+      `UPDATE guardian_applications
+          SET status = $1, decision_note = $2,
+              decided_at = CASE WHEN $3 THEN NOW() ELSE NULL END,
+              updated_at = NOW()
+        WHERE id = $4 RETURNING *`,
+      [status, note || null, status === 'approved' || status === 'rejected', req.params.id],
+    );
+    rows[0].duplicate_screening_status = application.duplicate_screening_status;
+    await logAudit(
+      req.user.id,
+      'GUARDIAN_APPLICATION_DECIDED',
+      'guardian_applications',
+      rows[0].id,
+      { status, reference: rows[0].reference, reason: note || null },
+      client,
+    );
+    await client.query('COMMIT');
+    return res.json({ application: presentDetail(rows[0]) });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 module.exports = {
@@ -629,6 +807,7 @@ module.exports = {
   listApplications,
   createApplication,
   getApplication,
+  downloadReceipt,
   staffQueue,
   staffDecision,
 };
@@ -653,7 +832,7 @@ async function updateProfile(req, res) {
     );
     if (!rows.length) return res.status(404).json({ error: 'Guardian account not found' });
     await logAudit(req.user.id, 'GUARDIAN_PROFILE_UPDATED', 'users', req.user.id, { fields: keys });
-    return res.json(rows[0]);
+    return res.json(presentGuardianProfile(rows[0]));
   } catch (error) {
     if (error.code === '23505') {
       return res.status(409).json({ error: 'That national ID is already registered' });

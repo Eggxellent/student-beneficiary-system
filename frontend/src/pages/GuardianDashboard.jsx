@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  CircleAlert,
   CircleCheck,
   Clock3,
   FilePlusCorner,
@@ -38,14 +37,6 @@ const SUMMARY_CARDS = [
     hint: "Being assessed",
     icon: Clock3,
     iconClass: "bg-accent text-accent-foreground",
-  },
-  {
-    key: "attention",
-    label: "More Information Required",
-    value: "0",
-    hint: "Needs your attention",
-    icon: CircleAlert,
-    iconClass: "bg-muted text-muted-foreground",
   },
   {
     key: "approved",
@@ -193,7 +184,6 @@ export default function GuardianDashboard() {
     total: dashboard?.summary?.total ?? 0,
     review: dashboard?.summary?.review ?? 0,
     approved: dashboard?.summary?.approved ?? 0,
-    attention: 0,
   };
   const summaryCards = SUMMARY_CARDS.map((card) => ({
     ...card,
@@ -228,7 +218,7 @@ export default function GuardianDashboard() {
 
         <section
           aria-label="Application summary"
-          className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
           {SUMMARY_CARDS.map((card) => (
             <SummaryCard
@@ -279,7 +269,12 @@ export default function GuardianDashboard() {
                       <td className="px-6 py-4 text-sm font-medium text-foreground">{application.student}</td>
                       <td className="px-6 py-4 font-mono text-sm text-muted-foreground">{application.reference}</td>
                       <td className="px-6 py-4 text-sm text-muted-foreground">{application.date}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">{application.status}</td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">
+                        <span>{application.status}</span>
+                        {application.statusKey === "rejected" && application.decisionNote && (
+                          <span className="mt-1 block max-w-xs text-xs text-destructive">Reason: {application.decisionNote}</span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-right">
                         <Link
                           to={`${GUARDIAN_PATHS.myApplications}/${application.reference}`}

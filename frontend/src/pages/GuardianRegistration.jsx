@@ -18,11 +18,9 @@ const ACCOUNT_TYPES = [
 const LABEL_CLASS = "font-medium text-foreground text-sm";
 const FIELD_CLASS = "rounded-md bg-card text-sm border border-input px-3 h-11 w-full text-foreground";
 
-// Registration rules, mirrored by POST /api/guardian/register in backend/src/controllers/guardian.controller.js:
-// the phone number is exactly 10 digits and the identification field takes at most 9 letters/digits
-// (national IDs are up to 9 digits, passports up to 9 characters).
+// Registration rules are mirrored by POST /api/guardian/register in the backend.
 const PHONE_PATTERN = /^\d{10}$/;
-const IDENTIFICATION_PATTERN = /^[A-Za-z0-9]{1,9}$/;
+const NATIONAL_ID_PATTERN = /^[0-9]{8}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function RequiredMark() {
@@ -92,7 +90,7 @@ export default function GuardianRegistration() {
 
     const fullName = form.fullName.value.trim();
     const accountType = form.accountType.value;
-    const nationalId = form.nationalId.value.trim();
+    const nationalId = form.nationalId.value;
     const phone = form.phone.value.trim();
     const email = form.email.value.trim();
     const password = form.password.value;
@@ -107,11 +105,11 @@ export default function GuardianRegistration() {
       return;
     }
     if (!nationalId) {
-      setError("Enter your national ID or passport number.");
+      setError("Enter your 8-digit National ID.");
       return;
     }
-    if (!IDENTIFICATION_PATTERN.test(nationalId)) {
-      setError("National ID or passport number must be at most 9 letters or digits.");
+    if (!NATIONAL_ID_PATTERN.test(nationalId)) {
+      setError("National ID must be exactly 8 digits with no spaces or symbols.");
       return;
     }
     if (!phone) {
@@ -238,22 +236,22 @@ export default function GuardianRegistration() {
 
                 <div className="grid gap-2">
                   <label htmlFor="national-id" className={LABEL_CLASS}>
-                    National ID / Passport Number <RequiredMark />
+                    National ID <RequiredMark />
                   </label>
                   <input
                     id="national-id"
                     name="nationalId"
-                    placeholder="Enter ID or passport number"
+                    placeholder="Enter 8-digit National ID"
                     type="text"
+                    inputMode="numeric"
                     autoComplete="off"
-                    maxLength={9}
-                    pattern="[A-Za-z0-9]{1,9}"
-                    title="Up to 9 letters or digits: up to 9 digits for a national ID, up to 9 characters for a passport."
+                    pattern="[0-9]{8}"
+                    title="Exactly 8 digits. Spaces, letters, and symbols are not allowed."
                     required
                     className={FIELD_CLASS}
                   />
                   <p className="text-foreground/70 text-xs">
-                    National ID: up to 9 digits. Passport: up to 9 characters.
+                    Enter exactly 8 digits. Leading zeros are kept.
                   </p>
                 </div>
 

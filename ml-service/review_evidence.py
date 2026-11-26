@@ -166,6 +166,27 @@ def _identifier_comparison(left: Any, right: Any, prefixes: tuple[str, ...] = ()
     return result
 
 
+def _guardian_national_id_comparison(first: Any, second: Any) -> dict[str, Any]:
+    """Compare only valid guardian account IDs and return match status, never the values.
+
+    This is household context shared by siblings. It is deliberately not part of the
+    student-specific signals or any near-match qualification rule.
+    """
+    valid_first = isinstance(first, str) and re.fullmatch(r"[0-9]{8}", first) is not None
+    valid_second = isinstance(second, str) and re.fullmatch(r"[0-9]{8}", second) is not None
+    if not valid_first or not valid_second:
+        match_type = "unavailable_or_invalid"
+    elif first == second:
+        match_type = "same_guardian_national_id_context"
+    else:
+        match_type = "different_guardian_national_ids_context"
+    return {
+        "national_id_match": bool(valid_first and valid_second and first == second),
+        "match_type": match_type,
+        "evidence_role": "guardian_context_only",
+    }
+
+
 def identifier_similarity(left: Any, right: Any, prefixes: tuple[str, ...] = ()) -> float:
     return float(_identifier_comparison(left, right, prefixes)["similarity"])
 
@@ -236,6 +257,9 @@ def build_review_evidence(first: dict[str, Any], second: dict[str, Any]) -> dict
         ("birthcertificatenumber", "birthcertificate", "certificate", "bc"),
         minimum_length=7,
     )
+    guardian_context = _guardian_national_id_comparison(
+        first.get("guardian_national_id"), second.get("guardian_national_id")
+    )
 
     admission = float(admission_detail["similarity"])
     certificate = float(certificate_detail["similarity"])
@@ -284,6 +308,7 @@ def build_review_evidence(first: dict[str, Any], second: dict[str, Any]) -> dict
         "guardian": {"similarity": guardian, "match_type": "context_only"},
         "admission_number": admission_detail,
         "birth_certificate": certificate_detail,
+        "guardian_context": guardian_context,
     }
     signals = [key for key, detail in comparisons.items() if float(detail.get("similarity", 0)) > 0]
     return {

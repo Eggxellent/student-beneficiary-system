@@ -6,152 +6,149 @@ const {
 const { getEligibilityAmountRanges } = require('../config/settings');
 const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
+const { z } = require('zod');
+const { ASSESSMENT_INPUTS, loadEligibilityWorkflow, awardReadinessError } = require('../services/eligibilityWorkflow');
+
+const correctionSchema = z.object({
+  reason: z.string().trim().min(5).max(2000),
+  fee_balance: z.number().finite().min(0).max(1_000_000_000).optional(),
+  household_income: z.number().finite().min(0).max(1_000_000_000).optional(),
+  vulnerability_status: z.enum(['low', 'medium', 'high']).optional(),
+  siblings_in_school: z.number().int().min(0).max(20).optional(),
+  prior_bursary_history: z.enum(['none', 'low', 'high']).optional(),
+}).strict().refine((data) => ASSESSMENT_INPUTS.some((key) => data[key] !== undefined), {
+  message: 'Provide at least one corrected financial-need input.',
+});
 
 async function calculate(req, res, next) {
-  const {
-    fee_balance,
-    household_income,
-    vulnerability_status,
-    siblings_in_school,
-    prior_bursary_history,
-    student_id,
-  } = req.body;
+  // The former Field Officer form accepted replacement values and overwrote the current score.
+  // Guardian submissions now drive scoring; only the audited Admin correction route may change it.
+  return res.status(403).json({
+    code: 'ELIGIBILITY_ASSESSMENT_READ_ONLY',
+    message: 'Field Officers cannot replace eligibility inputs or recalculate assessments. Request an authorized Admin correction.',
+  });
+}
 
-  // A registered student must be selected: the assessment is stored against
-  // that student's record, so there is nothing to calculate without one.
-  if (typeof student_id !== 'string' || student_id.trim() === '') {
-    return res.status(400).json({ message: 'Select a registered student before calculating eligibility' });
+async function correctInputs(req, res, next) {
+  const parsed = correctionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Enter corrected values and a reason of at least 5 characters.', details: parsed.error.flatten() });
   }
-
-  const numericValues = [fee_balance, household_income, siblings_in_school];
-  if (numericValues.some((value) => typeof value !== 'number' || !Number.isFinite(value) || value < 0)) {
-    return res.status(400).json({ message: 'Fee balance, household income, and siblings must be non-negative numbers' });
-  }
-
-  if (!['low', 'medium', 'high'].includes(vulnerability_status)) {
-    return res.status(400).json({ message: 'Invalid vulnerability status' });
-  }
-
-  if (!['none', 'low', 'high'].includes(prior_bursary_history)) {
-    return res.status(400).json({ message: 'Invalid prior bursary history' });
-  }
-
+  const actorId = req.user.id || req.user.sub;
+  const client = await pool.connect();
   try {
-    // A confirmed or still-unresolved duplicate case blocks eligibility, including a manual
-    // calculation; the automatic assessments use the same rule.
-    const eligibilityState = await pool.query(
-      `SELECT s.id, s.duplicate_of_student_id,
-              EXISTS (
-                SELECT 1 FROM duplicate_flags f
-                 WHERE (f.student_id = s.id OR f.matched_student_id = s.id)
-                   AND f.status IN ('pending', 'needs_verification')
-              ) AS has_open_case,
-              EXISTS (
-                SELECT 1 FROM duplicate_flags f
-                 WHERE (f.student_id = s.id OR f.matched_student_id = s.id)
-                   AND f.status = 'confirmed_duplicate'
-                   AND NOT EXISTS (SELECT 1 FROM duplicate_resolutions r WHERE r.duplicate_flag_id = f.id)
-              ) AS has_confirmed_case
-         FROM students s WHERE s.id = $1`,
-      [student_id],
-    );
-    if (!eligibilityState.rows.length) {
-      return res.status(404).json({ message: 'Student not found' });
+    await client.query('BEGIN');
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('sbms.student.registration'))");
+    await client.query('SELECT id FROM students WHERE id = $1 FOR UPDATE', [req.params.studentId]);
+    const workflow = await loadEligibilityWorkflow(client, req.params.studentId);
+    if (workflow.status === 'student_not_found') {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ code: 'STUDENT_NOT_FOUND', message: 'Student not found.' });
     }
-    const studentState = eligibilityState.rows[0];
-    if (studentState.duplicate_of_student_id || studentState.has_open_case || studentState.has_confirmed_case) {
+    const screeningError = awardReadinessError(workflow);
+    if (screeningError && !['assessment_missing', 'assessment_incomplete'].includes(workflow.status)) {
+      await client.query('ROLLBACK');
+      return res.status(screeningError.status).json(screeningError);
+    }
+
+    const applicationResult = workflow.student.application_id
+      ? await client.query('SELECT * FROM guardian_applications WHERE id = $1 FOR UPDATE', [workflow.student.application_id])
+      : { rows: [] };
+    const application = applicationResult.rows[0] || null;
+    if (application?.status === 'rejected') {
+      await client.query('ROLLBACK');
       return res.status(409).json({
-        message: 'Eligibility is blocked while this student has an unresolved or confirmed duplicate case.',
-        code: 'ELIGIBILITY_BLOCKED_BY_DUPLICATE',
+        code: 'REJECTED_APPLICATION_READ_ONLY',
+        message: 'Rejected applications are preserved and read-only. Submit a new application instead.',
       });
     }
+    const previousAssessment = workflow.assessment || null;
+    const before = {
+      fee_balance: application?.fee_balance ?? previousAssessment?.fee_balance ?? null,
+      household_income: application?.monthly_income ?? previousAssessment?.household_income ?? null,
+      vulnerability_status: application?.vulnerability_status ?? previousAssessment?.vulnerability_status ?? null,
+      siblings_in_school: application?.siblings_in_school ?? previousAssessment?.siblings_in_school ?? null,
+      prior_bursary_history: application?.prior_bursary_history ?? previousAssessment?.prior_bursary_history ?? null,
+    };
+    const corrected = { ...before };
+    for (const key of ASSESSMENT_INPUTS) {
+      if (parsed.data[key] !== undefined) corrected[key] = parsed.data[key];
+    }
+    const missingInputs = ASSESSMENT_INPUTS.filter((key) => corrected[key] === null || corrected[key] === undefined);
+    if (corrected.vulnerability_status !== null && !['low', 'medium', 'high'].includes(corrected.vulnerability_status)) missingInputs.push('vulnerability_status');
+    if (corrected.prior_bursary_history !== null && !['none', 'low', 'high'].includes(corrected.prior_bursary_history)) missingInputs.push('prior_bursary_history');
 
-    const assessment = calculateEligibility({
-      fee_balance,
-      household_income,
-      vulnerability_status,
-      siblings_in_school,
-      prior_bursary_history,
-    });
-
-    const result = await pool.query(
-      `UPDATE students
-       SET eligibility_score = $1,
-           eligibility_category = $2,
-           eligibility_assessed_at = NOW()
-       WHERE id = $3
-       RETURNING id, full_name, upi, school_code, eligibility_assessed_at`,
-      [assessment.score, assessment.category, student_id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Student not found' });
+    if (application) {
+      const updatedApplication = await client.query(
+        `UPDATE guardian_applications
+            SET fee_balance = $1, monthly_income = $2, vulnerability_status = $3,
+                siblings_in_school = $4, prior_bursary_history = $5, updated_at = NOW()
+          WHERE id = $6 RETURNING id`,
+        [corrected.fee_balance, corrected.household_income, corrected.vulnerability_status,
+          corrected.siblings_in_school, corrected.prior_bursary_history, application.id],
+      );
+      if (!updatedApplication.rows.length) throw new Error('Guardian application disappeared during correction.');
     }
 
-    const student = result.rows[0];
-
-    // The administrator's award review reads the assessment that produced this score, so the
-    // inputs and the recommended range are stored alongside it. This is a record of what the
-    // officer submitted, not a recalculation.
-    await pool.query(
+    const complete = missingInputs.length === 0;
+    const assessment = complete ? calculateEligibility(corrected) : null;
+    const category = assessment?.category || null;
+    const inserted = await client.query(
       `INSERT INTO eligibility_assessments (
          student_id, score, category, fee_balance, household_income, vulnerability_status,
          siblings_in_school, prior_bursary_history, recommended_min, recommended_max,
          recommended_currency, recommendation_provisional, recommendation_source,
-         recorded_via, assessed_by, assessed_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'eligibility_form', $14, $15)`,
-      [
-        student.id,
-        assessment.score,
-        assessment.category,
-        fee_balance,
-        household_income,
-        vulnerability_status,
-        siblings_in_school,
-        prior_bursary_history,
-        assessment.recommended_range.min,
-        assessment.recommended_range.max,
-        assessment.recommended_range.currency,
-        assessment.recommended_range.provisional,
-        assessment.recommended_range.source,
-        req.user.id || req.user.sub,
-        student.eligibility_assessed_at,
-      ]
+         recorded_via, assessed_by, assessed_at, status, missing_inputs, trigger, trigger_reference
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                 'admin_correction', $14, NOW(), $15, $16, 'admin_correction', $17)
+       RETURNING id, status, score, category, missing_inputs, assessed_at`,
+      [req.params.studentId, assessment?.score ?? null, category,
+        corrected.fee_balance, corrected.household_income, corrected.vulnerability_status,
+        corrected.siblings_in_school, corrected.prior_bursary_history,
+        assessment?.recommended_range.min ?? null, assessment?.recommended_range.max ?? null,
+        assessment?.recommended_range.currency ?? null, assessment?.recommended_range.provisional ?? true,
+        assessment?.recommended_range.source ?? null, actorId, complete ? 'complete' : 'incomplete',
+        [...new Set(missingInputs)], application?.id ?? null],
     );
 
-    try {
-      await logAudit(req.user.id, 'ELIGIBILITY_CALCULATED', 'students', student.id, {
-        score: assessment.score,
-        category: assessment.category,
-        recommended_range: assessment.recommended_range,
-        inputs: {
-          fee_balance,
-          household_income,
-          vulnerability_status,
-          siblings_in_school,
-          prior_bursary_history,
-        },
-      });
-    } catch (auditError) {
-      return next(auditError);
+    if (complete) {
+      await client.query(
+        `UPDATE students SET eligibility_score = $1, eligibility_category = $2, eligibility_assessed_at = NOW() WHERE id = $3`,
+        [assessment.score, assessment.category, req.params.studentId],
+      );
+    } else {
+      await client.query(
+        `UPDATE students SET eligibility_score = NULL, eligibility_category = NULL, eligibility_assessed_at = NULL WHERE id = $1`,
+        [req.params.studentId],
+      );
     }
-
+    await logAudit(actorId, 'ELIGIBILITY_INPUTS_CORRECTED', application ? 'guardian_applications' : 'students',
+      application?.id || req.params.studentId, {
+        student_id: req.params.studentId,
+        application_id: application?.id || null,
+        reason: parsed.data.reason,
+        before,
+        after: corrected,
+        assessment_id: inserted.rows[0].id,
+        assessment_status: complete ? 'complete' : 'incomplete',
+        missing_inputs: [...new Set(missingInputs)],
+        score: assessment?.score ?? null,
+        category,
+      }, client);
+    await client.query('COMMIT');
     return res.json({
-      ...assessment,
-      student: {
-        id: student.id,
-        full_name: student.full_name,
-        upi: student.upi,
-        school_code: student.school_code,
-      },
+      assessment: { ...inserted.rows[0], inputs: corrected, ...(assessment || {}) },
+      message: complete
+        ? 'Financial-need inputs corrected and a new assessment recorded. Earlier submissions and assessments remain in the audit history.'
+        : 'Correction saved. The assessment remains Incomplete; no score was produced.',
     });
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     return next(error);
+  } finally {
+    client.release();
   }
 }
-
-// Read-only configuration view so the officer UI can display the exact scoring
-// formula and the amount ranges (approved or provisional) in force.
 function describeFormula(req, res) {
   const amountRanges = getEligibilityAmountRanges();
 
@@ -173,4 +170,4 @@ function describeFormula(req, res) {
   });
 }
 
-module.exports = { calculate, describeFormula };
+module.exports = { calculate, correctInputs, describeFormula };

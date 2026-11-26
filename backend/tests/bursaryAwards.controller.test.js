@@ -25,7 +25,7 @@ function makeResponse() {
   };
 }
 
-function setupDecisionClient({ duplicateRows = [], awardStatus = 'submitted', submittedBy = 'a0b1c2d3-0000-4000-8000-000000000000' } = {}) {
+function setupDecisionClient({ duplicateRows = [], awardStatus = 'submitted', submittedBy = 'a0b1c2d3-0000-4000-8000-000000000000', assessment = 'complete' } = {}) {
   const award = {
     id: awardId,
     student_id: studentId,
@@ -40,6 +40,20 @@ function setupDecisionClient({ duplicateRows = [], awardStatus = 'submitted', su
     release: jest.fn(),
     query: jest.fn(async (sql) => {
       if (/SELECT \* FROM bursary_awards/.test(sql)) return { rows: [award] };
+      if (/SELECT s\.id, s\.duplicate_of_student_id/.test(sql)) return { rows: [{
+        id: studentId,
+        duplicate_of_student_id: null,
+        application_id: null,
+        guardian_application_screened: false,
+        legacy_student_screened: true,
+        has_open_case: duplicateRows.some((row) => ['pending', 'needs_verification'].includes(row.status)),
+        has_unresolved_confirmed_case: duplicateRows.some((row) => row.status === 'confirmed_duplicate'),
+      }] };
+      if (/SELECT ea\.\* FROM eligibility_assessments/.test(sql)) return assessment === 'missing' ? { rows: [] } : { rows: [{
+        student_id: studentId, status: 'complete', score: 72, category: 'high', missing_inputs: [],
+        fee_balance: 45000, household_income: 18000, vulnerability_status: 'low',
+        siblings_in_school: 2, prior_bursary_history: 'none', trigger: 'officer_form',
+      }] };
       if (/FROM duplicate_flags/.test(sql)) return { rows: duplicateRows };
       // The annual-conflict lookup joins students as a subquery; answer it before the plain
       // student lookup so an empty conflict result is not mistaken for a student row.
@@ -79,6 +93,28 @@ describe('bursary award proposals (isolated; no database)', () => {
       release: jest.fn(),
       query: jest.fn(async (sql) => {
         if (/INSERT INTO bursary_awards/.test(sql)) return { rows: [created] };
+        if (/SELECT s\.id, s\.duplicate_of_student_id/.test(sql)) return { rows: [{
+          id: studentId,
+          duplicate_of_student_id: studentRow.duplicate_of_student_id || null,
+          application_id: null,
+          guardian_application_screened: false,
+          legacy_student_screened: studentRow.legacy_student_screened ?? true,
+          has_open_case: Boolean(studentRow.has_open_case),
+          has_unresolved_confirmed_case: Boolean(studentRow.has_confirmed_case),
+        }] };
+        if (/SELECT ea\.\* FROM eligibility_assessments/.test(sql)) return { rows: studentRow.assessment === 'missing' ? [] : [{
+          student_id: studentId,
+          status: studentRow.assessment || 'complete',
+          score: studentRow.score ?? 72,
+          category: studentRow.category || 'high',
+          missing_inputs: studentRow.missing_inputs || [],
+          fee_balance: studentRow.fee_balance ?? 45000,
+          household_income: studentRow.household_income ?? 18000,
+          vulnerability_status: studentRow.vulnerability_status || 'low',
+          siblings_in_school: studentRow.siblings_in_school ?? 2,
+          prior_bursary_history: studentRow.prior_bursary_history || 'none',
+          trigger: 'officer_form',
+        }] };
         // Order matters: the annual-award lookup embeds a students subquery, so match the award
         // query before the plain student lookup.
         if (/FROM bursary_awards/.test(sql)) return { rows: existingAward ? [existingAward] : [] };
@@ -151,6 +187,41 @@ describe('bursary award proposals (isolated; no database)', () => {
     }, client);
   });
 
+  test('a cleared student without an assessment cannot be proposed', async () => {
+    const client = setupCreateClient({ studentRow: { assessment: 'missing' } });
+    const res = makeResponse();
+    await controller.create({ body: { student_id: studentId, requested_amount: 25000 }, user: { id: actorId } }, res, jest.fn());
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe('ELIGIBILITY_ASSESSMENT_REQUIRED');
+    expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_awards/.test(sql))).toBe(false);
+  });
+
+  test('a student without explicit duplicate-screening evidence cannot be proposed', async () => {
+    const client = setupCreateClient({ studentRow: { legacy_student_screened: false } });
+    const res = makeResponse();
+    await controller.create({ body: { student_id: studentId, requested_amount: 25000 }, user: { id: actorId } }, res, jest.fn());
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe('DUPLICATE_SCREENING_REQUIRED');
+    expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_awards/.test(sql))).toBe(false);
+  });
+
+  test('an incomplete assessment cannot be proposed and reports missing inputs', async () => {
+    const client = setupCreateClient({ studentRow: { assessment: 'incomplete', missing_inputs: ['fee_balance'] } });
+    const res = makeResponse();
+    await controller.create({ body: { student_id: studentId, requested_amount: 25000 }, user: { id: actorId } }, res, jest.fn());
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe('ELIGIBILITY_ASSESSMENT_INCOMPLETE');
+    expect(res.body.missing_inputs).toContain('fee_balance');
+  });
+
+  test('a low financial-need category is not an automatic rejection', async () => {
+    const client = setupCreateClient({ studentRow: { score: 7, category: 'low', fee_balance: 0, household_income: 90000, vulnerability_status: 'low', siblings_in_school: 0, prior_bursary_history: 'high' } });
+    const res = makeResponse();
+    await controller.create({ body: { student_id: studentId, requested_amount: 2500 }, user: { id: actorId } }, res, jest.fn());
+    expect(res.statusCode).toBe(201);
+    expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_awards/.test(sql))).toBe(true);
+  });
+
   test('a concurrent proposal that loses the unique-index race is refused, not retried', async () => {
     const client = setupCreateClient();
     // The other request committed between this request's check and its INSERT.
@@ -161,6 +232,16 @@ describe('bursary award proposals (isolated; no database)', () => {
         error.constraint = 'bursary_awards_student_year_active_unique';
         throw error;
       }
+      if (/SELECT s\.id, s\.duplicate_of_student_id/.test(sql)) return { rows: [{
+        id: studentId, duplicate_of_student_id: null, application_id: null,
+        guardian_application_screened: false, legacy_student_screened: true,
+        has_open_case: false, has_unresolved_confirmed_case: false,
+      }] };
+      if (/SELECT ea\.\* FROM eligibility_assessments/.test(sql)) return { rows: [{
+        student_id: studentId, status: 'complete', score: 72, category: 'high', missing_inputs: [],
+        fee_balance: 45000, household_income: 18000, vulnerability_status: 'low',
+        siblings_in_school: 2, prior_bursary_history: 'none', trigger: 'officer_form',
+      }] };
       if (/FROM students/.test(sql)) return { rows: [{ id: studentId, full_name: 'Test Learner', school_code: 'Nairobi School' }] };
       if (/FROM bursary_awards/.test(sql)) return { rows: [] };
       return { rows: [] };
@@ -280,6 +361,19 @@ describe('bursary award decisions (isolated; no database)', () => {
     // No certificate is generated for a rejected award.
     expect(res.body.certificate_reference).toBeNull();
     expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_certificates/.test(sql))).toBe(false);
+  });
+
+  test('an Admin cannot approve an existing award without a completed assessment', async () => {
+    const client = setupDecisionClient({ assessment: 'missing' });
+    const res = makeResponse();
+    await controller.decide({
+      params: { id: awardId },
+      body: { decision: 'approved', approved_amount: 25000, reason: 'Reviewed records and budget' },
+      user: { id: actorId },
+    }, res, jest.fn());
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe('ELIGIBILITY_ASSESSMENT_REQUIRED');
+    expect(client.query.mock.calls.some(([sql]) => /UPDATE bursary_awards/.test(sql))).toBe(false);
   });
 
   test('blocks approval while a duplicate review case is open', async () => {

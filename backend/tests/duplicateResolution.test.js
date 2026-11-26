@@ -38,16 +38,26 @@ describe('administrator duplicate resolution', () => {
     return rows[0];
   }
 
-  async function createCase(label) {
+  async function createPair(label) {
     const first = await createStudent(`${label} First`);
     const second = await createStudent(`${label} Second`);
+    return { first, second };
+  }
+
+  async function confirmPair(pair) {
     const { rows } = await pool.query(
       `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status, model_version, review_threshold)
        VALUES ($1, $2, 0.99, 'confirmed_duplicate', 'test-model', 0.5) RETURNING id`,
-      [first.id, second.id]
+      [pair.first.id, pair.second.id]
     );
     created.flags.push(rows[0].id);
-    return { flagId: rows[0].id, first, second };
+    return rows[0].id;
+  }
+
+  async function createCase(label) {
+    const pair = await createPair(label);
+    const flagId = await confirmPair(pair);
+    return { ...pair, flagId };
   }
 
   const auth = (actor) => ({ Authorization: `Bearer ${actor.token}` });
@@ -108,9 +118,10 @@ describe('administrator duplicate resolution', () => {
   });
 
   test('an unresolved confirmed duplicate blocks award approval for both records', async () => {
-    const pair = await createCase('Unresolved');
+    const pair = await createPair('Unresolved');
     const proposal = await propose(pair.first.id, 20000);
     expect(proposal.statusCode).toBe(201);
+    const flagId = await confirmPair(pair);
 
     const blocked = await decide(proposal.body.award.id);
     expect(blocked.statusCode).toBe(409);
@@ -205,11 +216,12 @@ describe('administrator duplicate resolution', () => {
   });
 
   test('an award already attached to the duplicate record stays attached and blocked', async () => {
-    const pair = await createCase('Existing Award');
+    const pair = await createPair('Existing Award');
     const duplicateProposal = await propose(pair.second.id, 20000);
     expect(duplicateProposal.statusCode).toBe(201);
+    const flagId = await confirmPair(pair);
 
-    const resolved = await resolve(pair.flagId, pair.first.id);
+    const resolved = await resolve(flagId, pair.first.id);
     expect(resolved.statusCode).toBe(201);
     expect(resolved.body.duplicate_open_awards).toHaveLength(1);
 
@@ -223,10 +235,11 @@ describe('administrator duplicate resolution', () => {
   });
 
   test('the annual rule spans the resolved records', async () => {
-    const pair = await createCase('Annual Span');
+    const pair = await createPair('Annual Span');
     const duplicateProposal = await propose(pair.second.id, 20000);
     expect(duplicateProposal.statusCode).toBe(201);
-    expect((await resolve(pair.flagId, pair.first.id)).statusCode).toBe(201);
+    const flagId = await confirmPair(pair);
+    expect((await resolve(flagId, pair.first.id)).statusCode).toBe(201);
 
     const canonicalProposal = await propose(pair.first.id, 25000);
     expect(canonicalProposal.statusCode).toBe(409);

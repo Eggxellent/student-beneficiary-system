@@ -19,6 +19,7 @@ router.patch('/me', requireRole('guardian'), asyncHandler(controller.updateProfi
 router.get('/dashboard', requireRole('guardian'), asyncHandler(controller.dashboard));
 router.get('/applications', requireRole('guardian'), asyncHandler(controller.listApplications));
 router.post('/applications', requireRole('guardian'), asyncHandler(controller.createApplication));
+router.get('/applications/:reference/receipt.pdf', requireRole('guardian'), asyncHandler(controller.downloadReceipt));
 router.get('/applications/:reference', requireRole('guardian'), asyncHandler(controller.getApplication));
 
 // Staff review of guardian applications. This is the administrator's queue: Field Officers work

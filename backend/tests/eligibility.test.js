@@ -331,6 +331,11 @@ describe("Eligibility API", () => {
       ]
     );
     studentIds.push(inserted.rows[0].id);
+    await pool.query(
+      `INSERT INTO audit_logs (user_id, action, table_name, record_id, details)
+       VALUES ($1, 'CREATE', 'students', $2, $3)`,
+      [officerId, inserted.rows[0].id, { duplicate_model_version: 'test-screened', duplicate_flags_created: 0 }],
+    );
     return inserted.rows[0].id;
   }
 
@@ -382,72 +387,61 @@ describe("Eligibility API", () => {
       .send({ ...MICHAEL_INPUTS, student_id: studentId });
     expect(attempt.statusCode).toBe(403);
   });
-  test("a registered student must be selected", async () => {
-    const missing = await request(app)
+  test("Field Officers cannot recalculate or overwrite the saved assessment", async () => {
+    const studentId = await createStudent();
+    const first = await request(app)
+      .patch(`/api/eligibility/${studentId}/correction`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...MICHAEL_INPUTS, reason: "Verified original application values" });
+    expect(first.statusCode).toBe(200);
+    const denied = await request(app)
       .post("/api/eligibility")
       .set("Authorization", `Bearer ${officerToken}`)
-      .send(MICHAEL_INPUTS);
-    expect(missing.statusCode).toBe(400);
-    expect(missing.body.message).toBe("Select a registered student before calculating eligibility");
-
-    const blank = await request(app)
-      .post("/api/eligibility")
-      .set("Authorization", `Bearer ${officerToken}`)
-      .send({ ...MICHAEL_INPUTS, student_id: "   " });
-    expect(blank.statusCode).toBe(400);
-
-    const unknown = await request(app)
-      .post("/api/eligibility")
-      .set("Authorization", `Bearer ${officerToken}`)
-      .send({ ...MICHAEL_INPUTS, student_id: "7b0c4d33-5a51-4f1f-9e0e-0b9a2f6f7c11" });
-    expect(unknown.statusCode).toBe(404);
-    expect(unknown.body.message).toBe("Student not found");
+      .send({ fee_balance: 0, household_income: 90000, vulnerability_status: "low", siblings_in_school: 0, prior_bursary_history: "high", student_id: studentId });
+    expect(denied.statusCode).toBe(403);
+    expect(denied.body.code).toBe("ELIGIBILITY_ASSESSMENT_READ_ONLY");
+    const stored = await pool.query("SELECT score, category FROM eligibility_assessments WHERE student_id = $1", [studentId]);
+    expect(stored.rows).toHaveLength(1);
+    expect(stored.rows[0]).toMatchObject({ score: 100, category: "high" });
   });
 
-  test("invalid assessment values are rejected", async () => {
+  test("invalid Admin correction values are rejected", async () => {
     const studentId = await createStudent();
 
-    const negativeFee = await request(app)
-      .post("/api/eligibility")
-      .set("Authorization", `Bearer ${officerToken}`)
-      .send({ ...MICHAEL_INPUTS, fee_balance: -1000, student_id: studentId });
+    const negativeFee = await request(app).patch(`/api/eligibility/${studentId}/correction`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ fee_balance: -1000, reason: "Invalid fee correction" });
     expect(negativeFee.statusCode).toBe(400);
 
-    const badVulnerability = await request(app)
-      .post("/api/eligibility")
-      .set("Authorization", `Bearer ${officerToken}`)
-      .send({ ...MICHAEL_INPUTS, vulnerability_status: "severe", student_id: studentId });
+    const badVulnerability = await request(app).patch(`/api/eligibility/${studentId}/correction`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ vulnerability_status: "severe", reason: "Invalid vulnerability correction" });
     expect(badVulnerability.statusCode).toBe(400);
 
-    const badHistory = await request(app)
-      .post("/api/eligibility")
-      .set("Authorization", `Bearer ${officerToken}`)
-      .send({ ...MICHAEL_INPUTS, prior_bursary_history: "sometimes", student_id: studentId });
+    const badHistory = await request(app).patch(`/api/eligibility/${studentId}/correction`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ prior_bursary_history: "sometimes", reason: "Invalid bursary correction" });
     expect(badHistory.statusCode).toBe(400);
   });
   test("an assessment is returned, stored on the student and recorded in the audit log", async () => {
     const studentId = await createStudent();
 
     const response = await request(app)
-      .post("/api/eligibility")
-      .set("Authorization", `Bearer ${officerToken}`)
-      .send({ ...MICHAEL_INPUTS, student_id: studentId });
+      .patch(`/api/eligibility/${studentId}/correction`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...MICHAEL_INPUTS, reason: "Verified from supporting information" });
 
     expect(response.statusCode).toBe(200);
-    expect(response.body.score).toBe(100);
-    expect(response.body.category).toBe("high");
-    expect(response.body.category_label).toBe("High");
-    expect(response.body.recommended_range).toMatchObject({
+    expect(response.body.assessment.score).toBe(100);
+    expect(response.body.assessment.category).toBe("high");
+    expect(response.body.assessment.category_label).toBe("High");
+    expect(response.body.assessment.recommended_range).toMatchObject({
       currency: "KES",
       min: 15000,
       max: 25000,
       provisional: true,
     });
-    expect(response.body.student).toMatchObject({
-      id: studentId,
-      full_name: "Michael Mwangi",
-      school_code: "Nairobi School",
-    });
+    expect(response.body.assessment.inputs).toMatchObject(MICHAEL_INPUTS);
 
     const stored = await pool.query(
       "SELECT eligibility_score, eligibility_category, eligibility_assessed_at FROM students WHERE id = $1",
@@ -459,14 +453,14 @@ describe("Eligibility API", () => {
 
     const audit = await pool.query(
       `SELECT table_name, details FROM audit_logs
-        WHERE user_id = $1 AND action = 'ELIGIBILITY_CALCULATED' AND record_id = $2`,
-      [officerId, studentId]
+        WHERE user_id = $1 AND action = 'ELIGIBILITY_INPUTS_CORRECTED' AND record_id = $2`,
+      [adminId, studentId]
     );
     expect(audit.rowCount).toBe(1);
     expect(audit.rows[0].table_name).toBe("students");
     expect(audit.rows[0].details.score).toBe(100);
     expect(audit.rows[0].details.category).toBe("high");
-    expect(audit.rows[0].details.inputs).toMatchObject({
+    expect(audit.rows[0].details.after).toMatchObject({
       fee_balance: 52000,
       household_income: 18000,
       vulnerability_status: "high",
@@ -475,7 +469,7 @@ describe("Eligibility API", () => {
     });
   });
 
-  test("a repeat assessment overwrites the stored score and adds a second audit entry", async () => {
+  test("an Admin correction appends assessment history instead of replacing it", async () => {
     const studentId = await createStudent({
       full_name: "Mary Wanjiku",
       school_code: "Maranda",
@@ -483,29 +477,28 @@ describe("Eligibility API", () => {
       birth_certificate_number: `BC-2020-${Date.now()}`,
     });
 
-    const first = await request(app)
-      .post("/api/eligibility")
-      .set("Authorization", `Bearer ${officerToken}`)
-      .send({ ...MICHAEL_INPUTS, student_id: studentId });
+    const first = await request(app).patch(`/api/eligibility/${studentId}/correction`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...MICHAEL_INPUTS, reason: "Verified initial values" });
     expect(first.statusCode).toBe(200);
-    expect(first.body.category).toBe("high");
+    expect(first.body.assessment.category).toBe("high");
 
     const second = await request(app)
-      .post("/api/eligibility")
-      .set("Authorization", `Bearer ${officerToken}`)
+      .patch(`/api/eligibility/${studentId}/correction`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({
         fee_balance: 4000,
         household_income: 75000,
         vulnerability_status: "low",
         siblings_in_school: 1,
         prior_bursary_history: "high",
-        student_id: studentId,
+        reason: "Corrected values from reviewed information",
       });
     expect(second.statusCode).toBe(200);
     // 5 + 0 + 5 + 3 + 2 = 15
-    expect(second.body.score).toBe(15);
-    expect(second.body.category).toBe("low");
-    expect(second.body.recommended_range).toMatchObject({ min: 3000, max: 8000 });
+    expect(second.body.assessment.score).toBe(15);
+    expect(second.body.assessment.category).toBe("low");
+    expect(second.body.assessment.recommended_range).toMatchObject({ min: 3000, max: 8000 });
 
     const stored = await pool.query(
       "SELECT eligibility_score, eligibility_category FROM students WHERE id = $1",
@@ -515,9 +508,9 @@ describe("Eligibility API", () => {
 
     const audits = await pool.query(
       `SELECT details FROM audit_logs
-        WHERE user_id = $1 AND action = 'ELIGIBILITY_CALCULATED' AND record_id = $2
+        WHERE user_id = $1 AND action = 'ELIGIBILITY_INPUTS_CORRECTED' AND record_id = $2
         ORDER BY created_at ASC`,
-      [officerId, studentId]
+      [adminId, studentId]
     );
     expect(audits.rowCount).toBe(2);
     expect(audits.rows[0].details.score).toBe(100);

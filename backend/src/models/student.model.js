@@ -23,6 +23,16 @@ async function create({ full_name, date_of_birth, school_code, school_name, guar
 const NO_DUPLICATE_CASE_FILTER = `
   s.duplicate_of_student_id IS NULL
   AND NOT EXISTS (
+    SELECT 1 FROM guardian_applications ga
+     WHERE ga.student_id = s.id
+       AND NOT EXISTS (
+         SELECT 1 FROM audit_logs screening
+          WHERE screening.table_name = 'guardian_applications'
+            AND screening.record_id = ga.id
+            AND screening.action = 'GUARDIAN_APPLICATION_LINKED_STUDENT'
+       )
+  )
+  AND NOT EXISTS (
     SELECT 1 FROM duplicate_flags f
      WHERE (f.student_id = s.id OR f.matched_student_id = s.id)
        AND f.status IN ('pending', 'needs_verification')

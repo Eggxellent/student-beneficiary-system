@@ -125,10 +125,47 @@ class ReviewEvidenceTests(unittest.TestCase):
         }
         self.assertFalse(build_review_evidence(sibling, other_school)["near_match_review"])
 
+    def test_guardian_national_id_is_context_only_and_never_student_evidence(self):
+        first = {
+            "full_name": "Amina Hassan", "date_of_birth": "2011-05-14",
+            "school_code": "SCH-009", "guardian_id": "shared-guardian",
+            "guardian_name": "Mary Wanjiku", "guardian_national_id": "00123456",
+            "admission_number": "ADM-1001", "birth_certificate_number": "0361001001",
+        }
+        unrelated_sibling = {
+            **first, "full_name": "Brian Hassan", "date_of_birth": "2009-09-02",
+            "admission_number": "ADM-1002", "birth_certificate_number": "0361001002",
+        }
+        evidence = build_review_evidence(first, unrelated_sibling)
+        context = evidence["comparisons"]["guardian_context"]
+        self.assertTrue(context["national_id_match"])
+        self.assertEqual(context["evidence_role"], "guardian_context_only")
+        self.assertFalse(evidence["near_match_review"])
+        self.assertNotIn("00123456", repr(evidence))
+
+    def test_guardian_national_id_mismatch_is_not_contradictory_student_evidence(self):
+        first = {"full_name": "Amina Hassan", "guardian_national_id": "00123456"}
+        second = {"full_name": "Amina Hassan", "guardian_national_id": "99123456"}
+        evidence = build_review_evidence(first, second)
+        context = evidence["comparisons"]["guardian_context"]
+        self.assertFalse(context["national_id_match"])
+        self.assertEqual(context["match_type"], "different_guardian_national_ids_context")
+        self.assertFalse(evidence["near_match_review"])
+        self.assertEqual(evidence["conflicts"], ["date_of_birth_not_corrobating"])
+
+    def test_invalid_legacy_guardian_national_ids_are_unavailable(self):
+        evidence = build_review_evidence(
+            {"guardian_national_id": "N1234567"},
+            {"guardian_national_id": "N1234567"},
+        )
+        self.assertFalse(evidence["comparisons"]["guardian_context"]["national_id_match"])
+        self.assertEqual(evidence["comparisons"]["guardian_context"]["match_type"], "unavailable_or_invalid")
+
     def test_review_evidence_never_changes_model_inputs_or_feature_schema(self):
         first = {
             "full_name": "Faith Wanjiru Mwangi", "date_of_birth": "2010-09-23",
             "school_name": "St. Anne's Girls Secondary", "guardian_id": "guardian-1",
+            "guardian_national_id": "00123456",
             "admission_number": "57381", "birth_certificate_number": "0368246159",
         }
         second = {

@@ -59,13 +59,23 @@ function maskIdentifier(value) {
   return `${'•'.repeat(Math.max(4, text.length - visible.length))}${visible}`;
 }
 
-function publicReviewEvidence(evidence) {
+function publicReviewEvidence(evidence, { includeStudentNormalized = false } = {}) {
   if (!evidence || typeof evidence !== 'object') return evidence;
-  const comparisons = Object.fromEntries(Object.entries(evidence.comparisons || {}).map(([key, value]) => {
+  const comparisons = Object.fromEntries(Object.entries(evidence.comparisons || {}).flatMap(([key, value]) => {
     const { normalized, ...safeValue } = value || {};
-    return [key, safeValue];
+    if (key === 'guardian_context') {
+      return [[key, {
+        national_id_match: safeValue.national_id_match === true,
+        match_type: safeValue.match_type || 'unavailable_or_invalid',
+        evidence_role: 'guardian_context_only',
+      }]];
+    }
+    if (key.toLowerCase().includes('national_id')) return [];
+    return [[key, includeStudentNormalized && normalized !== undefined ? { ...safeValue, normalized } : safeValue]];
   }));
-  return { ...evidence, comparisons };
+  const safeEvidence = Object.fromEntries(Object.entries(evidence)
+    .filter(([key]) => key !== 'comparisons' && !key.toLowerCase().includes('national_id')));
+  return { ...safeEvidence, comparisons };
 }
 
 const CASE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -153,8 +163,8 @@ function toReviewCase(row) {
     reason,
     exact_identifier_matches: exactIdentifiers,
     students: [
-      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code || first.school_name, school_code: first.school_code || first.school_name, resolved_school_code: first.school_code, guardian_contact: maskIdentifier(first.primary_phone), admission_number: maskIdentifier(first.admission_number), birth_certificate_number: maskIdentifier(first.birth_certificate_number), national_id_number: maskIdentifier(first.national_id_number), duplicate_of_student_id: row.student_duplicate_of || null },
-      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code || second.school_name, school_code: second.school_code || second.school_name, resolved_school_code: second.school_code, guardian_contact: maskIdentifier(second.primary_phone), admission_number: maskIdentifier(second.admission_number), birth_certificate_number: maskIdentifier(second.birth_certificate_number), national_id_number: maskIdentifier(second.national_id_number), duplicate_of_student_id: row.matched_duplicate_of || null },
+      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code || first.school_name, school_code: first.school_code || first.school_name, resolved_school_code: first.school_code, guardian_contact: maskIdentifier(first.primary_phone), admission_number: maskIdentifier(first.admission_number), birth_certificate_number: maskIdentifier(first.birth_certificate_number), national_id_number: maskIdentifier(first.national_id_number), duplicate_of_student_id: row.student_duplicate_of || null, application_status: row.student_application_status || null },
+      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code || second.school_name, school_code: second.school_code || second.school_name, resolved_school_code: second.school_code, guardian_contact: maskIdentifier(second.primary_phone), admission_number: maskIdentifier(second.admission_number), birth_certificate_number: maskIdentifier(second.birth_certificate_number), national_id_number: maskIdentifier(second.national_id_number), duplicate_of_student_id: row.matched_duplicate_of || null, application_status: row.matched_application_status || null },
     ],
     resolution: row.resolution_id ? {
       id: row.resolution_id,
@@ -235,14 +245,17 @@ async function scanExisting(req, res, next) {
     const { rows: students } = await pool.query(
       `SELECT s.id, s.full_name, s.date_of_birth, s.school_code, s.school_name, s.guardian_id,
               s.admission_number, s.birth_certificate_number, s.national_id_number,
-              ga.guardian_full_name AS guardian_name
+              ga.guardian_full_name AS guardian_name,
+              guardian_profile.national_id AS guardian_national_id
          FROM students s
          LEFT JOIN LATERAL (
-           SELECT guardian_full_name FROM guardian_applications
+           SELECT guardian_full_name, user_id FROM guardian_applications
             WHERE student_id = s.id
             ORDER BY created_at DESC, id DESC
             LIMIT 1
          ) ga ON TRUE
+         LEFT JOIN users guardian_profile
+           ON guardian_profile.id::text = COALESCE(NULLIF(s.guardian_id, ''), ga.user_id::text)
         ORDER BY s.created_at ASC, s.id ASC`
     );
     const { rows: existingFlags } = await pool.query(
@@ -379,6 +392,8 @@ async function list(req, res, next) {
               s2.primary_phone AS matched_guardian_contact,
               s1.duplicate_of_student_id AS student_duplicate_of,
               s2.duplicate_of_student_id AS matched_duplicate_of,
+              application1.status AS student_application_status,
+              application2.status AS matched_application_status,
               dfr.id AS resolution_id,
               dfr.canonical_student_id AS resolution_canonical_student_id,
               dfr.duplicate_student_id AS resolution_duplicate_student_id,
@@ -395,6 +410,14 @@ async function list(req, res, next) {
        FROM duplicate_flags df
        JOIN students s1 ON df.student_id = s1.id
        JOIN students s2 ON df.matched_student_id = s2.id
+       LEFT JOIN LATERAL (
+         SELECT status FROM guardian_applications WHERE student_id = s1.id
+          ORDER BY created_at DESC, id DESC LIMIT 1
+       ) application1 ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT status FROM guardian_applications WHERE student_id = s2.id
+          ORDER BY created_at DESC, id DESC LIMIT 1
+       ) application2 ON TRUE
        LEFT JOIN duplicate_resolutions dfr ON dfr.duplicate_flag_id = df.id
        LEFT JOIN users resolver ON resolver.id = dfr.resolved_by
        WHERE ($1 = 'all' OR ($1 = 'open' AND df.status IN ('pending', 'needs_verification'))
@@ -537,7 +560,7 @@ async function revealIdentifiers(req, res, next) {
       revealed_at: new Date().toISOString(),
       revealed_fields: REVEALED_IDENTIFIER_FIELDS,
       students,
-      near_match_evidence: row.comparison_features?.review_evidence || null,
+      near_match_evidence: publicReviewEvidence(row.comparison_features?.review_evidence || null, { includeStudentNormalized: true }),
       notice: 'Identifier reveal recorded in the audit log.',
     });
   } catch (error) {
@@ -589,6 +612,33 @@ async function update(req, res, next) {
       }]
     );
 
+    let rejectedApplications = [];
+    if (decision === 'confirmed_duplicate') {
+      // A flag alone never rejects an application. Once an Admin confirms it, the submitted
+      // (flag.student_id) Guardian application is rejected and locked, with the review event
+      // above retaining the reviewer, reason and timestamp.
+      const rejected = await client.query(
+        `UPDATE guardian_applications
+            SET status = 'rejected', decision_note = $1, decided_at = NOW(), updated_at = NOW()
+          WHERE student_id = $2 AND status <> 'rejected'
+          RETURNING id, reference`,
+        [reason, flag.student_id],
+      );
+      rejectedApplications = rejected.rows;
+      for (const application of rejectedApplications) {
+        await client.query(
+          `INSERT INTO audit_logs (user_id, action, table_name, record_id, details)
+           VALUES ($1, 'GUARDIAN_APPLICATION_REJECTED_DUPLICATE', 'guardian_applications', $2, $3)`,
+          [reviewerId, application.id, {
+            reference: application.reference,
+            duplicate_flag_id: flag.id,
+            reason,
+            reviewer_id: reviewerId,
+          }],
+        );
+      }
+    }
+
     // Clearing a false positive releases the eligibility hold the flag imposed. The assessment runs
     // inside the same transaction, so the decision is never recorded without it and a retry after a
     // failure is the normal resubmission of the review action.
@@ -609,7 +659,12 @@ async function update(req, res, next) {
     }
 
     await client.query('COMMIT');
-    res.json({ message: 'Review decision recorded', flag, automatic_assessment: automaticAssessment });
+    res.json({
+      message: 'Review decision recorded',
+      flag,
+      automatic_assessment: automaticAssessment,
+      rejected_applications: rejectedApplications,
+    });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);
@@ -649,6 +704,23 @@ async function resolve(req, res, next) {
     if (!pair.includes(canonicalId)) {
       await client.query('ROLLBACK');
       return res.status(400).json({ message: 'The canonical record must be one of the two student records in this duplicate case.' });
+    }
+    const rejectedSubmission = await client.query(
+      `SELECT a.id FROM guardian_applications a
+        WHERE a.student_id = $1 AND a.status = 'rejected'
+          AND EXISTS (
+            SELECT 1 FROM duplicate_review_events e
+             WHERE e.duplicate_flag_id = $2 AND e.decision = 'confirmed_duplicate'
+               AND e.reason = a.decision_note
+          )
+        LIMIT 1`,
+      [flag.student_id, flag.id],
+    );
+    if (rejectedSubmission.rows.length && canonicalId === flag.student_id) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        message: 'The application rejected by this duplicate decision cannot be selected as canonical. Choose the matched existing record.',
+      });
     }
     const duplicateId = pair.find((id) => id !== canonicalId);
     // A stable lock order over both student rows keeps resolution and award approval from

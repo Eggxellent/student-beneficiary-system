@@ -175,8 +175,16 @@ describe('Duplicate flags and award API', () => {
     });
     const reviewEvidence = {
       near_match_review: true,
+      guardian_national_id: '00112233',
       comparisons: {
         admission_number: { similarity: 0.88, match_type: 'adjacent_transposition', normalized: ['00123', '00132'] },
+        guardian_context: {
+          national_id_match: true,
+          match_type: 'same_guardian_national_id_context',
+          evidence_role: 'guardian_context_only',
+          national_id: '00112233',
+          normalized: ['00112233', '00112233'],
+        },
       },
     };
     const flagResult = await pool.query(
@@ -198,6 +206,12 @@ describe('Duplicate flags and award API', () => {
     expect(queuedCase.students[0].guardian_contact).not.toContain('254712345678');
     expect(queuedCase.evidence.near_match_review.comparisons.admission_number.match_type).toBe('adjacent_transposition');
     expect(queuedCase.evidence.near_match_review.comparisons.admission_number.normalized).toBeUndefined();
+    expect(queuedCase.evidence.near_match_review.comparisons.guardian_context).toEqual({
+      national_id_match: true,
+      match_type: 'same_guardian_national_id_context',
+      evidence_role: 'guardian_context_only',
+    });
+    expect(JSON.stringify(queuedCase)).not.toContain('00112233');
 
     const officerReveal = await request(app)
       .get(`/api/duplicate-flags/${caseId}/identifiers`)
@@ -214,6 +228,12 @@ describe('Duplicate flags and award API', () => {
     expect(reveal.body.students[0].guardian_contact).toBe('+254712345678');
     expect(reveal.body.students[1].admission_number).toBe(`${sharedAdmission}-B`);
     expect(reveal.body.near_match_evidence.comparisons.admission_number.normalized).toEqual(['00123', '00132']);
+    expect(reveal.body.near_match_evidence.comparisons.guardian_context).toEqual({
+      national_id_match: true,
+      match_type: 'same_guardian_national_id_context',
+      evidence_role: 'guardian_context_only',
+    });
+    expect(JSON.stringify(reveal.body)).not.toContain('00112233');
 
     const revealAudit = await pool.query(
       "SELECT user_id, details FROM audit_logs WHERE record_id = $1 AND action = 'REVEAL_DUPLICATE_IDENTIFIERS' ORDER BY created_at DESC LIMIT 1",

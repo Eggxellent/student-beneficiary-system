@@ -14,6 +14,7 @@ const { assessAutomatically } = require('./automaticAssessment');
 const logAudit = require('./auditLog');
 const { normalizeKenyanPhone } = require('./studentRecordFormat');
 const { APPROVED_SCHOOLS } = require('../config/schools');
+const { isValidGuardianNationalId } = require('./guardianNationalId');
 
 // students.school_code only accepts the configured codes, while the guardian form takes a free-text
 // school name. Only an exact (case-insensitive) match is used; anything else keeps the submitted
@@ -49,9 +50,19 @@ function submittedStudentFor(application) {
 }
 
 async function linkGuardianApplicationStudent({ client, application, actorId }) {
+  // National ID is read from the authenticated account relationship, never from request fields
+  // or a copied student column. Invalid historical values stay unavailable for comparison.
+  const guardianProfile = await client.query(
+    `SELECT national_id FROM users WHERE id = $1 AND role = 'guardian'`,
+    [application.user_id],
+  );
+  const guardianNationalId = guardianProfile.rows[0]?.national_id;
   const registration = await screenAndCreateStudent({
     client,
-    submitted: submittedStudentFor(application),
+    submitted: {
+      ...submittedStudentFor(application),
+      guardian_national_id: isValidGuardianNationalId(guardianNationalId) ? guardianNationalId : null,
+    },
     actorId,
     schoolName: application.school_name,
     source: 'guardian_application',
@@ -90,7 +101,10 @@ async function linkGuardianApplicationStudent({ client, application, actorId }) 
   );
 
   return {
-    application: linkedApplication,
+    application: {
+      ...linkedApplication,
+      duplicate_screening_status: registration.flags.length ? 'under_review' : 'cleared',
+    },
     student: registration.student,
     flags: registration.flags,
     screening: registration.screening,

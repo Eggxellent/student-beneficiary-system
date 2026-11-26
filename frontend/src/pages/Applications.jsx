@@ -20,7 +20,25 @@ const DUPLICATE_STYLES = {
   needs_verification: "border-amber-200 bg-amber-50 text-amber-800",
   confirmed_duplicate: "border-red-200 bg-red-50 text-red-700",
   not_duplicate: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  cleared: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  not_screened: "border-slate-200 bg-slate-50 text-slate-600",
 };
+
+const DUPLICATE_LABELS = {
+  pending: "Under Review",
+  needs_verification: "Under Review",
+  confirmed_duplicate: "Confirmed Duplicate",
+  not_duplicate: "Cleared",
+  cleared: "Cleared",
+  not_screened: "Not Screened",
+};
+const ELIGIBILITY_FIELDS = [
+  ["fee_balance", "Outstanding fee balance (KES)", "number"],
+  ["household_income", "Monthly household income (KES)", "number"],
+  ["vulnerability_status", "Vulnerability", "vulnerability"],
+  ["siblings_in_school", "Siblings in school", "integer"],
+  ["prior_bursary_history", "Previous bursary assistance", "history"],
+];
 
 function label(value) {
   if (!value) return "—";
@@ -63,6 +81,10 @@ export default function Applications() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [correctionValues, setCorrectionValues] = useState({});
+  const [correctionBaseline, setCorrectionBaseline] = useState({});
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correcting, setCorrecting] = useState(false);
   const detailsRef = useRef(null);
 
   async function loadApplications() {
@@ -119,6 +141,13 @@ export default function Applications() {
     setSelectedId(application.id);
     setNote(application.detail?.decisionNote || "");
     setNotice("");
+    const values = Object.fromEntries(ELIGIBILITY_FIELDS.map(([key]) => [
+      key,
+      application.eligibility_inputs?.[key] == null ? "" : String(application.eligibility_inputs[key]),
+    ]));
+    setCorrectionValues(values);
+    setCorrectionBaseline(values);
+    setCorrectionReason("");
   }
 
   async function recordDecision(status) {
@@ -140,6 +169,41 @@ export default function Applications() {
       setSaving(false);
     }
   }
+
+  async function correctEligibilityInputs(event) {
+    event.preventDefault();
+    if (!selected?.student_id) return;
+    const changes = {};
+    for (const [key, , type] of ELIGIBILITY_FIELDS) {
+      const value = correctionValues[key] ?? "";
+      if (value === correctionBaseline[key] || value.trim() === "") continue;
+      changes[key] = type === "number" || type === "integer" ? Number(value) : value;
+    }
+    if (!Object.keys(changes).length) {
+      setError("Change at least one value before saving a correction.");
+      return;
+    }
+    setCorrecting(true);
+    setError("");
+    setNotice("");
+    try {
+      const { data } = await api.patch(`/eligibility/${selected.student_id}/correction`, {
+        ...changes,
+        reason: correctionReason.trim(),
+      });
+      setNotice(data.message);
+      setCorrectionReason("");
+      await loadApplications();
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || "Unable to save the eligibility correction.");
+    } finally {
+      setCorrecting(false);
+    }
+  }
+
+  const duplicateDecisionLocked = selected && (!selected.student_id || ["under_review", "confirmed_duplicate", "not_screened"].includes(
+    selected.duplicate?.status,
+  ));
 
 
 
@@ -258,13 +322,9 @@ export default function Applications() {
                     Student record not linked
                   </span>
                 )}
-                {application.duplicate ? (
-                  <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${DUPLICATE_STYLES[application.duplicate.status] || DUPLICATE_STYLES.pending}`}>
-                    Duplicate review: {label(application.duplicate.status)}
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">No duplicate flag</span>
-                )}
+                <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${DUPLICATE_STYLES[application.duplicate?.status] || DUPLICATE_STYLES.not_screened}`}>
+                  Duplicate Screening: {DUPLICATE_LABELS[application.duplicate?.status] || "Not Screened"}
+                </span>
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
                   {application.assessment
                     ? `${label(application.assessment.status)} assessment${
@@ -272,6 +332,9 @@ export default function Applications() {
                       }`
                     : "No assessment yet"}
                 </span>
+              {application.assessment?.status === "incomplete" && application.assessment.missing_inputs?.length > 0 && (
+                <span className="w-full text-xs text-amber-800">Missing: {application.assessment.missing_inputs.map(label).join(", ")}</span>
+              )}
               </div>
             </article>
           );
@@ -331,22 +394,44 @@ export default function Applications() {
             ))}
           </dl>
 
-          {selected.detail?.documents?.length > 0 && (
-            <div className="mt-4">
-              <h3 className="text-sm font-semibold text-slate-800">Supporting documents</h3>
-              <ul className="mt-1 list-disc pl-5 text-sm text-slate-600">
-                {selected.detail.documents.map((document) => (
-                  <li key={document.name}>
-                    {document.name} — {document.description}
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {selected.registeredStudent && !duplicateDecisionLocked && selected.status_code !== "rejected" && (
+            <details className="mt-5 rounded-lg border border-slate-200 p-4">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-800">Correct financial-need inputs</summary>
+              <p className="mt-2 text-xs text-slate-600">Admin correction only. The submitted values and earlier assessments remain in the audit history. Give a reason; blank values remain missing.</p>
+              <form className="mt-4 space-y-3" onSubmit={correctEligibilityInputs}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {ELIGIBILITY_FIELDS.map(([key, title, type]) => (
+                    <label key={key} className="block text-xs font-medium text-slate-700">
+                      {title}
+                      {type === "vulnerability" ? (
+                        <select value={correctionValues[key] || ""} onChange={(event) => setCorrectionValues((current) => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm">
+                          <option value="">Not supplied</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                        </select>
+                      ) : type === "history" ? (
+                        <select value={correctionValues[key] || ""} onChange={(event) => setCorrectionValues((current) => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm">
+                          <option value="">Not supplied</option><option value="none">None</option><option value="low">Limited assistance</option><option value="high">Substantial assistance</option>
+                        </select>
+                      ) : (
+                        <input type="number" min="0" max={type === "integer" ? 20 : 1000000000} step={type === "integer" ? 1 : "0.01"} value={correctionValues[key] || ""} onChange={(event) => setCorrectionValues((current) => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm" />
+                      )}
+                    </label>
+                  ))}
+                </div>
+                <label className="block text-xs font-medium text-slate-700">Correction reason (required)
+                  <textarea value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} minLength={5} maxLength={2000} required rows={2} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm" />
+                </label>
+                <button type="submit" disabled={correcting || correctionReason.trim().length < 5} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{correcting ? "Saving…" : "Save correction"}</button>
+              </form>
+            </details>
           )}
 
-          <div className="mt-5 border-t border-slate-100 pt-4">
+          {duplicateDecisionLocked ? (
+            <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              This application is read-only until duplicate screening is explicitly complete and cleared. Resolve any pending case in Duplicate Review first.
+            </p>
+          ) : <div className="mt-5 border-t border-slate-100 pt-4">
             <label htmlFor="decision-note" className="text-sm font-medium text-slate-800">
-              Decision note
+              Decision note <span className="font-normal text-slate-500">(required when rejecting)</span>
             </label>
             <textarea
               id="decision-note"
@@ -364,11 +449,11 @@ export default function Applications() {
                 onClick={() => recordDecision("approved")}
                 className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
               >
-                Approve application
+                Approve Guardian application
               </button>
               <button
                 type="button"
-                disabled={saving}
+                disabled={saving || note.trim().length < 5}
                 onClick={() => recordDecision("rejected")}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
               >
@@ -383,7 +468,7 @@ export default function Applications() {
                 Keep under review
               </button>
             </div>
-          </div>
+          </div>}
         </section>
       )}
     </main>

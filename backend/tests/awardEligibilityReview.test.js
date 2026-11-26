@@ -35,21 +35,26 @@ describe('administrator award review shows the saved eligibility assessment', ()
       [label, `UPI-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, `NID-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`]
     );
     created.students.push(rows[0].id);
+    await pool.query(
+      `INSERT INTO audit_logs (user_id, action, table_name, record_id, details)
+       VALUES ($1, 'CREATE', 'students', $2, $3)`,
+      [officer.id, rows[0].id, { duplicate_model_version: 'test-screened', duplicate_flags_created: 0 }],
+    );
     return rows[0];
   }
 
   const auth = (actor) => ({ Authorization: `Bearer ${actor.token}` });
 
   const assess = (studentId, overrides = {}) => request(app)
-    .post('/api/eligibility')
-    .set(auth(officer))
+    .patch(`/api/eligibility/${studentId}/correction`)
+    .set(auth(admin))
     .send({
-      student_id: studentId,
       fee_balance: 45000,
       household_income: 18000,
       vulnerability_status: 'low',
       siblings_in_school: 2,
       prior_bursary_history: 'none',
+      reason: 'Verified assessment inputs',
       ...overrides,
     });
 
@@ -93,7 +98,7 @@ describe('administrator award review shows the saved eligibility assessment', ()
     const student = await createStudent('Review Saved Assessment');
     const assessed = await assess(student.id);
     expect(assessed.statusCode).toBe(200);
-    expect(assessed.body.score).toBe(72);
+    expect(assessed.body.assessment.score).toBe(72);
 
     const proposal = await propose(student.id, 20000);
     expect(proposal.statusCode).toBe(201);
@@ -141,15 +146,12 @@ describe('administrator award review shows the saved eligibility assessment', ()
     expect(secondReview.body.eligibility.prior_bursary_history).toBe('high');
   });
 
-  test('a student with no saved assessment is reported as missing, not invented', async () => {
+  test('a student with no saved assessment cannot be proposed for an award', async () => {
     const student = await createStudent('Review No Assessment');
     const proposal = await propose(student.id, 15000);
-    expect(proposal.statusCode).toBe(201);
-
-    const response = await review(proposal.body.award.id);
-    expect(response.statusCode).toBe(200);
-    expect(response.body.eligibility).toBeNull();
-    expect(response.body.student.full_name).toBe(student.full_name);
+    expect(proposal.statusCode).toBe(409);
+    expect(proposal.body.code).toBe('ELIGIBILITY_ASSESSMENT_REQUIRED');
+    expect(proposal.body.message).toMatch(/completed financial-need assessment/i);
   });
 
   test('the administrator can approve an amount that differs from the proposal and recommendation', async () => {
@@ -180,7 +182,7 @@ describe('administrator award review shows the saved eligibility assessment', ()
     expect(response.statusCode).toBe(403);
   });
 
-  test('an incomplete assessment recorded later does not replace the completed one under review', async () => {
+  test('a newer incomplete assessment blocks proposal despite an older completed assessment', async () => {
     const student = await createStudent('Review Complete Then Incomplete');
     await assess(student.id);
     await pool.query(
@@ -192,19 +194,12 @@ describe('administrator award review shows the saved eligibility assessment', ()
     );
 
     const proposal = await propose(student.id, 20000);
-    expect(proposal.statusCode).toBe(201);
-
-    const response = await review(proposal.body.award.id);
-    expect(response.statusCode).toBe(200);
-    expect(response.body.eligibility).toMatchObject({
-      score: 72,
-      category: 'high',
-      fee_balance: 45000,
-      household_income: 18000,
-    });
+    expect(proposal.statusCode).toBe(409);
+    expect(proposal.body.code).toBe('ELIGIBILITY_ASSESSMENT_INCOMPLETE');
+    expect(proposal.body.missing_inputs).toContain('fee_balance');
   });
 
-  test('financial fields the completed assessment never recorded are null, not zero', async () => {
+  test('a legacy completed row with missing scoring inputs is treated as incomplete', async () => {
     const student = await createStudent('Review Unknown Financials');
     // A completed assessment can still lack optional monetary inputs; the review must say "not
     // recorded" instead of presenting a confident KSh 0 the officer never entered.
@@ -215,13 +210,10 @@ describe('administrator award review shows the saved eligibility assessment', ()
     );
 
     const proposal = await propose(student.id, 10000);
-    expect(proposal.statusCode).toBe(201);
-
-    const response = await review(proposal.body.award.id);
-    expect(response.statusCode).toBe(200);
-    expect(response.body.eligibility.score).toBe(50);
-    expect(response.body.eligibility.fee_balance).toBeNull();
-    expect(response.body.eligibility.household_income).toBeNull();
+    expect(proposal.statusCode).toBe(409);
+    expect(proposal.body.code).toBe('ELIGIBILITY_ASSESSMENT_INCOMPLETE');
+    expect(proposal.body.missing_inputs).toContain('fee_balance');
+    expect(proposal.body.missing_inputs).toContain('household_income');
   });
 
 });

@@ -98,7 +98,9 @@ export default function GuardianAccount() {
     email: profile?.email || user?.email || "Not available",
     phone: profile?.phone || "Not provided",
     relationship: RELATIONSHIP_LABELS[profile?.relationship_to_student] || "Not provided",
-    nationalId: maskNationalId(profile?.national_id),
+    nationalId: profile?.national_id_status === "invalid_legacy"
+      ? "Needs correction"
+      : maskNationalId(profile?.national_id),
     created: formatDate(profile?.created_at),
     lastLogin: formatDate(profile?.last_login_at, true),
   };
@@ -192,6 +194,11 @@ export default function GuardianAccount() {
             </div>
             <DetailItem label="Phone number" value={account.phone} />
             <DetailItem label="National ID" value={account.nationalId} mono />
+            {profile?.national_id_status === "invalid_legacy" && (
+              <p className="sm:col-span-2 text-xs leading-5 text-amber-700">
+                The saved value does not meet the current 8-digit format. It has not been changed; contact an administrator to correct your profile.
+              </p>
+            )}
           </SectionCard>
 
           <SectionCard

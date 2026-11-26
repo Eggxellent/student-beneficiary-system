@@ -4,15 +4,14 @@ import {
   ArrowLeft,
   Check,
   Clock3,
-  Eye,
-  FileText,
+  Download,
   Flag,
   LockKeyhole,
 } from "lucide-react";
 
 import { GUARDIAN_PATHS, GuardianLayout } from "../components/GuardianChrome";
 import { useAuth } from "../context/AuthContext";
-import { fetchGuardianApplication, apiErrorMessage } from "../services/guardian";
+import { downloadGuardianApplicationReceipt, fetchGuardianApplication, apiErrorMessage } from "../services/guardian";
 
 // Guardian application details (read-only). The record is fetched from
 // GET /api/guardian/applications/:reference, which only returns applications owned by the
@@ -82,6 +81,8 @@ export default function ApplicationDetails() {
   const { user } = useAuth();
   const [application, setApplication] = useState(null);
   const [error, setError] = useState("");
+  const [receiptError, setReceiptError] = useState("");
+  const [downloadingReceipt, setDownloadingReceipt] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -125,6 +126,34 @@ export default function ApplicationDetails() {
     application.statusKey === "approved" || application.statusKey === "rejected"
       ? "completed"
       : "pending";
+  const duplicateStatus = application.duplicateScreeningStatus || "not_screened";
+  const duplicateStatusText = ({
+    under_review: "Under Review",
+    cleared: "Cleared",
+    not_duplicate: "Cleared",
+    confirmed_duplicate: "Confirmed Duplicate",
+    not_screened: "Not Screened",
+  })[duplicateStatus] || "Under Review";
+
+  async function downloadReceipt() {
+    setDownloadingReceipt(true);
+    setReceiptError("");
+    try {
+      const blob = await downloadGuardianApplicationReceipt(application.reference);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${application.reference}-receipt.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setReceiptError(apiErrorMessage(err, "Could not download the submission receipt."));
+    } finally {
+      setDownloadingReceipt(false);
+    }
+  }
 
   return (
     <GuardianLayout activeItem="applications" guardianName={guardianName} initials={initials || "GW"}>
@@ -181,15 +210,35 @@ export default function ApplicationDetails() {
 
             {application.decisionNote && (
               <p className="mt-4 max-w-xl rounded-md border border-border bg-accent/60 px-4 py-3 text-xs leading-5 text-foreground">
-                Review note: {application.decisionNote}
+                {application.statusKey === "rejected" ? "Reason: " : "Review note: "}{application.decisionNote}
               </p>
             )}
           </div>
 
-          <span className="w-fit rounded-full border border-secondary/30 bg-accent px-3 py-1.5 text-sm font-medium text-secondary">
-            {application.status}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-fit rounded-full border border-secondary/30 bg-accent px-3 py-1.5 text-sm font-medium text-secondary">
+              {application.status}
+            </span>
+            <button
+              type="button"
+              onClick={downloadReceipt}
+              disabled={downloadingReceipt}
+              className="inline-flex h-10 items-center gap-2 rounded-md border border-border px-3 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60"
+            >
+              <Download className="size-4" aria-hidden="true" />
+              {downloadingReceipt ? "Preparing receipt…" : "Download receipt"}
+            </button>
+          </div>
         </div>
+
+        {application.statusKey === "rejected" && (
+          <section aria-label="Application outcome" className="mt-6 rounded-lg border border-destructive/30 bg-destructive/5 px-5 py-4">
+            <p className="text-sm leading-6 text-foreground">{application.rejectionMessage}</p>
+            <Link to={GUARDIAN_PATHS.newApplication} className="mt-3 inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+              Submit a new application
+            </Link>
+          </section>
+        )}
 
         <section
           aria-label="Read-only notice"
@@ -204,6 +253,28 @@ export default function ApplicationDetails() {
               Your application has been submitted successfully. You can view the information below,
               but submitted applications cannot be edited.
             </p>
+          </div>
+        </section>
+
+        {receiptError && <p role="alert" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{receiptError}</p>}
+
+        <section aria-label="Duplicate screening status" className={`${CARD_CLASS} mt-6 p-5`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Duplicate Screening: {duplicateStatusText}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {duplicateStatus === "under_review"
+                  ? "An administrator is reviewing a possible match. Your application remains viewable and read-only while the review is pending."
+                  : duplicateStatus === "confirmed_duplicate"
+                    ? "An administrator confirmed a duplicate. This application is rejected and remains available with its decision history."
+                    : duplicateStatus === "cleared" || duplicateStatus === "not_duplicate"
+                      ? "Screening is complete. This only allows the application to proceed to eligibility review; it is not a bursary award."
+                      : "Duplicate screening is not complete because the student record is not linked yet."}
+              </p>
+            </div>
+            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${duplicateStatus === "cleared" || duplicateStatus === "not_duplicate" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : duplicateStatus === "confirmed_duplicate" ? "border-red-200 bg-red-50 text-red-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+              {duplicateStatusText}
+            </span>
           </div>
         </section>
 
@@ -315,58 +386,6 @@ export default function ApplicationDetails() {
             />
           </DetailCard>
 
-          <section className={CARD_CLASS}>
-            <div className={CARD_HEADER_CLASS}>
-              <h2 className="text-lg font-semibold text-primary">Supporting Documents</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Documents submitted with this application.
-              </p>
-            </div>
-
-            <div className="divide-y divide-border px-6">
-              {application.documents.length === 0 && (
-                <p className="py-6 text-sm text-muted-foreground">
-                  No documents were uploaded with this application. An authorised officer may
-                  request supporting documents during assessment.
-                </p>
-              )}
-              {application.documents.map((document, index) => {
-                const Icon = document.icon || FileText;
-
-                return (
-                  <div
-                    key={`${document.name}-${index}`}
-                    className="flex items-center justify-between gap-3 py-4"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="grid size-9 shrink-0 place-items-center rounded-md bg-accent text-accent-foreground">
-                        <Icon className="size-4" aria-hidden="true" />
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {document.name}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {document.description}
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled
-                      title="Document preview will be available when document storage is implemented"
-                      className="inline-flex h-9 shrink-0 cursor-not-allowed items-center gap-2 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground opacity-70"
-                    >
-                      <Eye className="size-4" aria-hidden="true" />
-                      View
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
         </div>
 
         <div className="mt-8 border-t border-border pt-6">

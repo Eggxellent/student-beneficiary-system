@@ -38,6 +38,14 @@ export async function fetchGuardianApplication(reference) {
   return data.application;
 }
 
+export async function downloadGuardianApplicationReceipt(reference) {
+  const { data } = await api.get(
+    `/guardian/applications/${encodeURIComponent(reference)}/receipt.pdf`,
+    { responseType: "blob" },
+  );
+  return data;
+}
+
 export function apiErrorMessage(error, fallback) {
   const response = error?.response;
   const details = response?.data?.details;

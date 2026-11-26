@@ -3,6 +3,7 @@ const pool = require('../config/db');
 const logAudit = require('../services/auditLog');
 const { issueForApprovedAward } = require('../services/certificateIssue');
 const { notifyAwardSubmitted, notifyAwardDecision } = require('../services/notifications');
+const { loadEligibilityWorkflow, awardReadinessError } = require('../services/eligibilityWorkflow');
 
 const createSchema = z.object({
   student_id: z.string().uuid(),
@@ -222,8 +223,19 @@ async function create(req, res, next) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('sbms.student.registration'))");
     const student = await client.query(
       `SELECT s.id, s.full_name, s.school_code, s.duplicate_of_student_id,
+              EXISTS (
+                SELECT 1 FROM guardian_applications a
+                 WHERE a.student_id = s.id
+                   AND NOT EXISTS (
+                     SELECT 1 FROM audit_logs screening
+                      WHERE screening.table_name = 'guardian_applications'
+                        AND screening.record_id = a.id
+                        AND screening.action = 'GUARDIAN_APPLICATION_LINKED_STUDENT'
+                   )
+              ) AS has_unscreened_guardian_application,
               EXISTS (
                 SELECT 1 FROM duplicate_flags f
                  WHERE (f.student_id = s.id OR f.matched_student_id = s.id)
@@ -243,6 +255,19 @@ async function create(req, res, next) {
     if (!student.rows.length) {
       await client.query('ROLLBACK');
       return res.status(404).json({ message: 'Student not found.' });
+    }
+    const readiness = await loadEligibilityWorkflow(client, parsed.data.student_id);
+    const readinessError = awardReadinessError(readiness);
+    if (readinessError) {
+      await client.query('ROLLBACK');
+      return res.status(readinessError.status).json(readinessError);
+    }
+    if (student.rows[0].has_unscreened_guardian_application) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'DUPLICATE_SCREENING_REQUIRED',
+        message: 'A bursary proposal requires explicit duplicate-screening clearance first.',
+      });
     }
     // A record already resolved as a duplicate never receives its own award.
     if (student.rows[0].duplicate_of_student_id) {
@@ -381,10 +406,34 @@ async function decide(req, res, next) {
       return res.status(409).json({ message: 'The officer who proposed an award cannot approve it. A different authorised officer must decide.' });
     }
     if (decision === 'approved') {
+      const readiness = await loadEligibilityWorkflow(client, award.student_id);
+      const readinessError = awardReadinessError(readiness);
+      if (readinessError) {
+        await client.query('ROLLBACK');
+        return res.status(readinessError.status).json(readinessError);
+      }
       const studentsForDuplicateCheck = await client.query(
-        'SELECT duplicate_of_student_id FROM students WHERE id = $1',
+        `SELECT s.duplicate_of_student_id,
+                EXISTS (
+                  SELECT 1 FROM guardian_applications a
+                   WHERE a.student_id = s.id
+                     AND NOT EXISTS (
+                       SELECT 1 FROM audit_logs screening
+                        WHERE screening.table_name = 'guardian_applications'
+                          AND screening.record_id = a.id
+                          AND screening.action = 'GUARDIAN_APPLICATION_LINKED_STUDENT'
+                     )
+                ) AS has_unscreened_guardian_application
+           FROM students s WHERE s.id = $1`,
         [award.student_id]
       );
+      if (studentsForDuplicateCheck.rows[0]?.has_unscreened_guardian_application) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          code: 'DUPLICATE_SCREENING_REQUIRED',
+          message: 'This application cannot be approved for a bursary until duplicate screening is explicitly cleared.',
+        });
+      }
       // A record resolved as a duplicate can never receive its own award; only the canonical record
       // the administrator designated may proceed.
       if (studentsForDuplicateCheck.rows[0]?.duplicate_of_student_id) {

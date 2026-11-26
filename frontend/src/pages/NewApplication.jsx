@@ -1,15 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, Info } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { GUARDIAN_PATHS, GuardianLayout } from "../components/GuardianChrome";
 import { useAuth } from "../context/AuthContext";
-import { submitGuardianApplication, apiErrorMessage } from "../services/guardian";
+import { fetchGuardianProfile, submitGuardianApplication, apiErrorMessage } from "../services/guardian";
 
 // Guardian application form (page 3 of the guardian interface). Submitting POSTs the form to
 // /api/guardian/applications, which stores the application against the signed-in guardian and
-// returns a reference such as APP-2026-01004. Initial submissions carry no supporting documents:
-// the form asks for student, school and household information only. Documents are requested later
-// by an authorised officer through the More Info Required workflow when they are actually needed.
+// returns a reference such as APP-2026-01004. Submissions pass through the standard registration
+// and duplicate-screening process before they can proceed.
 
 const CARD_CLASS = "rounded-xl border border-border bg-card shadow-sm";
 
@@ -79,10 +78,24 @@ function Select({ id, name, defaultValue, options, required = false }) {
 export default function NewApplication() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [guardianProfile, setGuardianProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const guardianName = user?.full_name || "";
+  useEffect(() => {
+    let active = true;
+    fetchGuardianProfile()
+      .then((profile) => { if (active) setGuardianProfile(profile); })
+      .catch((err) => {
+        if (active) setProfileError(apiErrorMessage(err, "Could not load your guardian profile."));
+      })
+      .finally(() => { if (active) setProfileLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  const guardianName = guardianProfile?.full_name || user?.full_name || "";
   const initials = guardianName
     .split(" ")
     .filter(Boolean)
@@ -93,6 +106,10 @@ export default function NewApplication() {
   async function handleSubmit(event) {
     event.preventDefault();
     if (submitting) return;
+    if (!guardianProfile) {
+      setError("Your guardian profile must load before you can submit this application.");
+      return;
+    }
     setError("");
 
     const values = new FormData(event.currentTarget);
@@ -188,7 +205,9 @@ export default function NewApplication() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        {profileLoading && <p role="status" className="rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground">Loading guardian profile…</p>}
+        {profileError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-5 py-4 text-sm text-destructive">{profileError}</p>}
+        {!profileLoading && !profileError && <form onSubmit={handleSubmit} className="flex flex-col gap-6">
           <FormCard
             title="Student Information"
             description="Provide details about the student applying for bursary assistance."
@@ -292,7 +311,8 @@ export default function NewApplication() {
                 <Input
                   id="guardian-name"
                   name="guardian-name"
-                  defaultValue={guardianName}
+                  value={guardianProfile?.full_name || ""}
+                  onChange={(event) => setGuardianProfile((profile) => ({ ...profile, full_name: event.target.value }))}
                   placeholder="Enter full name"
                 />
               </Field>
@@ -302,9 +322,29 @@ export default function NewApplication() {
                   id="guardian-phone"
                   name="guardian-phone"
                   type="tel"
-                  defaultValue={user?.phone || ""}
+                  value={guardianProfile?.phone || ""}
+                  onChange={(event) => setGuardianProfile((profile) => ({ ...profile, phone: event.target.value }))}
                   placeholder="e.g. 0712 345 678"
                 />
+              </Field>
+
+              <Field
+                label="Guardian National ID"
+                htmlFor="guardian-national-id"
+                description="Read-only from your guardian profile; used only as supporting guardian-context evidence."
+              >
+                <Input
+                  id="guardian-national-id"
+                  type="text"
+                  value={guardianProfile?.national_id || ""}
+                  readOnly
+                  aria-readonly="true"
+                  autoComplete="off"
+                  placeholder={guardianProfile?.national_id_status === "invalid_legacy" ? "Invalid profile value withheld" : "Not provided"}
+                />
+                {guardianProfile?.national_id_status === "invalid_legacy" && (
+                  <p className="text-xs leading-5 text-amber-700">The saved profile value does not meet the current 8-digit format. It was not changed or used for comparison.</p>
+                )}
               </Field>
 
               <Field label="Household Size" htmlFor="household-size" required>
@@ -456,13 +496,13 @@ export default function NewApplication() {
           <div className="flex flex-col-reverse gap-3 border-t border-border pt-6 sm:flex-row sm:justify-end">
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || profileLoading || Boolean(profileError)}
               className="inline-flex h-11 items-center justify-center rounded-md bg-primary px-6 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
             >
               {submitting ? "Submitting..." : "Submit Application"}
             </button>
           </div>
-        </form>
+        </form>}
       </main>
     </GuardianLayout>
   );

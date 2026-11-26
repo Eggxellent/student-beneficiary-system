@@ -82,7 +82,7 @@ const loginAny = (req, res) => login(req, res, null);
 async function me(req, res, next) {
   try {
     const { rows } = await pool.query(
-      `SELECT id, full_name, email, role, phone, national_id, relationship_to_student,
+      `SELECT id, full_name, email, role, phone, relationship_to_student,
               created_at, last_login_at
          FROM users WHERE id = $1`,
       [req.user.id],

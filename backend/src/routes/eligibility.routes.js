@@ -8,5 +8,6 @@ const router = express.Router();
 // The scoring formula is internal: only an administrator may read the weights.
 router.get('/', authenticateToken, requireRole('admin'), controller.describeFormula);
 router.post('/', authenticateToken, requireRole('field_officer'), controller.calculate);
+router.patch('/:studentId/correction', authenticateToken, requireRole('admin'), controller.correctInputs);
 
 module.exports = router;
