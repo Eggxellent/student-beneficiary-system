@@ -5,10 +5,16 @@ const {
   MIN_NAME_SIMILARITY,
 } = require('../services/duplicateCheck');
 const { getReviewThreshold, getDuplicateThreshold } = require('../config/settings');
-const { scorePairs, exactNationalIdMatch, exactReviewIdentifierMatches, reviewPriority, configuredThreshold } = require('../services/mlDuplicateReview');
+const {
+  scorePairs,
+  exactSchoolCodeMatch,
+  exactReviewIdentifierMatches,
+  reviewPriority,
+  configuredThreshold,
+} = require('../services/mlDuplicateReview');
 const { z } = require('zod');
 const { APPROVED_SCHOOLS } = require('../config/schools');
-const { normalizeAggregationPolicy } = require('../services/duplicateAggregation');
+const { normalizeAggregationPolicy, selectFlaggedCandidates } = require('../services/duplicateAggregation');
 const {
   assessAutomatically,
   guardianStudentInCase,
@@ -53,17 +59,27 @@ function maskIdentifier(value) {
   return `${'•'.repeat(Math.max(4, text.length - visible.length))}${visible}`;
 }
 
+function publicReviewEvidence(evidence) {
+  if (!evidence || typeof evidence !== 'object') return evidence;
+  const comparisons = Object.fromEntries(Object.entries(evidence.comparisons || {}).map(([key, value]) => {
+    const { normalized, ...safeValue } = value || {};
+    return [key, safeValue];
+  }));
+  return { ...evidence, comparisons };
+}
+
 const CASE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const REVEALED_IDENTIFIER_FIELDS = ['guardian_contact', 'upi', 'birth_certificate_number', 'national_id_number'];
+const REVEALED_IDENTIFIER_FIELDS = ['guardian_contact', 'admission_number', 'birth_certificate_number', 'national_id_number', 'near_match_normalized_values'];
 
 function toReviewCase(row) {
   const first = {
     full_name: row.student_name,
     date_of_birth: row.student_date_of_birth,
     school_code: row.student_school,
+    school_name: row.student_school_name,
     guardian_id: row.student_guardian_id,
     primary_phone: row.student_guardian_contact,
-    upi: row.student_upi,
+    admission_number: row.student_admission_number,
     birth_certificate_number: row.student_birth_certificate_number,
     national_id_number: row.student_national_id_number,
     is_synthetic: row.student_is_synthetic,
@@ -72,45 +88,51 @@ function toReviewCase(row) {
     full_name: row.matched_student_name,
     date_of_birth: row.matched_date_of_birth,
     school_code: row.matched_school,
+    school_name: row.matched_school_name,
     guardian_id: row.matched_guardian_id,
     primary_phone: row.matched_guardian_contact,
-    upi: row.matched_upi,
+    admission_number: row.matched_admission_number,
     birth_certificate_number: row.matched_birth_certificate_number,
     national_id_number: row.matched_national_id_number,
     is_synthetic: row.matched_student_is_synthetic,
   };
   const legacyFeatures = buildDuplicateFeatures(first, second);
-  const modelFeatures = row.comparison_features || null;
+  const storedComparison = row.comparison_features || null;
+  const reviewEvidence = storedComparison && storedComparison.review_evidence || null;
+  const modelFeatures = storedComparison
+    ? Object.fromEntries(Object.entries(storedComparison).filter(([key]) => key !== 'review_evidence'))
+    : null;
   const score = Number(row.probability);
   const threshold = row.review_threshold == null ? getReviewThreshold() : Number(row.review_threshold);
-  const exactNationalId = exactNationalIdMatch(first, second);
-  const exactUpi = legacyFeatures.upi_match === 1;
-  const exactCertificate = legacyFeatures.birth_certificate_match === 1;
+  // One school-aware comparison shared with the registration path: the admission number counts
+  // only inside the same school, and the birth certificate / National ID stay decisive identifiers.
+  const exactIdentifiers = exactReviewIdentifierMatches(first, second);
   // Shared with the registration response so the queue and the confirmation screen cannot
   // disagree about how serious the same case is. `threshold` above is the review cutoff
   // that created the flag; priority uses the separate high-priority cutoff.
   const priority = reviewPriority({
     score,
     highPriorityThreshold: getDuplicateThreshold(),
-    exactIdentifierCount: [exactUpi, exactCertificate, exactNationalId].filter(Boolean).length,
+    exactIdentifierCount: exactIdentifiers.length,
   });
-  const exactIdentifiers = [
-    exactUpi && 'UPI',
-    exactCertificate && 'birth certificate number',
-    exactNationalId && 'National ID',
-  ].filter(Boolean);
   const features = modelFeatures || legacyFeatures;
   // A name, a date of birth and a school code are all shared by unrelated beneficiaries, so they
-  // cannot separate two people on their own. When both records carry a UPI or a birth certificate
-  // number and those values differ, the pair is described that way instead of as a model match.
-  const bothUpi = Boolean(normalized(first.upi) && normalized(second.upi));
+  // cannot separate two people on their own. When both records carry an admission number (within
+  // one school) or a birth certificate number and those values differ, the pair is described that
+  // way instead of as a model match.
+  const bothAdmission = Boolean(
+    exactSchoolCodeMatch(first, second)
+    && normalized(first.admission_number) && normalized(second.admission_number)
+  );
   const bothCertificate = Boolean(normalized(first.birth_certificate_number) && normalized(second.birth_certificate_number));
   const conflictingIdentifiers = [
-    bothUpi && legacyFeatures.upi_match < 1 && 'UPI',
+    bothAdmission && legacyFeatures.admission_number_match < 1 && 'admission number',
     bothCertificate && legacyFeatures.birth_certificate_match < 1 && 'birth certificate number',
   ].filter(Boolean);
   const reason = exactIdentifiers.length
     ? `Exact ${exactIdentifiers.join(' and ')} match; verify the source documents.`
+    : reviewEvidence?.near_match_review
+      ? `Near-match evidence across ${(reviewEvidence.signals || []).join(', ')}; administrator review is required. The model score is not a decision.`
     : conflictingIdentifiers.length
       ? `The ${conflictingIdentifiers.join(' and ')} differ between the two records. Agreement is limited to fields that are not unique, so treat these as different beneficiaries unless the documents show otherwise.`
       : row.model_version
@@ -131,8 +153,8 @@ function toReviewCase(row) {
     reason,
     exact_identifier_matches: exactIdentifiers,
     students: [
-      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code, school_code: first.school_code, guardian_contact: maskIdentifier(first.primary_phone), upi: maskIdentifier(first.upi), birth_certificate_number: maskIdentifier(first.birth_certificate_number), national_id_number: maskIdentifier(first.national_id_number), duplicate_of_student_id: row.student_duplicate_of || null },
-      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code, school_code: second.school_code, guardian_contact: maskIdentifier(second.primary_phone), upi: maskIdentifier(second.upi), birth_certificate_number: maskIdentifier(second.birth_certificate_number), national_id_number: maskIdentifier(second.national_id_number), duplicate_of_student_id: row.matched_duplicate_of || null },
+      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code || first.school_name, school_code: first.school_code || first.school_name, resolved_school_code: first.school_code, guardian_contact: maskIdentifier(first.primary_phone), admission_number: maskIdentifier(first.admission_number), birth_certificate_number: maskIdentifier(first.birth_certificate_number), national_id_number: maskIdentifier(first.national_id_number), duplicate_of_student_id: row.student_duplicate_of || null },
+      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code || second.school_name, school_code: second.school_code || second.school_name, resolved_school_code: second.school_code, guardian_contact: maskIdentifier(second.primary_phone), admission_number: maskIdentifier(second.admission_number), birth_certificate_number: maskIdentifier(second.birth_certificate_number), national_id_number: maskIdentifier(second.national_id_number), duplicate_of_student_id: row.matched_duplicate_of || null },
     ],
     resolution: row.resolution_id ? {
       id: row.resolution_id,
@@ -146,9 +168,10 @@ function toReviewCase(row) {
       name: fieldEvidence(first.full_name, second.full_name, 'name', features.jaro_winkler || 0),
       date_of_birth: features.dob_match >= 1 ? 'matches' : features.dob_match > 0 ? `similar (${Math.round(features.dob_match * 100)}%)` : fieldEvidence(first.date_of_birth, second.date_of_birth),
       school: fieldEvidence(first.school_code, second.school_code, 'school', features.school_match || 0),
-      upi: features.upi_match > 0 ? `similar (${Math.round(features.upi_match * 100)}%)` : fieldEvidence(first.upi, second.upi),
+      admission_number: features.admission_number_match > 0 ? `similar (${Math.round(features.admission_number_match * 100)}%)` : fieldEvidence(first.admission_number, second.admission_number),
       birth_certificate: features.birth_certificate_match > 0 ? `similar (${Math.round(features.birth_certificate_match * 100)}%)` : fieldEvidence(first.birth_certificate_number, second.birth_certificate_number),
       national_id: fieldEvidence(first.national_id_number, second.national_id_number),
+      near_match_review: publicReviewEvidence(reviewEvidence),
     },
     model_features: modelFeatures,
   };
@@ -158,8 +181,11 @@ const evaluationStudentSchema = z.object({
   full_name: z.string().trim().min(2).max(255),
   date_of_birth: z.string().optional(),
   school_code: z.string().optional(),
+  school_name: z.string().optional(),
   guardian_id: z.string().optional(),
-  upi: z.string().min(1).max(100),
+  guardian_name: z.string().optional(),
+  guardian_full_name: z.string().optional(),
+  admission_number: z.string().trim().min(1).max(100).optional(),
   birth_certificate_number: z.string().optional(),
   national_id_number: z.string().optional(),
 });
@@ -189,7 +215,13 @@ async function evaluate(req, res) {
       model_features: prediction.results[index].features,
       model_version: prediction.model_version,
       review_threshold: threshold,
-      requires_human_review: prediction.results[index].score >= threshold || exactReviewIdentifierMatches(first, second).length > 0,
+      requires_human_review: selectFlaggedCandidates([{
+        score: prediction.results[index].score,
+        features: prediction.results[index].features,
+        reviewEvidence: prediction.results[index].review_evidence,
+        exactIdentifiers: exactReviewIdentifierMatches(first, second),
+      }], { threshold }).length > 0,
+      review_evidence: prediction.results[index].review_evidence,
       score_is_calibrated_probability: false,
     }));
     return res.json({ results, model_version: prediction.model_version, review_threshold: threshold });
@@ -201,10 +233,17 @@ async function evaluate(req, res) {
 async function scanExisting(req, res, next) {
   try {
     const { rows: students } = await pool.query(
-      `SELECT id, full_name, date_of_birth, school_code, guardian_id, upi,
-              birth_certificate_number, national_id_number
-       FROM students
-       ORDER BY created_at ASC, id ASC`
+      `SELECT s.id, s.full_name, s.date_of_birth, s.school_code, s.school_name, s.guardian_id,
+              s.admission_number, s.birth_certificate_number, s.national_id_number,
+              ga.guardian_full_name AS guardian_name
+         FROM students s
+         LEFT JOIN LATERAL (
+           SELECT guardian_full_name FROM guardian_applications
+            WHERE student_id = s.id
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+         ) ga ON TRUE
+        ORDER BY s.created_at ASC, s.id ASC`
     );
     const { rows: existingFlags } = await pool.query(
       'SELECT student_id, matched_student_id FROM duplicate_flags'
@@ -230,8 +269,16 @@ async function scanExisting(req, res, next) {
       // DUPLICATE_AGGREGATION_POLICY budget used at registration must not apply here.
       const matches = batch.flatMap(({ first, second }, index) => {
         const result = prediction.results[index];
-        return result.score >= reviewThreshold || exactReviewIdentifierMatches(first, second).length > 0
-          ? [{ first, second, score: result.score, features: result.features }]
+        const exactIdentifiers = exactReviewIdentifierMatches(first, second);
+        const selected = selectFlaggedCandidates([{
+          candidate: second,
+          score: result.score,
+          features: result.features,
+          reviewEvidence: result.review_evidence,
+          exactIdentifiers,
+        }], { threshold: reviewThreshold });
+        return selected.length
+          ? [{ first, second, score: result.score, features: result.features, reviewEvidence: result.review_evidence }]
           : [];
       });
       candidatesFound += matches.length;
@@ -239,7 +286,10 @@ async function scanExisting(req, res, next) {
       const parameters = [];
       const values = matches.map((match, index) => {
         const position = index * 6;
-        parameters.push(match.second.id, match.first.id, match.score, modelVersion, reviewThreshold, match.features);
+        parameters.push(match.second.id, match.first.id, match.score, modelVersion, reviewThreshold, {
+          ...match.features,
+          review_evidence: match.reviewEvidence,
+        });
         return `($${position + 1}, $${position + 2}, $${position + 3}, 'pending', $${position + 4}, $${position + 5}, $${position + 6})`;
       });
       const inserted = await pool.query(
@@ -312,16 +362,18 @@ async function list(req, res, next) {
               s1.id AS student_id, s2.id AS matched_student_id,
               s1.is_synthetic AS student_is_synthetic, s2.is_synthetic AS matched_student_is_synthetic,
               s1.full_name AS student_name, s1.school_code AS student_school,
+              s1.school_name AS student_school_name,
               TO_CHAR(s1.date_of_birth, 'YYYY-MM-DD') AS student_date_of_birth,
               s1.guardian_id AS student_guardian_id,
-              s1.upi AS student_upi,
+              s1.admission_number AS student_admission_number,
               s1.birth_certificate_number AS student_birth_certificate_number,
               s1.national_id_number AS student_national_id_number,
               s1.primary_phone AS student_guardian_contact,
               s2.full_name AS matched_student_name, s2.school_code AS matched_school,
+              s2.school_name AS matched_school_name,
               TO_CHAR(s2.date_of_birth, 'YYYY-MM-DD') AS matched_date_of_birth,
               s2.guardian_id AS matched_guardian_id,
-              s2.upi AS matched_upi,
+              s2.admission_number AS matched_admission_number,
               s2.birth_certificate_number AS matched_birth_certificate_number,
               s2.national_id_number AS matched_national_id_number,
               s2.primary_phone AS matched_guardian_contact,
@@ -336,7 +388,10 @@ async function list(req, res, next) {
               s1.date_of_birth IS NOT DISTINCT FROM s2.date_of_birth AS date_of_birth_match,
               s1.school_code IS NOT DISTINCT FROM s2.school_code AS school_match,
               s1.guardian_id IS NOT DISTINCT FROM s2.guardian_id AS guardian_match,
-              s1.upi IS NOT DISTINCT FROM s2.upi AS upi_match
+              (s1.admission_number IS NOT DISTINCT FROM s2.admission_number
+                AND s1.school_code IS NOT NULL
+                AND s1.school_code IS NOT DISTINCT FROM s2.school_code
+                AND s1.admission_number IS NOT NULL) AS admission_number_match
        FROM duplicate_flags df
        JOIN students s1 ON df.student_id = s1.id
        JOIN students s2 ON df.matched_student_id = s2.id
@@ -407,30 +462,32 @@ async function list(req, res, next) {
 }
 
 // The review queue deliberately ships masked identifiers so a queue screenshot cannot leak
-// a beneficiary's UPI, birth certificate or National ID. A reviewer still has to compare
-// those values with the documents a guardian presents, so this endpoint reveals them for a
-// single case, only to an administrator, and records who looked at them and when.
+// a beneficiary's admission number, birth certificate or National ID. A reviewer still has to
+// compare those values with the documents a guardian presents, so this endpoint reveals them for
+// a single case, only to an administrator, and records who looked at them and when.
 async function revealIdentifiers(req, res, next) {
   try {
     if (!CASE_ID_PATTERN.test(String(req.params.id || ''))) {
       return res.status(404).json({ message: 'Duplicate flag not found' });
     }
     const { rows } = await pool.query(
-      `SELECT df.id,
+      `SELECT df.id, df.comparison_features,
               s1.id AS student_id, s1.full_name AS student_name,
               s1.is_synthetic AS student_is_synthetic,
               TO_CHAR(s1.date_of_birth, 'YYYY-MM-DD') AS student_date_of_birth,
               s1.school_code AS student_school,
+              s1.school_name AS student_school_name,
               s1.primary_phone AS student_guardian_contact,
-              s1.upi AS student_upi,
+              s1.admission_number AS student_admission_number,
               s1.birth_certificate_number AS student_birth_certificate_number,
               s1.national_id_number AS student_national_id_number,
               s2.id AS matched_student_id, s2.full_name AS matched_student_name,
               s2.is_synthetic AS matched_student_is_synthetic,
               TO_CHAR(s2.date_of_birth, 'YYYY-MM-DD') AS matched_date_of_birth,
               s2.school_code AS matched_school,
+              s2.school_name AS matched_school_name,
               s2.primary_phone AS matched_guardian_contact,
-              s2.upi AS matched_upi,
+              s2.admission_number AS matched_admission_number,
               s2.birth_certificate_number AS matched_birth_certificate_number,
               s2.national_id_number AS matched_national_id_number
        FROM duplicate_flags df
@@ -449,8 +506,9 @@ async function revealIdentifiers(req, res, next) {
         is_synthetic: row.student_is_synthetic,
         date_of_birth: row.student_date_of_birth,
         school_code: row.student_school,
+        school: row.student_school || row.student_school_name,
         guardian_contact: row.student_guardian_contact,
-        upi: row.student_upi,
+        admission_number: row.student_admission_number,
         birth_certificate_number: row.student_birth_certificate_number,
         national_id_number: row.student_national_id_number,
       },
@@ -460,8 +518,9 @@ async function revealIdentifiers(req, res, next) {
         is_synthetic: row.matched_student_is_synthetic,
         date_of_birth: row.matched_date_of_birth,
         school_code: row.matched_school,
+        school: row.matched_school || row.matched_school_name,
         guardian_contact: row.matched_guardian_contact,
-        upi: row.matched_upi,
+        admission_number: row.matched_admission_number,
         birth_certificate_number: row.matched_birth_certificate_number,
         national_id_number: row.matched_national_id_number,
       },
@@ -478,6 +537,7 @@ async function revealIdentifiers(req, res, next) {
       revealed_at: new Date().toISOString(),
       revealed_fields: REVEALED_IDENTIFIER_FIELDS,
       students,
+      near_match_evidence: row.comparison_features?.review_evidence || null,
       notice: 'Identifier reveal recorded in the audit log.',
     });
   } catch (error) {
@@ -594,7 +654,7 @@ async function resolve(req, res, next) {
     // A stable lock order over both student rows keeps resolution and award approval from
     // interleaving on the same records.
     const students = await client.query(
-      `SELECT id, full_name, upi, duplicate_of_student_id FROM students
+      `SELECT id, full_name, admission_number, duplicate_of_student_id FROM students
        WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`,
       [[...pair].sort()]
     );
@@ -624,7 +684,7 @@ async function resolve(req, res, next) {
       `UPDATE students
        SET duplicate_of_student_id = $1, duplicate_marked_at = NOW(), duplicate_marked_by = $2
        WHERE id = $3 AND duplicate_of_student_id IS NULL
-       RETURNING id, full_name, upi`,
+       RETURNING id, full_name, admission_number`,
       [canonical.id, actorId, duplicate.id]
     );
     if (!marked.rows.length) {
@@ -662,8 +722,8 @@ async function resolve(req, res, next) {
     res.status(201).json({
       message: `${duplicate.full_name} is now recorded as a duplicate of ${canonical.full_name}. Only the canonical record can receive a bursary.`,
       resolution: resolution.rows[0],
-      canonical_student: { id: canonical.id, full_name: canonical.full_name, upi: canonical.upi },
-      duplicate_student: { id: duplicate.id, full_name: duplicate.full_name, upi: duplicate.upi },
+      canonical_student: { id: canonical.id, full_name: canonical.full_name, admission_number: canonical.admission_number },
+      duplicate_student: { id: duplicate.id, full_name: duplicate.full_name, admission_number: duplicate.admission_number },
       duplicate_open_awards: duplicateAwards.rows,
     });
   } catch (error) {

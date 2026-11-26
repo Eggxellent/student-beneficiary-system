@@ -318,11 +318,8 @@ export function GuardianHeader({
           <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
             <GraduationCap className="size-5" aria-hidden="true" />
           </div>
-          <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+          <div className="min-w-0">
             <span className="text-xl font-semibold tracking-tight text-primary">SBMS</span>
-            <span className="hidden text-xs font-medium uppercase tracking-widest text-muted-foreground lg:inline">
-              Student Beneficiary Management System
-            </span>
           </div>
         </Link>
 

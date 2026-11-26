@@ -54,10 +54,7 @@ function BrandMark() {
       <span className="flex h-10 w-10 items-center justify-center rounded-md bg-[#0B2239] ring-1 ring-[#C8A45D]/60">
         <GraduationCap size={20} className="text-[#C8A45D]" aria-hidden="true" />
       </span>
-      <span className="leading-tight">
-        <span className="block text-sm font-bold tracking-[0.18em] text-[#0B2239]">SBMS</span>
-        <span className="hidden text-[11px] text-[#5C6B78] sm:block">Student Beneficiary Management System</span>
-      </span>
+      <span className="text-sm font-bold tracking-[0.18em] text-[#0B2239]">SBMS</span>
     </span>
   );
 }

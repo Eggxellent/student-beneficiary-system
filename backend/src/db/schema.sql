@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS students (
   date_of_birth DATE,
   school_code VARCHAR(100),
   guardian_id VARCHAR(100),
+  admission_number VARCHAR(100),
   upi VARCHAR(100),
   national_id_number VARCHAR(100),
   primary_phone VARCHAR(50),
@@ -70,6 +71,9 @@ ALTER TABLE students ADD COLUMN IF NOT EXISTS eligibility_score INTEGER;
 ALTER TABLE students ADD COLUMN IF NOT EXISTS eligibility_category VARCHAR(50);
 ALTER TABLE students ADD COLUMN IF NOT EXISTS eligibility_assessed_at TIMESTAMP;
 ALTER TABLE students ADD COLUMN IF NOT EXISTS national_id_number VARCHAR(100);
+-- The admission number is the identifier the guardian form actually collects. It is only
+-- unique inside one school, so duplicate screening compares it together with the school.
+ALTER TABLE students ADD COLUMN IF NOT EXISTS admission_number VARCHAR(100);
 ALTER TABLE students ADD COLUMN IF NOT EXISTS primary_phone VARCHAR(50);
 ALTER TABLE students ADD COLUMN IF NOT EXISTS qr_token VARCHAR(100);
 ALTER TABLE students ALTER COLUMN upi DROP NOT NULL;

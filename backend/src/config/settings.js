@@ -5,6 +5,9 @@ function configuredThreshold(name, fallback) {
 
 let duplicateThreshold = configuredThreshold('DUPLICATE_HIGH_PRIORITY_THRESHOLD', 0.70);
 let reviewThreshold = configuredThreshold('DUPLICATE_REVIEW_THRESHOLD', 0.30);
+// The API uses 0.50 as its provisional review gate. The model's validation-selected
+// analysis cutoff (0.63) is recorded separately; aggregation requires corroborating
+// evidence before a score-only candidate becomes a case.
 let mlReviewScoreThreshold = configuredThreshold('ML_REVIEW_SCORE_THRESHOLD', 0.50);
 
 function getDuplicateThreshold() {

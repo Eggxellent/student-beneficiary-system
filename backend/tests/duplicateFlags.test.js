@@ -41,7 +41,8 @@ async function createStudent(overrides = {}) {
     date_of_birth: '2008-02-15',
     school_code: 'Nairobi School',
     guardian_id: 'G-100',
-    upi: `UPI-TEST-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    admission_number: `ADM-TEST-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    upi: null,
     national_id_number: null,
     birth_certificate_number: null,
     primary_phone: null,
@@ -50,11 +51,11 @@ async function createStudent(overrides = {}) {
 
   const result = await pool.query(
     `INSERT INTO students
-       (full_name, date_of_birth, school_code, guardian_id, upi,
+       (full_name, date_of_birth, school_code, guardian_id, admission_number, upi,
         national_id_number, birth_certificate_number, primary_phone)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING *`,
-    [student.full_name, student.date_of_birth, student.school_code, student.guardian_id, student.upi,
+    [student.full_name, student.date_of_birth, student.school_code, student.guardian_id, student.admission_number, student.upi,
       student.national_id_number, student.birth_certificate_number, student.primary_phone]
   );
 
@@ -122,9 +123,9 @@ describe('Duplicate flags and award API', () => {
   });
 
   test('GET /api/duplicate-flags should return pending duplicate flags for admins', async () => {
-    const sharedUpi = `UPI-SHARED-${Date.now()}`;
-    const student = await createStudent({ full_name: `Pending Flag ${Date.now()}`, upi: sharedUpi });
-    const matchedStudent = await createStudent({ full_name: `Matched Flag ${Date.now()}`, upi: sharedUpi });
+    const sharedAdmission = `ADM-SHARED-${Date.now()}`;
+    const student = await createStudent({ full_name: `Pending Flag ${Date.now()}`, admission_number: sharedAdmission });
+    const matchedStudent = await createStudent({ full_name: `Matched Flag ${Date.now()}`, admission_number: sharedAdmission });
 
     const flagResult = await pool.query(
       `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
@@ -141,7 +142,7 @@ describe('Duplicate flags and award API', () => {
     expect(Array.isArray(response.body.cases)).toBe(true);
     expect(response.body.cases.some((flag) => flag.id === flagResult.rows[0].id)).toBe(true);
     const reviewCase = response.body.cases.find((flag) => flag.id === flagResult.rows[0].id);
-    expect(reviewCase.students[0].upi).not.toBe(sharedUpi);
+    expect(reviewCase.students[0].admission_number).not.toBe(sharedAdmission);
     expect(response.body.case_totals.unresolved).toBeGreaterThanOrEqual(1);
 
     expect(reviewCase.assigned_to).toBeUndefined();
@@ -156,27 +157,33 @@ describe('Duplicate flags and award API', () => {
   });
 
   test('GET /api/duplicate-flags/:id/identifiers reveals identifiers for verification and audits the reveal', async () => {
-    const sharedUpi = `UPI-REVEAL-${Date.now()}`;
+    const sharedAdmission = `ADM-REVEAL-${Date.now()}`;
     const sharedCertificate = `BC-REVEAL-${Date.now()}`;
     const student = await createStudent({
       full_name: `Reveal Flag ${Date.now()}`,
-      upi: sharedUpi,
+      admission_number: sharedAdmission,
       birth_certificate_number: sharedCertificate,
       national_id_number: 'NID-REVEAL-001',
       primary_phone: '+254712345678',
     });
     const matchedStudent = await createStudent({
       full_name: `Reveal Match ${Date.now()}`,
-      upi: `${sharedUpi}-B`,
+      admission_number: `${sharedAdmission}-B`,
       birth_certificate_number: `${sharedCertificate}-B`,
       national_id_number: 'NID-REVEAL-002',
       primary_phone: '+254712345679',
     });
+    const reviewEvidence = {
+      near_match_review: true,
+      comparisons: {
+        admission_number: { similarity: 0.88, match_type: 'adjacent_transposition', normalized: ['00123', '00132'] },
+      },
+    };
     const flagResult = await pool.query(
-      `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status)
-       VALUES ($1, $2, $3, 'pending')
+      `INSERT INTO duplicate_flags (student_id, matched_student_id, probability, status, comparison_features)
+       VALUES ($1, $2, $3, 'pending', $4)
        RETURNING *`,
-      [student.id, matchedStudent.id, 0.94]
+      [student.id, matchedStudent.id, 0.94, { review_evidence: reviewEvidence }]
     );
     const caseId = flagResult.rows[0].id;
 
@@ -185,10 +192,12 @@ describe('Duplicate flags and award API', () => {
       .get('/api/duplicate-flags?status=pending')
       .set('Authorization', `Bearer ${adminToken}`);
     const queuedCase = queue.body.cases.find((flag) => flag.id === caseId);
-    expect(queuedCase.students[0].upi).not.toBe(sharedUpi);
+    expect(queuedCase.students[0].admission_number).not.toBe(sharedAdmission);
     expect(queuedCase.students[0].guardian_contact).not.toBe('+254712345678');
     expect(queuedCase.students[0].guardian_contact).toMatch(/678$/);
     expect(queuedCase.students[0].guardian_contact).not.toContain('254712345678');
+    expect(queuedCase.evidence.near_match_review.comparisons.admission_number.match_type).toBe('adjacent_transposition');
+    expect(queuedCase.evidence.near_match_review.comparisons.admission_number.normalized).toBeUndefined();
 
     const officerReveal = await request(app)
       .get(`/api/duplicate-flags/${caseId}/identifiers`)
@@ -199,18 +208,19 @@ describe('Duplicate flags and award API', () => {
       .get(`/api/duplicate-flags/${caseId}/identifiers`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(reveal.statusCode).toBe(200);
-    expect(reveal.body.students[0].upi).toBe(sharedUpi);
+    expect(reveal.body.students[0].admission_number).toBe(sharedAdmission);
     expect(reveal.body.students[0].birth_certificate_number).toBe(sharedCertificate);
     expect(reveal.body.students[0].national_id_number).toBe('NID-REVEAL-001');
     expect(reveal.body.students[0].guardian_contact).toBe('+254712345678');
-    expect(reveal.body.students[1].upi).toBe(`${sharedUpi}-B`);
+    expect(reveal.body.students[1].admission_number).toBe(`${sharedAdmission}-B`);
+    expect(reveal.body.near_match_evidence.comparisons.admission_number.normalized).toEqual(['00123', '00132']);
 
     const revealAudit = await pool.query(
       "SELECT user_id, details FROM audit_logs WHERE record_id = $1 AND action = 'REVEAL_DUPLICATE_IDENTIFIERS' ORDER BY created_at DESC LIMIT 1",
       [caseId]
     );
     expect(revealAudit.rows[0].user_id).toBe(jwt.decode(adminToken).id);
-    expect(revealAudit.rows[0].details.fields).toContain('upi');
+    expect(revealAudit.rows[0].details.fields).toContain('admission_number');
     expect(revealAudit.rows[0].details.fields).toContain('guardian_contact');
 
     const missingCase = await request(app)
@@ -231,34 +241,39 @@ describe('Duplicate flags and award API', () => {
         pairs: [
           {
             label: 'Exact certificate',
-            first: { full_name: 'Nia Wanjiku', date_of_birth: '2011-05-14', school_code: 'SCH-A', guardian_id: 'G-A', upi: 'UPI-A', birth_certificate_number: 'BC-SHARED' },
-            second: { full_name: 'David Otieno', date_of_birth: '2009-08-22', school_code: 'SCH-B', guardian_id: 'G-B', upi: 'UPI-B', birth_certificate_number: 'BC-SHARED' },
+            first: { full_name: 'Nia Wanjiku', date_of_birth: '2011-05-14', school_code: 'SCH-A', guardian_id: 'G-A', admission_number: 'A-01', birth_certificate_number: 'BC-SHARED' },
+            second: { full_name: 'David Otieno', date_of_birth: '2009-08-22', school_code: 'SCH-B', guardian_id: 'G-B', admission_number: 'B-01', birth_certificate_number: 'BC-SHARED' },
           },
           {
-            label: 'Both unique identifiers',
-            first: { full_name: 'Nia Wanjiku', date_of_birth: '2011-05-14', school_code: 'SCH-A', guardian_id: 'G-A', upi: 'UPI-SHARED', birth_certificate_number: 'BC-SHARED' },
-            second: { full_name: 'David Otieno', date_of_birth: '2009-08-22', school_code: 'SCH-B', guardian_id: 'G-B', upi: 'UPI-SHARED', birth_certificate_number: 'BC-SHARED' },
+            label: 'Same school, shared admission number and certificate',
+            first: { full_name: 'Nia Wanjiku', date_of_birth: '2011-05-14', school_code: 'Nairobi School', guardian_id: 'G-A', admission_number: '0148', birth_certificate_number: 'BC-SHARED-2' },
+            second: { full_name: 'David Otieno', date_of_birth: '2009-08-22', school_code: 'Nairobi School', guardian_id: 'G-B', admission_number: 'ADM-0148', birth_certificate_number: 'bcshared2' },
+          },
+          {
+            label: 'Same admission number at a different school',
+            first: { full_name: 'Mercy Chepkoech', date_of_birth: '2011-04-02', school_code: 'Maranda', guardian_id: 'G-C', admission_number: '0148', birth_certificate_number: 'BC-C1' },
+            second: { full_name: 'Mercy Chepkoech', date_of_birth: '2011-04-02', school_code: 'Alliance High', guardian_id: 'G-D', admission_number: '0148', birth_certificate_number: 'BC-C2' },
           },
           {
             label: 'Non-unique overlap',
-            first: { full_name: 'Miriam Chebet', date_of_birth: '2010-11-03', school_code: 'SCH-C', guardian_id: 'G-C', upi: 'UPI-C1', birth_certificate_number: 'BC-C1' },
-            second: { full_name: 'Miriam Chebet', date_of_birth: '2010-11-03', school_code: 'SCH-C', guardian_id: 'G-C', upi: 'UPI-C2', birth_certificate_number: 'BC-C2' },
+            first: { full_name: 'Miriam Chebet', date_of_birth: '2010-11-03', school_code: 'SCH-C', guardian_id: 'G-C', admission_number: 'C-01', birth_certificate_number: 'BC-C1' },
+            second: { full_name: 'Miriam Chebet', date_of_birth: '2010-11-03', school_code: 'SCH-C', guardian_id: 'G-C', admission_number: 'C-02', birth_certificate_number: 'BC-C2' },
           },
           {
             label: 'Four strong partial matches below weighted review threshold',
-            first: { full_name: 'Fatuma Wairimu', date_of_birth: '1980-04-12', school_code: 'SCH-4821765', guardian_id: 'G-4821765', upi: 'UPI-12345678', birth_certificate_number: 'BC-1980-123456' },
-            second: { full_name: 'Amina Wanjiku', date_of_birth: '1980-09-09', school_code: 'SCH-4821750', guardian_id: 'G-4821750', upi: 'UPI-87654321', birth_certificate_number: 'BC-1980-654321' },
+            first: { full_name: 'Fatuma Wairimu', date_of_birth: '1980-04-12', school_code: 'SCH-4821765', guardian_id: 'G-4821765', admission_number: 'F-01', birth_certificate_number: 'BC-1980-123456' },
+            second: { full_name: 'Amina Wanjiku', date_of_birth: '1980-09-09', school_code: 'SCH-4821750', guardian_id: 'G-4821750', admission_number: 'A-02', birth_certificate_number: 'BC-1980-654321' },
           },
           {
             label: 'Exact name and DOB only',
-            first: { full_name: 'Amina Hassan', date_of_birth: '2010-05-14', school_code: 'SCH-014', guardian_id: 'G-123456', upi: 'UPI-12345678', birth_certificate_number: 'BC-2010-123456' },
-            second: { full_name: 'Amina Hassan', date_of_birth: '2010-05-14', school_code: 'SCH-079', guardian_id: 'G-654321', upi: 'UPI-87654321', birth_certificate_number: 'BC-2010-654321' },
+            first: { full_name: 'Amina Hassan', date_of_birth: '2010-05-14', school_code: 'SCH-014', guardian_id: 'G-123456', admission_number: 'H-01', birth_certificate_number: 'BC-2010-123456' },
+            second: { full_name: 'Amina Hassan', date_of_birth: '2010-05-14', school_code: 'SCH-079', guardian_id: 'G-654321', admission_number: 'H-02', birth_certificate_number: 'BC-2010-654321' },
           },
         ],
       });
 
     expect(response.statusCode).toBe(200);
-    expect(response.body.results).toHaveLength(5);
+    expect(response.body.results).toHaveLength(6);
     for (const result of response.body.results) {
       expect(typeof result.model_score).toBe('number');
       expect(result.model_score).toBeGreaterThanOrEqual(0);
@@ -268,7 +283,7 @@ describe('Duplicate flags and award API', () => {
         dob_match: expect.any(Number),
         school_match: expect.any(Number),
         guardian_match: expect.any(Number),
-        upi_match: expect.any(Number),
+        admission_number_match: expect.any(Number),
         birth_certificate_match: expect.any(Number),
       }));
       expect(result.model_version).toEqual(expect.any(String));
@@ -279,6 +294,9 @@ describe('Duplicate flags and award API', () => {
     }
     expect(response.body.results[0].requires_human_review).toBe(true);
     expect(response.body.results[1].requires_human_review).toBe(true);
+    expect(response.body.results[1].model_features.admission_number_match).toBe(1);
+    // The same admission number at a different school is not an identifier match.
+    expect(response.body.results[2].model_features.admission_number_match).toBe(0);
     expect(response.body.model_version).toEqual(expect.any(String));
     const persistedFlags = await pool.query('SELECT COUNT(*)::int AS count FROM duplicate_flags');
     expect(persistedFlags.rows[0].count).toBe(flagsBefore.rows[0].count);

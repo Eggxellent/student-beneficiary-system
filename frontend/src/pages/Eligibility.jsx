@@ -102,8 +102,7 @@ export default function Eligibility() {
       <header>
         <h1 className="text-2xl font-bold text-slate-900">Eligibility findings</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Calculated automatically by the eligibility engine from the guardian&apos;s submitted
-          application. Read-only for Field Officers: no score is recalculated or re-entered here.
+          Scores come from the guardian&apos;s application and are read-only here.
         </p>
       </header>
 

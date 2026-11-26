@@ -1,5 +1,8 @@
 # OBJECTIVE–REQUIREMENT–TEST TRACEABILITY (revalidated)
 
+> HISTORICAL SNAPSHOT NOTICE -- 25 November 2026: This document reflects the 3 November audit only. Azure deployment was completed earlier; later API/frontend deployment records are in `docs/azure-deployment-log-2026-10-31.md`. Do not interpret old image/404 claims or action items as current deployment status or pending work. Current phase: local testing and verification. Do not modify production. See `docs/final-report-evidence/09_DEPLOYMENT_STATUS_AND_LOCAL_VERIFICATION.md`.
+
+
 > Re-derived 2026-11-03 at HEAD `cca0625`. Supersedes `docs/final-documentation-content/OBJECTIVE_REQUIREMENT_TEST_
 > TRACEABILITY.md` (bound to `d6b5032`) **only for evidence status and test counts**; the objective wording below is
 > carried forward unchanged because the approved proposal (§1.3.1) is not in the repository and must not be
@@ -115,8 +118,7 @@ interchangeable.
 4. **Some NFRs have no behavioural test**: NFR-13 (concurrency) is verified by inspection of the advisory lock only;
    NFR-14 (usability), NFR-19 (browsers), NFR-22 (capacity) and NFR-23 (threshold validation) have no executed evidence.
 5. **Objective (iv) cannot be fully met**: no adjudicated real duplicate labels, no UAT, no load test.
-6. **Certificates are tested but not deployed** — a traceability row cannot cite a §5.3 screenshot of a feature the
-   running system does not serve.
+6. **Historical 3 November caveat only:** the certificates route returned 404 in that snapshot. Later live certificate checks are recorded in the deployment log; do not treat this as current deployment status.
 7. **Research artefacts are traced separately** — nothing from `ml-service/experiments/` or `model/research/` is
    attributed to the deployed system.
 

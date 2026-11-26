@@ -1,0 +1,685 @@
+{
+  "scope": "forensic audit of contaminated prior run; uses train and validation only, not test",
+  "depth2_tree": {
+    "fit_split": "training",
+    "evaluated_split": "validation",
+    "f1": 0.8808891838088918,
+    "accuracy": 0.8803333333333333,
+    "rules": "|--- jaro_winkler <= 0.89692\n|   |--- birth_certificate_match <= 0.93889\n|   |   |--- class: 0\n|   |--- birth_certificate_match >  0.93889\n|   |   |--- class: 1\n|--- jaro_winkler >  0.89692\n|   |--- birth_certificate_match <= 0.93889\n|   |   |--- class: 1\n|   |--- birth_certificate_match >  0.93889\n|   |   |--- class: 1\n",
+    "feature_importances": {
+      "jaro_winkler": 0.8237898035837316,
+      "dob_match": 0.0,
+      "school_match": 0.0,
+      "guardian_match": 0.0,
+      "admission_number_match": 0.0,
+      "birth_certificate_match": 0.17621019641626845
+    }
+  },
+  "missingness_only": {
+    "features": [
+      "isna(name_1)",
+      "isna(name_2)",
+      "isna(dob_1)",
+      "isna(dob_2)",
+      "isna(school_1)",
+      "isna(school_2)",
+      "isna(guardian_1)",
+      "isna(guardian_2)",
+      "isna(admission_number_1)",
+      "isna(admission_number_2)",
+      "isna(birth_certificate_1)",
+      "isna(birth_certificate_2)"
+    ],
+    "fit_split": "training",
+    "evaluated_split": "validation",
+    "f1": 0.6650772025431426,
+    "accuracy": 0.5083333333333333,
+    "rates_by_label": {
+      "0": {
+        "name_1": 0.03143307796304642,
+        "name_2": 0.02929247408742677,
+        "dob_1": 0.030193780982424517,
+        "dob_2": 0.028841820639927896,
+        "school_1": 0.032334384858044164,
+        "school_2": 0.028841820639927896,
+        "guardian_1": 0.03334835511491663,
+        "guardian_2": 0.02985579089680036,
+        "admission_number_1": 0.029517800811176206,
+        "admission_number_2": 0.4558359621451104,
+        "birth_certificate_1": 0.02996845425867508,
+        "birth_certificate_2": 0.4565119423163587
+      },
+      "1": {
+        "name_1": 0.030797895659798333,
+        "name_2": 0.030797895659798333,
+        "dob_1": 0.029592284085927224,
+        "dob_2": 0.03156510302498904,
+        "school_1": 0.031017097764138534,
+        "school_2": 0.03222270933800964,
+        "guardian_1": 0.029044278825076722,
+        "guardian_2": 0.029811486190267425,
+        "admission_number_1": 0.02893467777290662,
+        "admission_number_2": 0.45659798334064006,
+        "birth_certificate_1": 0.029592284085927224,
+        "birth_certificate_2": 0.45341955282770713
+      }
+    }
+  },
+  "feature_distribution_by_split_tier_label": {
+    "train|easy|label_0": {
+      "jaro_winkler": {
+        "n": 150,
+        "mean": 0.4773609016217892,
+        "std": 0.1917175170965344,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.8448107448107449
+      },
+      "dob_match": {
+        "n": 150,
+        "mean": 0.0,
+        "std": 0.0,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "school_match": {
+        "n": 150,
+        "mean": 0.52,
+        "std": 0.5012735458661617,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "guardian_match": {
+        "n": 150,
+        "mean": 0.4688518518518518,
+        "std": 0.18388320208867567,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.75
+      },
+      "admission_number_match": {
+        "n": 150,
+        "mean": 0.0,
+        "std": 0.0,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "birth_certificate_match": {
+        "n": 150,
+        "mean": 0.3991666666666666,
+        "std": 0.22950427643253243,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.6944444444444443
+      }
+    },
+    "train|easy|label_1": {
+      "jaro_winkler": {
+        "n": 190,
+        "mean": 0.868421052631579,
+        "std": 0.3389255222129955,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "dob_match": {
+        "n": 190,
+        "mean": 0.8947368421052632,
+        "std": 0.3077030180429277,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "school_match": {
+        "n": 190,
+        "mean": 0.8947368421052632,
+        "std": 0.3077030180429277,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "guardian_match": {
+        "n": 190,
+        "mean": 0.8789473684210526,
+        "std": 0.3270502240743954,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "admission_number_match": {
+        "n": 190,
+        "mean": 0.7736842105263158,
+        "std": 0.4195514173648631,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "birth_certificate_match": {
+        "n": 190,
+        "mean": 0.8894736842105263,
+        "std": 0.3143730417143384,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "train|moderate|label_0": {
+      "jaro_winkler": {
+        "n": 1636,
+        "mean": 0.625475580776879,
+        "std": 0.23096128304706456,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "dob_match": {
+        "n": 1636,
+        "mean": 0.04486552567237164,
+        "std": 0.20487464716095535,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "school_match": {
+        "n": 1636,
+        "mean": 0.7616136919315404,
+        "std": 0.4262268421993072,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "guardian_match": {
+        "n": 1636,
+        "mean": 0.8060241782124423,
+        "std": 0.34547815083641664,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "admission_number_match": {
+        "n": 1636,
+        "mean": 0.0,
+        "std": 0.0,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "birth_certificate_match": {
+        "n": 1636,
+        "mean": 0.18095286606900296,
+        "std": 0.2527803871462511,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.7777777777777777
+      }
+    },
+    "train|moderate|label_1": {
+      "jaro_winkler": {
+        "n": 784,
+        "mean": 0.8648212333977892,
+        "std": 0.3167859448969528,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "dob_match": {
+        "n": 784,
+        "mean": 0.7901785714285714,
+        "std": 0.39397501881894037,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "school_match": {
+        "n": 784,
+        "mean": 0.7678571428571429,
+        "std": 0.42246917561198866,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "guardian_match": {
+        "n": 784,
+        "mean": 0.8439089326206671,
+        "std": 0.31981272554493634,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "admission_number_match": {
+        "n": 784,
+        "mean": 0.639030612244898,
+        "std": 0.4769872234370959,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "birth_certificate_match": {
+        "n": 784,
+        "mean": 0.8380116213151928,
+        "std": 0.35068886301194535,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "train|hard|label_0": {
+      "jaro_winkler": {
+        "n": 4140,
+        "mean": 0.6180023522136476,
+        "std": 0.27634669678931123,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "dob_match": {
+        "n": 4140,
+        "mean": 0.6108695652173913,
+        "std": 0.4626966112243179,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "school_match": {
+        "n": 4140,
+        "mean": 0.8340579710144927,
+        "std": 0.3720735294319224,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "guardian_match": {
+        "n": 4140,
+        "mean": 0.7243947933440688,
+        "std": 0.3474112086086177,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "admission_number_match": {
+        "n": 4140,
+        "mean": 0.1521980676328502,
+        "std": 0.35807395888967086,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "birth_certificate_match": {
+        "n": 4140,
+        "mean": 0.3749912775093935,
+        "std": 0.4024976172267713,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "train|hard|label_1": {
+      "jaro_winkler": {
+        "n": 5100,
+        "mean": 0.8453392533883954,
+        "std": 0.32465300331783103,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "dob_match": {
+        "n": 5100,
+        "mean": 0.6562549019607843,
+        "std": 0.44485035167443643,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "school_match": {
+        "n": 5100,
+        "mean": 0.4598039215686274,
+        "std": 0.49843052437551866,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "guardian_match": {
+        "n": 5100,
+        "mean": 0.6888611889200125,
+        "std": 0.3408925740071225,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "admission_number_match": {
+        "n": 5100,
+        "mean": 0.1710392156862745,
+        "std": 0.37430002453343636,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "birth_certificate_match": {
+        "n": 5100,
+        "mean": 0.39834291938997823,
+        "std": 0.4743638040088228,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "validation|easy|label_0": {
+      "jaro_winkler": {
+        "n": 82,
+        "mean": 0.4023762744487845,
+        "std": 0.21948478573314142,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.6773226773226773
+      },
+      "dob_match": {
+        "n": 82,
+        "mean": 0.0,
+        "std": 0.0,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "school_match": {
+        "n": 82,
+        "mean": 0.573170731707317,
+        "std": 0.4976608941363028,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "guardian_match": {
+        "n": 82,
+        "mean": 0.4398373983739838,
+        "std": 0.21040747093235387,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.6833333333333332
+      },
+      "admission_number_match": {
+        "n": 82,
+        "mean": 0.0,
+        "std": 0.0,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "birth_certificate_match": {
+        "n": 82,
+        "mean": 0.4097222222222221,
+        "std": 0.21405884167687564,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.6944444444444443
+      }
+    },
+    "validation|easy|label_1": {
+      "jaro_winkler": {
+        "n": 90,
+        "mean": 0.9333333333333333,
+        "std": 0.25084128112136317,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "dob_match": {
+        "n": 90,
+        "mean": 0.9,
+        "std": 0.3016806854192959,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "school_match": {
+        "n": 90,
+        "mean": 0.8888888888888888,
+        "std": 0.31603030875998483,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "guardian_match": {
+        "n": 90,
+        "mean": 0.8111111111111111,
+        "std": 0.39361318045793675,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "admission_number_match": {
+        "n": 90,
+        "mean": 0.7666666666666667,
+        "std": 0.42532208548874395,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "birth_certificate_match": {
+        "n": 90,
+        "mean": 0.9111111111111111,
+        "std": 0.28617761611461456,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "validation|moderate|label_0": {
+      "jaro_winkler": {
+        "n": 782,
+        "mean": 0.6206740126060876,
+        "std": 0.23525442297563806,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "dob_match": {
+        "n": 782,
+        "mean": 0.06483375959079284,
+        "std": 0.24275132412267533,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "school_match": {
+        "n": 782,
+        "mean": 0.7570332480818415,
+        "std": 0.4291496477313609,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "guardian_match": {
+        "n": 782,
+        "mean": 0.7877770673486787,
+        "std": 0.34814594330565796,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "admission_number_match": {
+        "n": 782,
+        "mean": 0.0,
+        "std": 0.0,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "birth_certificate_match": {
+        "n": 782,
+        "mean": 0.18517334470019892,
+        "std": 0.25912129454483956,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.7777777777777777
+      }
+    },
+    "validation|moderate|label_1": {
+      "jaro_winkler": {
+        "n": 374,
+        "mean": 0.8614067962417687,
+        "std": 0.3247002451138317,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "dob_match": {
+        "n": 374,
+        "mean": 0.8240641711229946,
+        "std": 0.36716222996058956,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "school_match": {
+        "n": 374,
+        "mean": 0.7620320855614974,
+        "std": 0.4264098382708718,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "guardian_match": {
+        "n": 374,
+        "mean": 0.8427510398098633,
+        "std": 0.3168030701076164,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "admission_number_match": {
+        "n": 374,
+        "mean": 0.6056149732620321,
+        "std": 0.4856609011176379,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "birth_certificate_match": {
+        "n": 374,
+        "mean": 0.8038265002970886,
+        "std": 0.3805116620407937,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "validation|hard|label_0": {
+      "jaro_winkler": {
+        "n": 2086,
+        "mean": 0.6245443800821299,
+        "std": 0.2768675176127867,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "dob_match": {
+        "n": 2086,
+        "mean": 0.6173058485139021,
+        "std": 0.46136345679468227,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "school_match": {
+        "n": 2086,
+        "mean": 0.836529242569511,
+        "std": 0.3698832998384464,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "guardian_match": {
+        "n": 2086,
+        "mean": 0.7418831514708791,
+        "std": 0.33961448307387676,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "admission_number_match": {
+        "n": 2086,
+        "mean": 0.14856184084372004,
+        "std": 0.3544649668452984,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "birth_certificate_match": {
+        "n": 2086,
+        "mean": 0.3489035368062214,
+        "std": 0.3963155781365444,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 0.9333333333333332
+      }
+    },
+    "validation|hard|label_1": {
+      "jaro_winkler": {
+        "n": 2586,
+        "mean": 0.8503720487462846,
+        "std": 0.31699217833591475,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "dob_match": {
+        "n": 2586,
+        "mean": 0.6639984532095901,
+        "std": 0.4432944434954832,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "school_match": {
+        "n": 2586,
+        "mean": 0.462877030162413,
+        "std": 0.4987164162020308,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "guardian_match": {
+        "n": 2586,
+        "mean": 0.6939575430584711,
+        "std": 0.3406086611364856,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "admission_number_match": {
+        "n": 2586,
+        "mean": 0.15765661252900234,
+        "std": 0.36290968929062195,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      },
+      "birth_certificate_match": {
+        "n": 2586,
+        "mean": 0.39577038755693045,
+        "std": 0.47448180615402097,
+        "null_rate": 0.0,
+        "min": 0.0,
+        "max": 1.0
+      }
+    }
+  },
+  "feature_columns": [
+    "jaro_winkler",
+    "dob_match",
+    "school_match",
+    "guardian_match",
+    "admission_number_match",
+    "birth_certificate_match"
+  ],
+  "feature_engineering": {
+    "uses_fitted_statistics": false,
+    "has_fit_calls": false,
+    "predictor_uses_shared_builder": true,
+    "school_gate": "exact school_code match is a binary school_match; admission comparison requires school_match >= 0.85"
+  },
+  "metadata_warning": "Prior difficulty_band was derived from label and scenario. It was excluded from model features, but this direct metadata-target dependency has been removed from the new generator."
+}

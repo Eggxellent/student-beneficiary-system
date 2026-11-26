@@ -1,5 +1,10 @@
 # CLAUDE FINAL HANDOFF GUIDE
 
+> **HISTORICAL SNAPSHOT NOTICE -- 25 November 2026:** This package records an audit performed on 3 November 2026. Azure deployment was completed earlier, and later deployment activity is recorded in `docs/azure-deployment-log-2026-10-31.md`, including November 12 API deployment evidence and November 18 frontend redeployments. Do not treat the 3 November image comparison or action items as current deployment status or pending work. The current project phase is local testing and verification. Do not modify the live application or production database. See `docs/final-report-evidence/09_DEPLOYMENT_STATUS_AND_LOCAL_VERIFICATION.md` for the current handoff distinction.
+
+
+
+
 > Read this first if you are continuing this work. It records what was verified, how, what must **not** be changed,
 > and the exact commands that reproduce every number in the package.
 
@@ -26,7 +31,7 @@ copy it from an older report.
    re-derived from code, not inherited from the chapter drafts.
 3. **Do not quote the balanced-holdout precision without the prevalence-adjusted figures.** 0.9204 at a 50/50 split
    becomes 0.105 at 1 % prevalence; both numbers belong in the same paragraph.
-4. **Do not describe the certificates feature as deployed.** It is tested at HEAD and absent from `a3714f8` (live 404).
+4. **Use deployment claims only with their date/revision.** The `a3714f8` and certificate 404 statement is a 3 November snapshot; later deployment activity is recorded in the Azure deployment log. Do not infer whether the present local worktree is deployed.
 5. **Do not cite `docs/verification.md` or `docs/uat-test-plan.md` as evidence** (G-23, G-24).
 6. **Do not call the model Random Forest.** The proposal said Random Forest; the delivered artefact is XGBoost (G-21).
 7. **Do not delete `ml-service/model/*.joblib`** even though `.gitignore` lists it — the artefacts are tracked (G-27).
@@ -87,7 +92,7 @@ curl.exe -s -w "`n%{http_code}`n" -X POST -H "Content-Type: application/json" --
 
 | Item | Owner | Blocking? |
 | --- | --- | --- |
-| Redeploy HEAD or label the certificates as local-only (AD-1) | technical maintainer | blocks any live certificate claim |
+| Current local/live revision parity (historical AD-1) | Deployment is complete; dated records do not prove that the current local worktree is deployed | Keep deployment complete; no redeploy is requested or pending |
 | UAT decision (AD-2) | author | blocks objective (iv) being anything above "partially achieved" |
 | Adjudicated labels (AD-3) | programme owner + maintainer | blocks field-accuracy claims |
 | Stale document disposition (AD-4) | author | blocks a clean appendix |

@@ -15,18 +15,19 @@ function evaluate(item) {
     probability,
     risk: classifyDuplicate(features, probability, 0.7, 0.3),
     eligible: features.jaro_winkler >= MIN_NAME_SIMILARITY
-      || features.upi_match || features.birth_certificate_match || features.national_id_match
+      || features.admission_number_match || features.birth_certificate_match || features.national_id_match
       || hasCorroboratingMajority(features),
   };
 }
 
 describe('synthetic Kenyan dashboard dataset', () => {
-  test('has 50 clearly marked fictional records and 21 labelled comparison pairs', () => {
-    expect(records).toHaveLength(50);
+  test('has 52 clearly marked fictional records and 22 labelled comparison pairs', () => {
+    expect(records).toHaveLength(52);
     expect(ordinaryStudents).toHaveLength(8);
-    expect(comparisons).toHaveLength(21);
+    expect(comparisons).toHaveLength(22);
     expect(records.every((record) => record.qr_token.startsWith('SBMS-SYNTHETIC-KE-'))).toBe(true);
     expect(records.every((record) => record.upi.startsWith('SYN-UPI-KE-'))).toBe(true);
+    expect(records.every((record) => record.admission_number.startsWith('ADM-KE-'))).toBe(true);
     expect(new Set(Object.values(SCHOOL_INFO).map(([, school]) => school))).toEqual(new Set([
       'Nairobi School', 'Alliance High', 'Bishop Gatimu', 'Loreto Limuru', 'Maranda',
     ]));
@@ -54,14 +55,18 @@ describe('synthetic Kenyan dashboard dataset', () => {
       .every((item) => evaluate(item).risk !== 'duplicate')).toBe(true);
   });
 
-  test('missing values are zero evidence and exact synthetic UPI matches are critical review candidates', () => {
+  test('missing values are zero evidence and exact in-school admission-number matches are critical review candidates', () => {
     const missing = comparisons.filter((item) => item.category === 'missing_or_inconsistent_fields').map(evaluate);
     expect(missing[0].features.dob_match).toBe(0);
     expect(missing[0].features.guardian_match).toBe(0);
     expect(missing[1].features.guardian_match).toBe(0);
     expect(missing[2].features.dob_match).toBe(0);
-    const upi = comparisons.filter((item) => item.category === 'exact_upi_matches').map(evaluate);
-    expect(upi.every((result) => result.features.upi_match === 1 && result.risk === 'critical')).toBe(true);
-    expect(upi.every((result) => result.eligible)).toBe(true);
+    const admission = comparisons.filter((item) => item.category === 'exact_admission_number_matches').map(evaluate);
+    expect(admission.every((result) => result.features.admission_number_match === 1 && result.risk === 'critical')).toBe(true);
+    expect(admission.every((result) => result.eligible)).toBe(true);
+    // The same number at two different schools belongs to two children. The comparison is zero and
+    // the pair is not a duplicate candidate on that field.
+    const crossSchool = evaluate(comparisons.find((item) => item.id === 'adm-03'));
+    expect(crossSchool.features.admission_number_match).toBe(0);
   });
 });

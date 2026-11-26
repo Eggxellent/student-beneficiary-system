@@ -15,7 +15,7 @@ const THRESHOLD = 0.5;
 function sibling(score = 0.93, overrides = {}) {
   return candidate(score, {
     features: {
-      jaro_winkler: 0.94, dob_match: 0, school_match: 1, guardian_match: 1, upi_match: 0, birth_certificate_match: 0,
+      jaro_winkler: 0.94, dob_match: 0, school_match: 1, guardian_match: 1, admission_number_match: 0, birth_certificate_match: 0,
     },
     ...overrides,
   });
@@ -25,7 +25,7 @@ function candidate(score, overrides = {}) {
   return {
     candidate: { id: overrides.id || `student-${score}-${Math.random()}` },
     score,
-    features: { jaro_winkler: 0.9, dob_match: 0, school_match: 1, guardian_match: 0, upi_match: 0, birth_certificate_match: 0 },
+    features: { jaro_winkler: 0.9, dob_match: 0, school_match: 1, guardian_match: 0, admission_number_match: 0, birth_certificate_match: 0 },
     exactIdentifiers: [],
     ...overrides,
   };
@@ -50,20 +50,19 @@ describe('Registration-level duplicate aggregation', () => {
     expect(selectFlaggedCandidates([candidate(0.97)], { threshold: THRESHOLD })).toEqual([]);
   });
 
-  test('the default policy keeps the one decisive case per registration', () => {
+  test('the default policy preserves every independently plausible candidate', () => {
     const scored = [
       candidate(0.97, { id: 'name-only' }),
       candidate(0.64, {
-        id: 'dob-and-upi',
-        features: { jaro_winkler: 0.88, dob_match: 1, school_match: 1, guardian_match: 0, upi_match: 1, birth_certificate_match: 0 },
+        id: 'dob-and-admission',
+        features: { jaro_winkler: 0.88, dob_match: 1, school_match: 1, guardian_match: 0, admission_number_match: 1, birth_certificate_match: 0 },
       }),
       candidate(0.42, { id: 'national-id', exactIdentifiers: ['National ID'] }),
     ];
 
     const selected = selectFlaggedCandidates(scored, { threshold: THRESHOLD });
 
-    expect(selected).toHaveLength(1);
-    expect(selected[0].candidate.id).toBe('national-id');
+    expect(selected.map((item) => item.candidate.id)).toEqual(['national-id', 'dob-and-admission']);
   });
 
   test('reads DUPLICATE_AGGREGATION_POLICY and rejects unknown values', () => {
@@ -92,7 +91,7 @@ describe('Registration-level duplicate aggregation', () => {
   test('ranks exact identifier agreement above a higher model score', () => {
     const scored = [
       candidate(0.97, { id: 'score-only' }),
-      candidate(0.35, { id: 'exact-identifier', exactIdentifiers: ['UPI'] }),
+      candidate(0.35, { id: 'exact-identifier', exactIdentifiers: ['admission number'] }),
     ];
 
     const selected = selectFlaggedCandidates(scored, { policy: 'top-1', threshold: THRESHOLD });
@@ -149,6 +148,38 @@ describe('Registration-level duplicate aggregation', () => {
     expect(selectFlaggedCandidates([corroborated], { policy: 'top-1-corroborated', threshold: THRESHOLD })).toHaveLength(1);
   });
 
+  test('near-match evidence routes a below-cutoff candidate for Admin review', () => {
+    const near = candidate(0.42, {
+      id: 'transposed-certificate',
+      reviewEvidence: {
+        near_match_review: true,
+        signals: ['name', 'dob', 'school', 'birth_certificate'],
+      },
+    });
+    const selected = selectFlaggedCandidates([near], { threshold: THRESHOLD });
+    expect(selected).toHaveLength(1);
+    expect(selected[0].candidate.id).toBe('transposed-certificate');
+  });
+
+  test('guardian-only matches stay suppressed but independent near-match evidence is not guardian-only', () => {
+    const siblingOnly = sibling(0.99);
+    const nearSameGuardian = sibling(0.35, {
+      reviewEvidence: { near_match_review: true, signals: ['name', 'dob', 'admission_number'] },
+    });
+    expect(selectFlaggedCandidates([siblingOnly], { threshold: THRESHOLD })).toEqual([]);
+    expect(selectFlaggedCandidates([nearSameGuardian], { threshold: THRESHOLD })).toHaveLength(1);
+  });
+
+  test('the default route retains multiple exact and near candidates for Admin review', () => {
+    const scored = [
+      candidate(0.22, { id: 'near-a', reviewEvidence: { near_match_review: true, signals: ['name', 'dob', 'birth_certificate'] } }),
+      candidate(0.24, { id: 'near-b', reviewEvidence: { near_match_review: true, signals: ['name', 'dob', 'admission_number'] } }),
+      candidate(0.10, { id: 'unrelated' }),
+    ];
+    expect(selectFlaggedCandidates(scored, { threshold: THRESHOLD }).map((item) => item.candidate.id))
+      .toEqual(['near-b', 'near-a']);
+  });
+
   test('top-1-corroborated still flags an exact identifier match without other corroboration', () => {
     const exact = candidate(0.3, { id: 'exact', exactIdentifiers: ['National ID'] });
 
@@ -156,7 +187,7 @@ describe('Registration-level duplicate aggregation', () => {
   });
 
   test('counts qualifying and suppressed candidates for the audit trail', () => {
-    const scored = [candidate(0.55), candidate(0.91), candidate(0.10), candidate(0.2, { exactIdentifiers: ['UPI'] })];
+    const scored = [candidate(0.55), candidate(0.91), candidate(0.10), candidate(0.2, { exactIdentifiers: ['admission number'] })];
     const flagged = selectFlaggedCandidates(scored, { policy: 'top-1', threshold: THRESHOLD });
 
     const summary = summarizeAggregation(scored, flagged, { policy: 'top-1', threshold: THRESHOLD });
@@ -166,6 +197,7 @@ describe('Registration-level duplicate aggregation', () => {
       candidates_considered: 4,
       candidates_qualifying: 3,
       candidates_guardian_only: 0,
+      candidates_near_match: 0,
       flags_selected: 1,
       candidates_suppressed: 2,
     });
@@ -187,7 +219,7 @@ describe('Registration-level duplicate aggregation', () => {
     const sameChild = sibling(0.86, {
       id: 'same-child',
       features: {
-        jaro_winkler: 0.94, dob_match: 1, school_match: 1, guardian_match: 1, upi_match: 0, birth_certificate_match: 0,
+        jaro_winkler: 0.94, dob_match: 1, school_match: 1, guardian_match: 1, admission_number_match: 0, birth_certificate_match: 0,
       },
     });
 
@@ -198,7 +230,7 @@ describe('Registration-level duplicate aggregation', () => {
   });
 
   test('an exact identifier outranks the guardian rule', () => {
-    const exact = sibling(0.3, { id: 'exact-identifier', exactIdentifiers: ['UPI'] });
+    const exact = sibling(0.3, { id: 'exact-identifier', exactIdentifiers: ['admission number'] });
 
     expect(isGuardianOnlyMatch(exact.features, exact.exactIdentifiers)).toBe(false);
     expect(selectFlaggedCandidates([exact], { policy: 'top-1', threshold: THRESHOLD })).toHaveLength(1);
@@ -215,6 +247,7 @@ describe('Registration-level duplicate aggregation', () => {
       candidates_considered: 2,
       candidates_qualifying: 1,
       candidates_guardian_only: 1,
+      candidates_near_match: 0,
       flags_selected: 1,
       candidates_suppressed: 0,
     });
@@ -222,8 +255,8 @@ describe('Registration-level duplicate aggregation', () => {
 
   test('corroboration ignores name similarity and shared school', () => {
     expect(corroboratingFields({ jaro_winkler: 1, school_match: 1 })).toEqual([]);
-    expect(corroboratingFields({ upi_match: 1, birth_certificate_match: 0.99 })).toEqual([
-      'upi_match',
+    expect(corroboratingFields({ admission_number_match: 1, birth_certificate_match: 0.99 })).toEqual([
+      'admission_number_match',
       'birth_certificate_match',
     ]);
   });

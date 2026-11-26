@@ -23,6 +23,9 @@ function student(code, full_name, options = {}) {
     date_of_birth: value('date_of_birth', '2012-04-18'),
     school_code: value('school_code', SCHOOL_CODES[options.county || 'NAKURU']),
     guardian_id: value('guardian_id', `SYN-GUARD-${shortHash(code)}`),
+    // Admission numbers identify a child only inside one school. The default is unique per record;
+    // a duplicate scenario shares one deliberately.
+    admission_number: value('admission_number', `ADM-KE-${code}`),
     upi: value('upi', `SYN-UPI-KE-${code}`),
     national_id_number: value('national_id_number', `SYN-NID-KE-${code}`),
     birth_certificate_number: value('birth_certificate_number', `SYN-BC-KE-${code}`),
@@ -44,11 +47,11 @@ function pair(id, category, left, right, sharedFields = []) {
 pair('clear-01', 'clear_duplicate_candidates',
   { code: 'DUP001A', name: 'Amina Hassan', options: { county: 'NAIROBI', date_of_birth: '2011-05-14', guardian_id: 'SYN-GUARDIAN-KE-FAMILY001' } },
   { code: 'DUP001B', name: 'Amina Hassan' },
-  ['date_of_birth', 'school_code', 'guardian_id', 'upi', 'birth_certificate_number']);
+  ['date_of_birth', 'school_code', 'guardian_id', 'admission_number', 'birth_certificate_number']);
 pair('clear-02', 'clear_duplicate_candidates',
   { code: 'DUP002A', name: 'Collins Barasa', options: { county: 'KAKAMEGA', date_of_birth: '2010-09-02', guardian_id: 'SYN-GUARDIAN-KE-FAMILY002' } },
   { code: 'DUP002B', name: 'Collins Barasa' },
-  ['date_of_birth', 'school_code', 'guardian_id', 'upi', 'birth_certificate_number']);
+  ['date_of_birth', 'school_code', 'guardian_id', 'admission_number', 'birth_certificate_number']);
 pair('clear-03', 'clear_duplicate_candidates',
   { code: 'DUP003A', name: 'Chebet Jepkosgei', options: { county: 'KERICHO', date_of_birth: '2012-02-11', guardian_id: 'SYN-GUARDIAN-KE-FAMILY003' } },
   { code: 'DUP003B', name: 'Chebet Jepkosgei' },
@@ -107,12 +110,17 @@ pair('missing-03', 'missing_or_inconsistent_fields',
   { code: 'MIS003A', name: 'Zawadi Naliaka', options: { county: 'KAKAMEGA', date_of_birth: null, guardian_id: 'SYN-GUARDIAN-KE-FAMILY015' } },
   { code: 'MIS003B', name: 'Zawadi Nalyaka', options: { date_of_birth: null } }, ['school_code', 'guardian_id']);
 
-pair('upi-01', 'exact_upi_matches',
-  { code: 'UPI001A', name: 'Dennis Kamau', options: { county: 'NAIROBI', date_of_birth: '2010-06-20', upi: 'SYN-UPI-KE-INTENTIONAL-SHARED-001' } },
-  { code: 'UPI001B', name: 'Daniel Kamau', options: { county: 'KITUI', date_of_birth: '2013-01-09' } }, ['upi']);
-pair('upi-02', 'exact_upi_matches',
-  { code: 'UPI002A', name: 'Sheila Atieno', options: { county: 'KISUMU', date_of_birth: '2012-05-29', upi: 'SYN-UPI-KE-INTENTIONAL-SHARED-002' } },
-  { code: 'UPI002B', name: 'Sheila Atieno', options: { county: 'KILIFI', date_of_birth: '2014-07-11' } }, ['upi']);
+pair('adm-01', 'exact_admission_number_matches',
+  { code: 'ADM001A', name: 'Dennis Kamau', options: { county: 'NAIROBI', date_of_birth: '2010-06-20', admission_number: 'ADM-KE-SHARED-001' } },
+  { code: 'ADM001B', name: 'Daniel Kamau', options: { county: 'NAIROBI', date_of_birth: '2013-01-09' } }, ['admission_number']);
+pair('adm-02', 'exact_admission_number_matches',
+  { code: 'ADM002A', name: 'Sheila Atieno', options: { county: 'KISUMU', date_of_birth: '2012-05-29', admission_number: 'ADM-KE-SHARED-002' } },
+  { code: 'ADM002B', name: 'Sheila Atieno', options: { county: 'KISUMU', date_of_birth: '2014-07-11' } }, ['admission_number']);
+// The same number at two schools is two children: the comparison must stay at zero.
+// Schools are set explicitly because several counties map to a school with the same name.
+pair('adm-03', 'same_admission_number_different_school',
+  { code: 'ADM003A', name: 'Mercy Chepkoech', options: { school_code: 'Maranda', date_of_birth: '2011-04-02', admission_number: 'ADM-KE-REUSED-003' } },
+  { code: 'ADM003B', name: 'Mercy Chepkoech', options: { school_code: 'Nairobi School', date_of_birth: '2011-04-02', admission_number: 'ADM-KE-REUSED-003' } });
 
 const ordinaryStudents = [
   student('ORD001', 'Grace Wairimu', { county: 'NYERI', date_of_birth: '2012-09-14' }),

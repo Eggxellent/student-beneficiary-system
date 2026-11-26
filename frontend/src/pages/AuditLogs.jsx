@@ -224,9 +224,7 @@ export default function AuditLogs() {
       <header>
         <h1 className="text-2xl font-bold text-slate-900">Audit Report</h1>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-600">
-          Every state change SBMS has recorded, newest first. Each entry keeps the person, the action, the
-          record touched and the values captured at the time, so any decision can be traced later without
-          relying on memory.
+          Review recorded actions and decisions, newest first.
         </p>
       </header>
 

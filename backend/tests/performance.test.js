@@ -52,7 +52,7 @@ describeWithPredictor('Duplicate detection performance', () => {
     console.log(`Screened ${pairs.length} candidate pairs in ${elapsedMs.toFixed(2)} ms`);
 
     expect(result.results).toHaveLength(pairs.length);
-    expect(result.model_version).toMatch(/^xgboost:/);
+    expect(result.model_version).toMatch(/^histgradientboostingclassifier:/);
     for (const scored of result.results) {
       expect(scored.score).toBeGreaterThanOrEqual(0);
       expect(scored.score).toBeLessThanOrEqual(1);

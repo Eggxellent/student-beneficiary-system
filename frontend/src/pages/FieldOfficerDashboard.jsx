@@ -74,7 +74,7 @@ export default function FieldOfficerDashboard() {
             Welcome, {user?.full_name?.split(" ")[0] || "Field Officer"}
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
-            Students become visible here after duplicate screening clears them and their eligibility assessment is complete.
+            Cleared and assessed guardian registrations.
           </p>
         </div>
         <Link
@@ -182,7 +182,7 @@ export default function FieldOfficerDashboard() {
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Recent registrations</h2>
-            <p className="mt-1 text-sm text-slate-600">Latest guardian registrations that are cleared and assessed.</p>
+            <p className="mt-1 text-sm text-slate-600">Latest cleared registrations.</p>
           </div>
           <BadgeCheck className="size-5 text-emerald-600" aria-hidden="true" />
         </div>
@@ -191,9 +191,7 @@ export default function FieldOfficerDashboard() {
         ) : recent.length === 0 ? (
           <div className="px-5 py-10 text-center">
             <p className="text-sm font-medium text-slate-900">No assessed registrations yet</p>
-            <p className="mt-1 text-sm text-slate-600">
-              Guardian registrations appear here once duplicate screening clears them and an assessment is complete.
-            </p>
+            <p className="mt-1 text-sm text-slate-600">They appear here after duplicate clearance and eligibility assessment.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">

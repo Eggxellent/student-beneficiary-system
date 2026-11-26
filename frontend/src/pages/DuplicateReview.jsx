@@ -9,16 +9,17 @@ const evidenceLabels = {
   name: "Name similarity",
   date_of_birth: "Date of birth",
   school: "School identifier",
-  upi: "UPI",
+  admission_number: "Admission number",
   birth_certificate: "Birth certificate",
   national_id: "National ID",
 };
 
 // Names, dates of birth and school codes are not unique: two people can share all three and share
 // nothing else. So the comparison shows a weak field only when its similarity actually cleared the
-// threshold, while the three identifiers that cannot be partly shared (UPI, birth certificate,
-// national ID) are shown either way — agreement proves the match, disagreement refutes it.
-const DECISIVE_FIELDS = new Set(["upi", "birth_certificate", "national_id"]);
+// threshold, while the three identifiers that cannot be partly shared (admission number within one
+// school, birth certificate, national ID) are shown either way — agreement proves the match,
+// disagreement refutes it.
+const DECISIVE_FIELDS = new Set(["admission_number", "birth_certificate", "national_id"]);
 
 function evidenceSurpassesThreshold(key, value) {
   if (!value) return false;
@@ -45,9 +46,9 @@ function formatDate(value) {
 function identityRows(student) {
   return [
     ["Date of birth", student.date_of_birth],
-    ["School identifier (stored value)", student.school_code],
+    ["School identifier (stored value)", student.school_code || student.school],
     ["Guardian no:", student.guardian_contact],
-    ["UPI", student.upi],
+    ["Admission number", student.admission_number],
     ["Birth certificate", student.birth_certificate_number],
     ["National ID", student.national_id_number],
   ];
@@ -73,6 +74,7 @@ export default function DuplicateReview() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [revealed, setRevealed] = useState({});
+  const [revealedEvidence, setRevealedEvidence] = useState(null);
   const [revealing, setRevealing] = useState(false);
   const [revealError, setRevealError] = useState("");
   // Resolving a confirmed case is a separate administrator action from the review decision: the
@@ -158,6 +160,7 @@ export default function DuplicateReview() {
   // audited request that returns the full values for the case currently open.
   useEffect(() => {
     setRevealed({});
+    setRevealedEvidence(null);
     setRevealError("");
     setCanonicalChoice("");
     setResolutionReason("");
@@ -172,6 +175,7 @@ export default function DuplicateReview() {
       const byReference = {};
       (data.students || []).forEach((student) => { byReference[student.reference] = student; });
       setRevealed(byReference);
+      setRevealedEvidence(data.near_match_evidence || null);
     } catch (err) {
       setRevealError(err.response?.data?.message || "Could not reveal the identifiers for this case.");
     } finally {
@@ -189,9 +193,21 @@ export default function DuplicateReview() {
         <SummaryCard label="Standard review" value={summary.standard_review_pending} />
         <SummaryCard label="Needs verification" value={summary.awaiting_verification} />
       </section>
-      <p className="mt-3 text-xs text-slate-500">Cases: {caseTotals.flagged} flagged · {caseTotals.confirmed_duplicate} confirmed · {caseTotals.not_duplicate} not duplicates · {caseTotals.unresolved} unresolved.</p>
-
-      {policy && <p className="mt-3 text-xs text-slate-500">Cutoffs: standard {Number.isFinite(Number(policy.review_threshold)) ? Number(policy.review_threshold).toFixed(2) : "not set"}, high {Number.isFinite(Number(policy.high_priority_threshold)) ? Number(policy.high_priority_threshold).toFixed(2) : "not set"} · aggregation {policy.aggregation_policy || "not reported"}. {policy.thresholds_validated ? "Validated on held-out data." : "Provisional; validation is unavailable."} Exact identifier matches are separate evidence. Candidates withheld by the aggregation policy are recorded in the audit log.</p>}
+      <details className="mt-3 text-sm text-slate-600">
+        <summary className="w-fit cursor-pointer font-medium text-slate-700 hover:text-slate-900">
+          Screening details and case totals
+        </summary>
+        <div className="mt-2 space-y-1 rounded-lg bg-slate-50 p-3 text-xs">
+          <p>
+            {caseTotals.flagged} flagged · {caseTotals.confirmed_duplicate} confirmed · {caseTotals.not_duplicate} cleared · {caseTotals.unresolved} unresolved
+          </p>
+          {policy && (
+            <p>
+              Review cutoffs: standard {Number.isFinite(Number(policy.review_threshold)) ? Number(policy.review_threshold).toFixed(2) : "not set"}, high priority {Number.isFinite(Number(policy.high_priority_threshold)) ? Number(policy.high_priority_threshold).toFixed(2) : "not set"}. {policy.thresholds_validated ? "Validated." : "Provisional; validation is unavailable."}
+            </p>
+          )}
+        </div>
+      </details>
       {notice && <p className="mt-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800" role="status">{notice}</p>}
       {error && <p className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{error}</p>}
 
@@ -260,7 +276,8 @@ export default function DuplicateReview() {
               return <article key={student.reference} className="rounded border border-slate-200 p-4"><h3 className="font-semibold">{student.full_name}{student.duplicate_of_student_id && <span className="ml-2 rounded border border-amber-400 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Marked duplicate</span>}</h3><p className="mb-3 text-xs text-slate-500">Case reference: {student.reference}</p><dl className="space-y-2 text-sm">{identityRows(shown).map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b border-slate-100 pb-1"><dt className="text-slate-500">{label}</dt><dd className="text-right font-medium">{value || "Unavailable"}</dd></div>)}</dl></article>;
             })}
           </div>
-          <section className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Decisive fields</h3><p className="mt-1 text-xs text-slate-500">Only fields whose similarity cleared the threshold, plus every UPI, birth-certificate and national-ID comparison. A shared name, date of birth or school proves nothing: none of them is unique.</p><dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{visibleEvidence(selected.evidence).map(([key, label, value]) => <div key={key} className="flex justify-between gap-3"><dt>{label}</dt><dd className="font-medium capitalize">{value}</dd></div>)}</dl>{selected.exact_identifier_matches.length > 0 && <p className="mt-3 text-sm font-semibold text-slate-800">Exact match: {selected.exact_identifier_matches.join(", ")}. Verify it; this is not proof of misconduct.</p>}</section>
+          <section className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Decisive fields</h3><p className="mt-1 text-xs text-slate-500">Only fields whose similarity cleared the threshold, plus every admission-number, birth-certificate and national-ID comparison. A shared name, date of birth or school proves nothing: none of them is unique.</p><dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{visibleEvidence(selected.evidence).map(([key, label, value]) => <div key={key} className="flex justify-between gap-3"><dt>{label}</dt><dd className="font-medium capitalize">{value}</dd></div>)}</dl>{selected.exact_identifier_matches.length > 0 && <p className="mt-3 text-sm font-semibold text-slate-800">Exact match: {selected.exact_identifier_matches.join(", ")}. Verify it; this is not proof of misconduct.</p>}</section>
+          {selected.evidence.near_match_review?.comparisons && <details className="mt-4 rounded border border-slate-200 p-4"><summary className="cursor-pointer font-semibold">Near-match evidence and comparison methods</summary><p className="mt-2 text-xs text-slate-600">These are review clues, not probabilities or a duplicate decision. Original identifiers are shown only after the audited reveal.</p><dl className="mt-3 space-y-2 text-sm">{Object.entries(selected.evidence.near_match_review.comparisons).map(([field, comparison]) => { const detail = revealedEvidence?.comparisons?.[field] || comparison; const labels = { name: "Name", date_of_birth: "Date of birth", school: "School", guardian: "Guardian (context only)", admission_number: "Admission number", birth_certificate: "Birth certificate" }; return <div key={field} className="grid gap-1 border-b border-slate-100 pb-2 sm:grid-cols-[9rem_1fr]"><dt className="font-medium">{labels[field] || field}</dt><dd><span>{detail.match_type || "not compared"}</span>{Number.isFinite(Number(detail.similarity)) && <span> · evidence {Math.round(Number(detail.similarity) * 100)}%</span>}{detail.status && <span> · school status: {detail.status.replaceAll("_", " ")}</span>}{detail.normalized && <div className="mt-1 text-xs text-slate-600">Compared values: {detail.normalized.map((value) => value || "unavailable").join(" ↔ ")}</div>}</dd></div>; })}</dl>{selected.evidence.near_match_review.conflicts?.length > 0 && <p className="mt-3 text-xs text-amber-800">Conflicting or uncertain evidence: {selected.evidence.near_match_review.conflicts.join(", ").replaceAll("_", " ")}.</p>}</details>}
           <section className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Review history</h3>{selected.history.length ? <ol className="mt-2 space-y-3">{selected.history.map((event) => <li key={event.id} className="border-l-2 border-slate-300 pl-3 text-sm"><p className="font-medium">{prettyStatus(event.decision)} · {event.reviewer_name}</p><p className="text-slate-700">Reason: {event.reason}</p>{event.notes && <p className="text-slate-600">Notes: {event.notes}</p>}<time className="text-xs text-slate-500">{formatDate(event.created_at)}</time></li>)}</ol> : <p className="mt-2 text-sm text-slate-500">No previous review actions.</p>}</section>
           {isAdmin && selected.status === "confirmed_duplicate" && (selected.resolution ? (
             <section className="mt-5 rounded border border-green-300 bg-green-50 p-4">
@@ -282,7 +299,7 @@ export default function DuplicateReview() {
                     <input type="radio" name="canonical-record" value={student.reference} checked={canonicalChoice === student.reference} onChange={(event) => setCanonicalChoice(event.target.value)} className="mt-1" />
                     <span>
                       <span className="font-semibold text-slate-900">{student.full_name}</span>
-                      <span className="block text-xs text-slate-600">UPI {student.upi || "unavailable"} · Date of birth {student.date_of_birth || "unavailable"} · School {student.school_code || "unavailable"}</span>
+                      <span className="block text-xs text-slate-600">Admission no. {student.admission_number || "unavailable"} · Date of birth {student.date_of_birth || "unavailable"} · School {student.school_code || "unavailable"}</span>
                       <span className="block text-xs text-slate-500">Case reference: {student.reference}</span>
                     </span>
                   </label>

@@ -1,5 +1,7 @@
 # SBMS API container
 
+> **Project status:** Azure deployment has already been completed. This file documents the existing container and hosting configuration for technical reference. The current project phase is local testing and verification; the operational commands below are not a request or plan to deploy, redeploy, migrate, or change production. Do not infer that the current local worktree is deployed.
+
 The repository `Dockerfile` builds the SBMS API and its Python duplicate predictor in one image. The build copies the tracked production artifact to `/app/ml-service/model/xgb_duplicate_model.joblib` and loads it during the image build to fail early if the artifact or its Python dependencies are invalid. `.dockerignore` excludes the research experiment and all other joblib artifacts; the research model is never a substitute.
 
 The Node API invokes `ml-service/predict.py` as a child process. The image sets `PYTHON_EXECUTABLE` to its virtual-environment interpreter. Outside the image, the backend checks that setting first, then the platform-appropriate Python virtual-environment paths.

@@ -33,8 +33,8 @@ def random_guardian_id() -> str:
     return f"G{random.randint(100000, 999999)}"
 
 
-def random_upi() -> str:
-    return f"UPI-{random.randint(10000000, 99999999)}"
+def random_admission_number() -> str:
+    return f"ADM-{random.randint(2008, 2026)}-{random.randint(0, 9999):04d}"
 
 
 def random_birth_certificate_number() -> str:
@@ -79,7 +79,7 @@ def student_record() -> dict[str, str]:
         "date_of_birth": random_date(),
         "school_code": random.choice(SCHOOLS),
         "guardian_id": random_guardian_id(),
-        "upi": random_upi(),
+        "admission_number": random_admission_number(),
         "birth_certificate_number": random_birth_certificate_number(),
     }
 
@@ -108,10 +108,10 @@ def duplicate_variation(original: dict[str, str]) -> dict[str, str]:
         else random_guardian_id()
     )
 
-    duplicate["upi"] = (
-        original["upi"]
+    duplicate["admission_number"] = (
+        original["admission_number"]
         if random.random() < 0.65
-        else random_upi()
+        else random_admission_number()
     )
 
     duplicate["birth_certificate_number"] = (
@@ -147,9 +147,9 @@ def different_student(first: dict[str, str]) -> dict[str, str]:
         second["school_code"] = first["school_code"]
         second["guardian_id"] = first["guardian_id"]
 
-    second["upi"] = random_upi()
+    second["admission_number"] = random_admission_number()
     if random.random() < 0.02:
-        second["upi"] = first["upi"]
+        second["admission_number"] = first["admission_number"]
     if random.random() < 0.01:
         second["birth_certificate_number"] = first["birth_certificate_number"]
 
@@ -166,8 +166,8 @@ def feature_row(first: dict[str, str], second: dict[str, str], label: int, group
         "school_2": second["school_code"],
         "guardian_1": first["guardian_id"],
         "guardian_2": second["guardian_id"],
-        "upi_1": first["upi"],
-        "upi_2": second["upi"],
+        "admission_number_1": first["admission_number"],
+        "admission_number_2": second["admission_number"],
         "group_id": group_id,
         **build_pair_features(first, second),
         "label": label,
@@ -214,11 +214,11 @@ if __name__ == "__main__":
     print("\nNumber of groups:")
     print(dataset["group_id"].nunique())
 
-    print("\nUPI match distribution by class:")
+    print("\nAdmission-number match distribution by class:")
     print(
         pd.crosstab(
             dataset["label"],
-            dataset["upi_match"],
+            dataset["admission_number_match"],
             normalize="index",
         ).round(3)
     )
@@ -229,7 +229,7 @@ if __name__ == "__main__":
         "dob_match",
         "school_match",
         "guardian_match",
-        "upi_match",
+        "admission_number_match",
         "birth_certificate_match",
     ]].mean().round(3))
 

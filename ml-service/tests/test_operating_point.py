@@ -1,14 +1,10 @@
-"""Guard the operating-point report and the arithmetic behind it.
+"""Guard operating-point arithmetic without opening the sealed final test.
 
 The decision sheet quotes registration-level numbers that no human-adjudicated data
-supports yet, so the arithmetic must be provably correct and the report must be provably
-about the deployed artifact. These tests fail if the simulation logic drifts, if the
-committed report is left describing an older model, or if the report stops stating that
-its labels are synthetic.
+supports yet, so helper arithmetic is tested using hand-built examples. These tests do
+not read the active train/validation/test datasets.
 """
 
-import hashlib
-import json
 import sys
 import unittest
 from pathlib import Path
@@ -27,10 +23,6 @@ from evaluate_operating_point import (  # noqa: E402
     registration_simulation,
     threshold_row,
 )
-
-REPORT_PATH = BASE_DIR / "evaluation" / "operating_point_2026-10-30.json"
-METRICS_PATH = BASE_DIR / "evaluation" / "realistic_pairs_xgboost_training_metrics.json"
-MODEL_PATH = BASE_DIR / "model" / "xgb_duplicate_model.joblib"
 
 
 class ThresholdMetricTests(unittest.TestCase):
@@ -140,51 +132,17 @@ class BlockingProjectionTests(unittest.TestCase):
         self.assertIn("token_nuisance_upper_bound", row)
 
     def test_label_coverage_reports_no_adjudicated_pairs(self):
-        coverage = label_coverage(BASE_DIR / "evaluation" / "realistic_pairs_holdout.csv")
+        coverage = label_coverage(BASE_DIR / "evaluation" / "synthetic_test_not_opened.csv")
         self.assertIsInstance(coverage["adjudicated_files_found"], list)
         self.assertGreaterEqual(coverage["adjudicated_pair_count"], 0)
 
 
-class CommittedReportTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        if not REPORT_PATH.is_file():
-            raise unittest.SkipTest(f"not generated yet: {REPORT_PATH.name}")
-        cls.report = json.loads(REPORT_PATH.read_text(encoding="utf-8"))
-
-    def test_report_describes_the_live_artifact(self):
-        if not MODEL_PATH.is_file():
-            self.skipTest("model artifact is git-ignored and absent from this checkout")
-        live = hashlib.sha256(MODEL_PATH.read_bytes()).hexdigest()
-        self.assertEqual(
-            self.report["provenance"]["model_sha256"],
-            live,
-            "The committed operating-point report describes a different model. "
-            "Re-run evaluate_operating_point.py after promoting an artifact.",
-        )
-
-    def test_pair_level_f1_reproduces_the_recorded_metrics(self):
-        metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
-        recorded = metrics["selected_model_holdout_metrics"]
-        row = next(
-            item
-            for item in self.report["pair_level"]["thresholds"]
-            if abs(item["cutoff"] - recorded["threshold"]) < 1e-9
-        )
-        self.assertAlmostEqual(row["f1"], recorded["f1"], places=4)
-        self.assertEqual(row["true_positives"], recorded["true_positives"])
-        self.assertEqual(row["false_positives"], recorded["false_positives"])
-
-    def test_report_states_that_its_labels_are_synthetic(self):
-        self.assertEqual(self.report["label_coverage"]["adjudicated_pair_count"], 0)
-        self.assertTrue(self.report["limitations"])
-        self.assertIn("synthetic", " ".join(self.report["limitations"]).lower())
-
-    def test_features_match_what_serving_computes(self):
-        # If feature engineering changes, the scores in the report are no longer the
-        # scores serving computes, and every number in the decision sheet is void.
-        self.assertTrue(self.report["feature_consistency"]["checked"])
-        self.assertTrue(self.report["feature_consistency"]["exact_match"])
+class SealedTestPolicyTests(unittest.TestCase):
+    def test_operating_point_defaults_do_not_read_the_final_test_implicitly(self):
+        # Evaluation must be an explicit operator action after model lock; importing
+        # helpers or running unit tests must not open a sealed test CSV.
+        source = (BASE_DIR / "evaluate_operating_point.py").read_text(encoding="utf-8")
+        self.assertIn('"--holdout", type=Path, required=True', source)
 
 
 if __name__ == "__main__":

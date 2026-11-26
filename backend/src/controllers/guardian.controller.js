@@ -535,7 +535,8 @@ async function staffQueue(req, res) {
   // unresolved.
   const { rows } = await pool.query(
     `SELECT a.*, u.full_name AS guardian_account_name, u.email AS guardian_email,
-            s.full_name AS registered_full_name, s.upi AS registered_upi,
+            s.full_name AS registered_full_name,
+            COALESCE(s.admission_number, a.admission_number) AS registered_admission_number,
             flag.status AS duplicate_status, flag.probability AS duplicate_probability,
             assessment.status AS assessment_status, assessment.score AS assessment_score,
             assessment.category AS assessment_category,
@@ -568,7 +569,7 @@ async function staffQueue(req, res) {
         ? {
             id: row.student_id,
             full_name: row.registered_full_name || row.student_full_name,
-            upi: row.registered_upi || null,
+            admission_number: row.registered_admission_number || null,
           }
         : null,
       duplicate: row.duplicate_status

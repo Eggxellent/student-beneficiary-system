@@ -58,15 +58,15 @@ def unrelated_student(rng: random.Random, school_code: str) -> dict[str, str]:
     """Build one record for a person unrelated to every other generated record."""
     given = rng.choice(GIVEN_NAMES)
     surname = rng.choice(SURNAMES)
-    # Kenyan identifier shapes: national-ID-style 8 digits, NEMIS-style alphanumeric
-    # UPI, 7-digit birth-certificate number. Values are independent between records.
-    upi = "".join(rng.choice("ABCDEFGHJKLMNPQRSTUVWXYZ0123456789") for _ in range(10))
+    # Values are independent between records. Admission numbers are compared only
+    # within the same school by the shared production feature builder.
+    admission_number = f"ADM-{rng.randint(2008, 2026)}-{rng.randint(0, 9999):04d}"
     return {
         "full_name": f"{given} {surname}",
-        "date_of_birth": f"{rng.randint(14, 19):04d}-{rng.randint(1, 12):02d}-{rng.randint(1, 28):02d}",
+        "date_of_birth": f"{rng.randint(2002, 2016):04d}-{rng.randint(1, 12):02d}-{rng.randint(1, 28):02d}",
         "school_code": school_code,
         "guardian_id": str(rng.randint(10**7, 10**8 - 1)),
-        "upi": upi,
+        "admission_number": admission_number,
         "birth_certificate_number": str(rng.randint(10**6, 10**7 - 1)),
     }
 

@@ -2,7 +2,7 @@
  * Duplicate-scoring adapters.
  *
  * Production path (registration and re-scan): `scoreStudentPairs()`, which drives
- * ml-service/predict.py and returns per-pair XGBoost scores. Which of those pairs
+ * ml-service/predict.py and returns per-pair HistGradientBoosting scores. Which of those pairs
  * become registration-level flags is decided in `services/duplicateAggregation.js`.
  *
  * LEGACY (marked @deprecated below): the weighted rule engine —
@@ -39,7 +39,7 @@ const DUPLICATE_SCORE_MAXIMUMS = Object.freeze({
   date_of_birth: 0.04,
   school: 0.02,
   guardian: 0.06,
-  upi: 0.40,
+  admission_number: 0.40,
   birth_certificate: 0.40,
 });
 const MIN_NAME_SIMILARITY = 0.70;
@@ -117,6 +117,37 @@ function exactIdentifierMatch(first, second) {
   return Number(Boolean(left && right && left === right));
 }
 
+const ADMISSION_NUMBER_PREFIXES = ['admissionnumber', 'admissionno', 'admission', 'admno', 'adm', 'registrationnumber', 'regno', 'reg'];
+
+function schoolIdentity(record) {
+  const value = normalizedValue(record && record.school_code);
+  if (['', 'na', 'nan', 'none', 'null', 'unknown', 'notprovided', 'notavailable'].includes(value)) return '';
+  if (value.length >= 4 && /^0+$/.test(value)) return '';
+  return value;
+}
+
+function admissionNumberKey(value) {
+  let compact = normalizedValue(value);
+  if (!compact) return '';
+  for (const prefix of ADMISSION_NUMBER_PREFIXES) {
+    if (compact.startsWith(prefix) && compact.length > prefix.length) {
+      compact = compact.slice(prefix.length);
+      break;
+    }
+  }
+  return compact;
+}
+
+// Same rule as the production model feature: the number identifies a child only
+// inside a shared school_code. Free-text school names are not used as a fallback.
+function admissionNumberMatch(first, second) {
+  const school = schoolIdentity(first);
+  if (!school || school !== schoolIdentity(second)) return 0;
+  const left = admissionNumberKey(first && first.admission_number);
+  const right = admissionNumberKey(second && second.admission_number);
+  return Number(Boolean(left && right && left === right));
+}
+
 function editSimilarity(first, second) {
   const previous = Array.from({ length: second.length + 1 }, (_, index) => index);
 
@@ -164,7 +195,7 @@ function buildDuplicateFeatures(first, second) {
     dob_match: dateSimilarity(first.date_of_birth, second.date_of_birth),
     school_match: matchingValue(first.school_code, second.school_code, 'sch'),
     guardian_match: matchingValue(first.guardian_id, second.guardian_id, 'g'),
-    upi_match: exactIdentifierMatch(first.upi, second.upi),
+    admission_number_match: admissionNumberMatch(first, second),
     birth_certificate_match: exactIdentifierMatch(first.birth_certificate_number, second.birth_certificate_number),
     national_id_match: exactIdentifierMatch(first.national_id_number, second.national_id_number),
   };
@@ -177,7 +208,7 @@ function calculateDuplicateContributions(features) {
     date_of_birth: Number((features.dob_match * DUPLICATE_SCORE_MAXIMUMS.date_of_birth).toFixed(4)),
     school: Number((features.school_match * DUPLICATE_SCORE_MAXIMUMS.school).toFixed(4)),
     guardian: Number((features.guardian_match * DUPLICATE_SCORE_MAXIMUMS.guardian).toFixed(4)),
-    upi: Number((features.upi_match * DUPLICATE_SCORE_MAXIMUMS.upi).toFixed(4)),
+    admission_number: Number((features.admission_number_match * DUPLICATE_SCORE_MAXIMUMS.admission_number).toFixed(4)),
     birth_certificate: Number((features.birth_certificate_match * DUPLICATE_SCORE_MAXIMUMS.birth_certificate).toFixed(4)),
   };
 }
@@ -195,7 +226,7 @@ function hasCorroboratingMajority(features) {
 
 /** @deprecated Legacy rule engine; test-only. */
 function classifyDuplicate(features, score, duplicateThreshold, reviewThreshold) {
-  if (features.upi_match === 1 || features.birth_certificate_match === 1 || features.national_id_match === 1) return 'critical';
+  if (features.admission_number_match === 1 || features.birth_certificate_match === 1 || features.national_id_match === 1) return 'critical';
   if (score >= duplicateThreshold) return 'duplicate';
   if (score >= reviewThreshold || hasCorroboratingMajority(features)) return 'review';
   return 'clear';
@@ -204,7 +235,7 @@ function classifyDuplicate(features, score, duplicateThreshold, reviewThreshold)
 /** @deprecated Legacy rule engine; test-only. */
 function duplicateReviewReason(features, score, reviewThreshold) {
   const matchedIdentifiers = [
-    features.upi_match === 1 ? 'UPI' : null,
+    features.admission_number_match === 1 ? 'admission number' : null,
     features.birth_certificate_match === 1 ? 'birth certificate number' : null,
     features.national_id_match === 1 ? 'National ID number' : null,
   ].filter(Boolean);
@@ -231,7 +262,7 @@ function checkDuplicates(features) {
       dob_match: feature.dob_match,
       school_match: feature.school_match,
       guardian_match: feature.guardian_match,
-      upi_match: feature.upi_match,
+      admission_number_match: feature.admission_number_match,
       birth_certificate_match: feature.birth_certificate_match || 0,
     }));
     predictorProcess.stdin.write(`${JSON.stringify(preparedFeatures)}\n`);
@@ -278,6 +309,8 @@ function ensurePredictor() {
       if (result.error) return request.reject(new Error(result.error));
       request.resolve(result);
     } catch (error) {
+      request.settled = true;
+      clearTimeout(request.timeout);
       request.reject(error);
     }
   });

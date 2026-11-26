@@ -1,0 +1,30 @@
+﻿Requirement ID,Objective,Requirement summary,Design element,Implemented feature,Test/evidence,Status
+FR-01,O3,Guardian account creation,Guardian identity/account model,Guardian registration API,Source review; API tests not executed here,Implemented in source
+FR-02,O3,Authentication and role-based access,JWT/auth middleware,Guardian/Admin/Field Officer routes,Source review; Node tests blocked,Implemented in source
+FR-03,O3,Submit validated student application,Guardian application form and REST API,Application validation and submission,Source review; UI/API test not run here,Implemented in source
+FR-04,O3,Guardian views only own applications,Ownership-filtered application endpoints,Application list/detail,Source review; no live database test,Implemented in source
+FR-05,O3,Submitted application is read-only,Application status and route policy,No Guardian application-edit endpoint,Source inspection,Implemented as read-only
+FR-06,O3,Admin requests field-limited corrections,Correction request/status/data flow,No More Info workflow found,Route/status/UI inspection,Not implemented
+FR-07,O2;O3,Screen submissions against registered students,Shared feature builder and Python predictor,Submission screening integration,`duplicateCheck.test.js` passed in the 33-test run of 25 Nov 2026; feature tests passed,Implemented and tested in source
+FR-08,O3;O4,Potential duplicates go to human review,Duplicate cases and resolution audit,Admin review queue and human resolution,`duplicateFlags.test.js` fails 6 of 9 on a stale `sbms_test` migration (Chapter 5 §5.10.1); verdict pending,Implemented in source (test verdict pending)
+FR-09,O3,Audited reveal of protected identifiers,Restricted reveal endpoint and audit record,Admin reveal route,`duplicateFlags.test.js` fails 6 of 9 on a stale `sbms_test` migration (Chapter 5 §5.10.1); verdict pending,Implemented in source (test verdict pending)
+FR-10,O3,Duplicate resolution gates eligibility progression,Resolution status and business rule,Unresolved cases block progression,Source review; integration not run,Implemented in source
+FR-11,O3,Field Officer has workflow-limited record access,Role guards and query filters,Filtered student/eligibility views,Source review; API tests blocked,Implemented in source
+FR-12,O3,Field Officer records eligibility assessment,Eligibility inputs/scoring and assessment record,Assessment workflow,`eligibility.test.js` passed in the 33-test run of 25 Nov 2026,Implemented and tested in source
+FR-13,O3,Field Officer proposes award for eligible cleared record,Award proposal and eligibility gate,Award proposal,Source review; tests not run,Implemented in source
+FR-14,O3,Administrator decides award with separation of duties,Decision route and audit trail,Admin approval/rejection,Source review; tests not run,Implemented in source
+FR-15,O3,Approved award has certificate and verification,Certificate/token service and QR route,Public verification,Source review; live approval/certificate checks recorded in docs/azure-deployment-log-2026-10-31.md (12 Nov); current local/live parity not checked,Implemented; earlier live verification recorded
+FR-16,O3,System supports reports, audit records and notifications,Reports/audit/notification modules,Role-appropriate operations,Source review; runtime not verified,Implemented in source
+FR-17,O3,System transfers funds through live payment integration,Payment provider or transfer transaction,No operational payment transfer flow,Route/UI/schema inspection,Not implemented
+NFR-01,O3,Server-side authorization,Auth and role middleware,Protected REST endpoints,Source inspection; role and security suites not re-run in this pass,Implemented in source
+NFR-02,O3,Password hashes are protected,Password hashing and response shaping,Authentication service,Source inspection; tests not run,Implemented in source
+NFR-03,O3,Protect sensitive data and apply privacy controls,Access filtering and identifier handling,Role restrictions and audited reveal,Source inspection; no privacy certification,Partially evidenced
+NFR-04,O2;O3,Fail closed on invalid or unavailable model,Python bridge validation and error handling,Submission screening fails rather than clears,Source inspection; ML feature tests passed (18) but predictor Node suites not re-run in this pass,Implemented in source
+NFR-05,O3,Keep duplicate and award decisions human-reviewed,Separate score/case/decision workflow,Administrator resolution and award decision,Source inspection,Implemented in source
+NFR-06,O3,Public verification avoids student identifier disclosure,Token/reference verification responses,Verification endpoints,Source inspection; deployed response not checked,Implemented in source
+NFR-07,O3,Meet documented response-time and scale targets,Load/performance target and tests,None verified,No load-test evidence,Not demonstrated
+DR-01,O2;O3,Store Guardian and application data with ownership linkage,Users and guardian_applications tables,Guardian submission records,Schema/migration review,Implemented in source
+DR-02,O2;O3;O4,Store student/school/duplicate decisions and model provenance,Students and duplicate/model metadata,Screening and review records,Schema/source review; synthetic-only ML artifacts,Implemented in source
+DR-03,O2;O3,Store eligibility awards certificates audit and notifications,Related tables and migrations,Workflow records,Schema/migration review; live DB not verified,Implemented in source
+IR-01,O2;O3,React API PostgreSQL and Python model interoperate,REST interfaces and Python child process,Frontend/API/model path,Source review; Node integration not run,Implemented in source
+IR-02,O2;O3,Build and deploy through intended Azure arrangement,Container/workflow/runbooks,Azure deployment completed earlier; later live checks/deployments recorded,docs/azure-deployment-log-2026-10-31.md; current local/live revision parity not established,Deployment completed; parity with current local worktree unverified

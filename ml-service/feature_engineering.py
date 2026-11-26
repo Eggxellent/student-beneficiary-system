@@ -1,4 +1,18 @@
-"""Single source of truth for the six SBMS student-pair model inputs."""
+"""Single source of truth for the six SBMS student-pair model inputs.
+
+Production schema, in order:
+
+    jaro_winkler, dob_match, school_match, guardian_match, admission_number_match,
+    birth_certificate_match
+
+`admission_number_match` replaces the earlier `upi_match` feature. The guardian
+application form does not collect a UPI, so every record screened through the
+guardian pipeline carried an empty UPI and the feature was constant zero. The
+admission number is collected, but it is only meaningful inside one school: the
+same number at two different schools is two different students. The comparison is
+therefore gated on a matching school identity and never compares numbers across
+schools.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +27,7 @@ FEATURE_COLUMNS = [
     "dob_match",
     "school_match",
     "guardian_match",
-    "upi_match",
+    "admission_number_match",
     "birth_certificate_match",
 ]
 
@@ -91,9 +105,9 @@ def _identifier_similarity(first: object, second: object) -> float:
         return 0.0
     left = re.sub(r"[^a-z0-9]", "", _text(first).casefold())
     right = re.sub(r"[^a-z0-9]", "", _text(second).casefold())
-    # Ignore shared field prefixes (for example UPI, BC, and G) so they don't
-    # inflate similarity between unrelated identifiers.
-    prefixes = ("guardian", "guard", "upi", "student", "bc", "g")
+    # Ignore shared field prefixes (for example BC and G) so they don't inflate
+    # similarity between unrelated identifiers.
+    prefixes = ("guardian", "guard", "student", "bc", "g")
     for prefix in prefixes:
         if left.startswith(prefix):
             left = left[len(prefix):]
@@ -108,13 +122,69 @@ def _identifier_similarity(first: object, second: object) -> float:
     return float(jellyfish.jaro_winkler_similarity(left, right)) if left and right else 0.0
 
 
+# Admission numbers are only comparable when both rows resolve to the same configured
+# school code. Free-text school names are not a fallback because training and inference
+# both use `school_code` for the school_match feature.
+def school_identity(record: Mapping[str, object]) -> str:
+    value = record.get("school_code")
+    return "" if _missing(value) else re.sub(r"[^a-z0-9]", "", _text(value).casefold())
+
+
+ADMISSION_PREFIXES = (
+    "admissionnumber", "admissionno", "admission", "admno", "adm",
+    "registrationnumber", "regno", "reg",
+)
+
+
+def admission_number_key(value: object) -> str:
+    """Normalise an admission number without erasing its digits.
+
+    Only presentation is removed: case, spaces, hyphens, slashes and a leading
+    field prefix. Leading zeros are kept, because `0148` and `148` are different
+    register entries and must not collapse into one value.
+    """
+    if _missing(value):
+        return ""
+    compact = re.sub(r"[^a-z0-9]", "", _text(value).casefold())
+    for prefix in ADMISSION_PREFIXES:
+        if compact.startswith(prefix) and len(compact) > len(prefix):
+            compact = compact[len(prefix):]
+            break
+    return compact
+
+
+def admission_number_similarity(first: Mapping[str, object], second: Mapping[str, object]) -> float:
+    """School-aware admission-number comparison.
+
+    Returns 0 unless both records belong to the same school, then 1.0 for an exact
+    normalised match, 0.9 for a transposition of the same characters (the typo
+    mode registers actually produce), and 0 for any other difference. A single
+    changed digit is a different register entry, not a transcription slip, so it is
+    never treated as a match.
+    """
+    # Keep this gate identical to the school-code semantics used during training.
+    first_school = school_identity(first)
+    second_school = school_identity(second)
+    if not first_school or first_school != second_school:
+        return 0.0
+    left = admission_number_key(first.get("admission_number"))
+    right = admission_number_key(second.get("admission_number"))
+    if not left or not right:
+        return 0.0
+    if left == right:
+        return 1.0
+    if len(left) >= 3 and len(left) == len(right) and sorted(left) == sorted(right):
+        return 0.9
+    return 0.0
+
+
 def build_pair_features(first: Mapping[str, object], second: Mapping[str, object]) -> dict[str, float | int]:
     return {
         "jaro_winkler": _name_similarity(first.get("full_name"), second.get("full_name")),
         "dob_match": _dob_similarity(first.get("date_of_birth"), second.get("date_of_birth")),
         "school_match": exact_match(first.get("school_code"), second.get("school_code")),
         "guardian_match": _identifier_similarity(first.get("guardian_id"), second.get("guardian_id")),
-        "upi_match": _identifier_similarity(first.get("upi"), second.get("upi")),
+        "admission_number_match": admission_number_similarity(first, second),
         "birth_certificate_match": _identifier_similarity(
             first.get("birth_certificate_number"), second.get("birth_certificate_number")
         ),

@@ -250,8 +250,8 @@ export default function NewApplication() {
             description="Provide the student’s current school details."
           >
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <Field label="School Name" htmlFor="school-name" required className="md:col-span-2">
-                <Input id="school-name" name="school-name" placeholder="Enter the school name" />
+              <Field label="School Code" htmlFor="school-name" required className="md:col-span-2">
+                <Input id="school-name" name="school-name" placeholder="Enter the school code" />
               </Field>
 
               <Field label="School Level" htmlFor="school-level" required>
@@ -261,8 +261,6 @@ export default function NewApplication() {
                   options={[
                     { value: "primary", label: "Primary" },
                     { value: "secondary", label: "Secondary" },
-                    { value: "college", label: "College" },
-                    { value: "university", label: "University" },
                   ]}
                 />
               </Field>

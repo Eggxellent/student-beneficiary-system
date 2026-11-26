@@ -26,7 +26,7 @@ function databaseTarget() {
 
 function compareStudentData(existing, expected) {
   const keys = [
-    'full_name', 'date_of_birth', 'school_code', 'guardian_id', 'upi',
+    'full_name', 'date_of_birth', 'school_code', 'guardian_id', 'admission_number', 'upi',
     'national_id_number', 'birth_certificate_number', 'primary_phone', 'qr_token',
   ];
   const normalized = (value) => value == null
@@ -42,7 +42,7 @@ function evaluateComparison(testCase) {
   const features = buildDuplicateFeatures(testCase.first, testCase.second);
   const probability = features.national_id_match ? 1 : calculateDuplicateScore(features);
   const candidate = features.jaro_winkler >= MIN_NAME_SIMILARITY
-    || features.upi_match
+    || features.admission_number_match
     || features.birth_certificate_match
     || features.national_id_match
     || hasCorroboratingMajority(features);
@@ -101,10 +101,10 @@ async function main() {
       } else {
         const inserted = await client.query(
           `INSERT INTO students (
-             full_name, date_of_birth, school_code, guardian_id, upi,
+             full_name, date_of_birth, school_code, guardian_id, admission_number, upi,
              national_id_number, birth_certificate_number, primary_phone, qr_token, is_synthetic
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE) RETURNING *`,
-          [record.full_name, record.date_of_birth, record.school_code, record.guardian_id, record.upi,
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,TRUE) RETURNING *`,
+          [record.full_name, record.date_of_birth, record.school_code, record.guardian_id, record.admission_number, record.upi,
             record.national_id_number, record.birth_certificate_number, record.primary_phone, record.qr_token]
         );
         student = inserted.rows[0];

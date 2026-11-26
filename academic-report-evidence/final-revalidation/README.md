@@ -1,5 +1,10 @@
 # SBMS FINAL REVALIDATION EVIDENCE PACKAGE
 
+> **HISTORICAL SNAPSHOT NOTICE -- 25 November 2026:** This package records an audit performed on 3 November 2026. Azure deployment was completed earlier, and later deployment activity is recorded in `docs/azure-deployment-log-2026-10-31.md`, including November 12 API deployment evidence and November 18 frontend redeployments. Do not treat the 3 November image comparison or action items as current deployment status or pending work. The current project phase is local testing and verification. Do not modify the live application or production database. See `docs/final-report-evidence/09_DEPLOYMENT_STATUS_AND_LOCAL_VERIFICATION.md` for the current handoff distinction.
+
+
+
+
 **Audited commit:** `cca0625` (branch `fix/sbms-completion-work`)
 **Deployed commit:** `a3714f8` — the Container App image is nine commits behind the audited commit
 **Revalidated:** 2026-11-03 in two independent passes (01:20–01:30 and 09:45–10:10 +03:00), read-only: no application code, migration, test or CI file was modified
@@ -37,7 +42,7 @@
 
 ## What is not established
 
-1. **Certificates are not deployed** (G-29). The live API runs `a3714f8`, 9 commits behind HEAD `cca0625`, so
+1. **Historical as of 3 November only:** the API snapshot ran `a3714f8`, 9 commits behind then-HEAD `cca0625`; later API deployment and live certificate activity are recorded in the November deployment log. Do not use G-29 as current deployment status. Earlier wording was:
    `POST /api/certificates/verify` answers 404. Do not compare SPA bundle hashes — the build inlines
    `VITE_API_ORIGIN`, so the hash changes with the environment, not only the commit.
 2. **No user acceptance study** (G-06). No participants, no tasks, no findings.

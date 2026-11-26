@@ -54,6 +54,7 @@ const MIGRATION_ORDER = Object.freeze([
   '20261119_guardian_accounts.sql',
   '20261122_guardian_student_pipeline.sql',
   '20261123_guardian_eligibility_inputs.sql',
+  '20261124_guardian_admission_number.sql',
 ]);
 
 const MANUAL_MIGRATIONS = Object.freeze([

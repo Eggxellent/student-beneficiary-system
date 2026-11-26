@@ -15,14 +15,10 @@
  *
  * Policies (DUPLICATE_AGGREGATION_POLICY):
  *
- *   top-1-corroborated  Default. A registration creates a case only when the
- *                       evidence is decisive: an identifier matches exactly (UPI,
- *                       birth certificate, national ID), or at least two
- *                       independent fields corroborate the match. A high model
- *                       score on its own is a near miss, not a case. The cutoff is
- *                       provisional and the model is uncalibrated, so a queue that
- *                       fills with one case per registration is not reviewed at
- *                       all; a handful of decisive cases is.
+ *   top-1-corroborated  Default. Keep every candidate that individually has an
+ *                       exact identifier, two strong independent model signals,
+ *                       or the separate typo-aware near-match evidence route.
+ *                       This preserves multiple plausible candidates for Admin review.
  *
  *   top-1               At most one flag per registration whatever the evidence:
  *                       the single best qualifying candidate, ranking exact
@@ -40,7 +36,7 @@
  *   evidence on its own: when the only independent field that agrees is
  *   guardian_match, the pair is a family relationship and no flag is created, no
  *   matter what the model scored it. The flag returns as soon as another
- *   independent field agrees (date of birth, UPI, birth certificate, national ID)
+ *   independent field agrees (date of birth, admission number, birth certificate, national ID)
  *   or an identifier matches exactly, because that is the same person's record.
  *
  * This module never changes a score, a threshold, or the model. It only selects
@@ -58,11 +54,13 @@ const GUARDIAN_FIELD = 'guardian_match';
 
 // Fields that can independently corroborate a match. Name similarity and school
 // are excluded on purpose: names collide often and most applicants share a school,
-// so neither is independent evidence on its own.
+// so neither is independent evidence on its own. The admission number is only
+// compared inside one school (feature_engineering.admission_number_similarity), so it
+// cannot be corroborated across schools.
 const CORROBORATION_FIELDS = Object.freeze([
   'dob_match',
   'guardian_match',
-  'upi_match',
+  'admission_number_match',
   'birth_certificate_match',
   'national_id_match',
 ]);
@@ -86,15 +84,23 @@ function corroboratingFields(features) {
  * record of the same child. An exact identifier match settles the question the
  * other way and is never suppressed here.
  */
-function isGuardianOnlyMatch(features, exactIdentifiers = []) {
+function isGuardianOnlyMatch(features, exactIdentifiers = [], reviewEvidence = null) {
   if (Array.isArray(exactIdentifiers) && exactIdentifiers.length > 0) return false;
+  if (reviewEvidence && reviewEvidence.near_match_review === true) return false;
   const values = features || {};
   if (!(Number(values[GUARDIAN_FIELD]) >= CORROBORATION_MINIMUM_SIMILARITY)) return false;
   return corroboratingFields(values).every((field) => field === GUARDIAN_FIELD);
 }
 
 function qualifiesForReview(candidate, threshold) {
-  return candidate.score >= threshold || candidate.exactIdentifiers.length > 0;
+  return candidate.score >= threshold || candidate.exactIdentifiers.length > 0
+    || candidate.reviewEvidence?.near_match_review === true;
+}
+
+function hasSufficientEvidence(candidate) {
+  return candidate.exactIdentifiers.length > 0
+    || candidate.corroboratingFields.length >= CORROBORATION_MINIMUM_FIELDS
+    || candidate.reviewEvidence?.near_match_review === true;
 }
 
 function compareCandidates(left, right) {
@@ -128,7 +134,7 @@ function selectFlaggedCandidates(candidates, options = {}) {
       ...candidate,
       exactIdentifiers,
       corroboratingFields: corroboratingFields(candidate.features),
-      guardianOnlyMatch: isGuardianOnlyMatch(candidate.features, exactIdentifiers),
+      guardianOnlyMatch: isGuardianOnlyMatch(candidate.features, exactIdentifiers, candidate.reviewEvidence),
       index,
     };
   });
@@ -137,22 +143,12 @@ function selectFlaggedCandidates(candidates, options = {}) {
   // two children. The guardian-only exclusion runs before the policy does, so no
   // policy can turn a family relationship into a duplicate case.
   const qualifying = prepared.filter((candidate) => (
-    !candidate.guardianOnlyMatch && qualifiesForReview(candidate, threshold)
-  ));
-  if (policy === 'all') return qualifying;
-  if (qualifying.length === 0) return [];
-
-  const [best] = qualifying.sort(compareCandidates);
-
-  if (
-    policy === 'top-1-corroborated'
-    && best.exactIdentifiers.length === 0
-    && best.corroboratingFields.length < CORROBORATION_MINIMUM_FIELDS
-  ) {
-    return [];
-  }
-
-  return [best];
+    !candidate.guardianOnlyMatch
+    && qualifiesForReview(candidate, threshold)
+    && (policy !== 'top-1-corroborated' || hasSufficientEvidence(candidate))
+  )).sort(compareCandidates);
+  if (policy === 'top-1') return qualifying.slice(0, 1);
+  return qualifying;
 }
 
 /**
@@ -172,14 +168,17 @@ function summarizeAggregation(candidates, flagged, options = {}) {
     const exactIdentifiers = Array.isArray(candidate.exactIdentifiers) ? candidate.exactIdentifiers : [];
     return {
       exactIdentifiers,
-      guardianOnlyMatch: isGuardianOnlyMatch(candidate.features, exactIdentifiers),
+      reviewEvidence: candidate.reviewEvidence || null,
+      guardianOnlyMatch: isGuardianOnlyMatch(candidate.features, exactIdentifiers, candidate.reviewEvidence),
       reachesCutoff: Number(candidate.score) >= threshold || exactIdentifiers.length > 0,
+      nearMatch: candidate.reviewEvidence?.near_match_review === true,
     };
   });
   // Counted only when the pair would otherwise have qualified, so the figure answers the question
   // it is reported for: how many flags did the guardian rule remove from the queue?
   const guardianOnly = facts.filter((fact) => fact.guardianOnlyMatch && fact.reachesCutoff).length;
-  const qualifying = facts.filter((fact) => !fact.guardianOnlyMatch && fact.reachesCutoff).length;
+  const qualifying = facts.filter((fact) => !fact.guardianOnlyMatch && (fact.reachesCutoff || fact.nearMatch)).length;
+  const nearMatches = facts.filter((fact) => !fact.guardianOnlyMatch && fact.nearMatch).length;
   const selected = Array.isArray(flagged) ? flagged.length : 0;
   return {
     policy,
@@ -188,6 +187,7 @@ function summarizeAggregation(candidates, flagged, options = {}) {
     // Reported separately from candidates_suppressed: these pairs agreed on the
     // guardian and nothing else, which is a sibling, not a near miss.
     candidates_guardian_only: guardianOnly,
+    candidates_near_match: nearMatches,
     flags_selected: selected,
     candidates_suppressed: Math.max(0, qualifying - selected),
   };
@@ -202,6 +202,7 @@ module.exports = {
   GUARDIAN_FIELD,
   corroboratingFields,
   isGuardianOnlyMatch,
+  hasSufficientEvidence,
   normalizeAggregationPolicy,
   selectFlaggedCandidates,
   summarizeAggregation,

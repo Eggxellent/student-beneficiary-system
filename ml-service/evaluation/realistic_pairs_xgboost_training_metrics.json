@@ -1,112 +1,16 @@
 {
-  "training_file": "training\\realistic_pairs_train.csv",
-  "training_sha256": "7b58568076865f9197505636b9ef293d754fbe8403ddb7e91ebaa787e0e9d6a5",
-  "training_rows": 12000,
-  "training_groups": 6000,
-  "training_class_counts": {
-    "0": 6000,
-    "1": 6000
-  },
-  "holdout_file": "evaluation\\realistic_pairs_holdout.csv",
-  "holdout_sha256": "533e1fc7e23afb5a1dd0000e03d0b8555659714249f8ae6f9fcecbca894935ee",
-  "holdout_rows": 12000,
-  "holdout_groups": 6000,
-  "holdout_class_counts": {
-    "0": 6000,
-    "1": 6000
-  },
-  "holdout_used_for_training_or_tuning": false,
-  "holdout_used_for_model_selection": true,
-  "split": "80/20 internal split by group_id; independent holdout generated from new latent identities and a separate random seed",
-  "selection": "XGBoost selected after same-holdout comparison; parameters match the evaluated XGBoost run; threshold fixed at 0.5",
-  "selected_parameters": {
-    "n_estimators": 250,
-    "max_depth": 4,
-    "learning_rate": 0.05,
-    "subsample": 0.9,
-    "colsample_bytree": 0.9,
-    "reg_lambda": 1.0
-  },
-  "selected_model_holdout_metrics": {
-    "threshold": 0.5,
-    "accuracy": 0.90775,
-    "balanced_accuracy": 0.9077500000000001,
-    "precision": 0.9204330641003609,
-    "recall": 0.8926666666666667,
-    "f1": 0.9063372535747525,
-    "average_precision": 0.9726932705276506,
-    "roc_auc": 0.9684866388888889,
-    "confusion_matrix_labels_0_1": [
-      [
-        5537,
-        463
-      ],
-      [
-        644,
-        5356
-      ]
-    ],
-    "true_negatives": 5537,
-    "false_positives": 463,
-    "false_negatives": 644,
-    "true_positives": 5356,
-    "illustrative_precision_at_assumed_prevalence": {
-      "0.01": 0.10462367901861586,
-      "0.05": 0.37843566734967854,
-      "0.1": 0.562427806363541
-    }
-  },
-  "independent_holdout_scenario_metrics": {
-    "common_name_same_school": {
-      "rows": 1492,
-      "label": 0,
-      "accuracy_or_recall": 0.9215817694369973,
-      "positive_recall": null,
-      "negative_false_positive_rate": 0.07841823056300268
-    },
-    "identifier_collision": {
-      "rows": 1202,
-      "label": 0,
-      "accuracy_or_recall": 0.7778702163061564,
-      "positive_recall": null,
-      "negative_false_positive_rate": 0.2221297836938436
-    },
-    "repeat_application": {
-      "rows": 6000,
-      "label": 1,
-      "accuracy_or_recall": 0.8926666666666667,
-      "positive_recall": 0.8926666666666667,
-      "negative_false_positive_rate": null
-    },
-    "siblings_shared_household": {
-      "rows": 1532,
-      "label": 0,
-      "accuracy_or_recall": 0.9902088772845953,
-      "positive_recall": null,
-      "negative_false_positive_rate": 0.0097911227154047
-    },
-    "twins_or_close_age": {
-      "rows": 1150,
-      "label": 0,
-      "accuracy_or_recall": 0.9443478260869566,
-      "positive_recall": null,
-      "negative_false_positive_rate": 0.05565217391304348
-    },
-    "unrelated_candidate": {
-      "rows": 624,
-      "label": 0,
-      "accuracy_or_recall": 1.0,
-      "positive_recall": null,
-      "negative_false_positive_rate": 0.0
-    }
-  },
-  "deployed_model_fit_rows": 12000,
-  "deployed_model_file": "model\\xgb_duplicate_model.joblib",
-  "deployed_model_sha256": "6ec9f2a3cbe6ed0dcf80c79b15f47364d9f4f7bd3e27da25c690d0436bb0a6f9",
-  "model_promoted": true,
-  "algorithm": "XGBClassifier",
-  "previous_holdout_exposure": "This holdout informed the Random Forest versus XGBoost comparison and algorithm choice; it is no longer an unbiased final test for the selected algorithm.",
+  "schema_version": "student-pair-v2-admission-number",
+  "dataset_seed": 20261126,
+  "component_split_seed": 20261127,
   "feature_columns": [
+    "jaro_winkler",
+    "dob_match",
+    "school_match",
+    "guardian_match",
+    "admission_number_match",
+    "birth_certificate_match"
+  ],
+  "previous_feature_columns": [
     "jaro_winkler",
     "dob_match",
     "school_match",
@@ -114,20 +18,1000 @@
     "upi_match",
     "birth_certificate_match"
   ],
-  "features_recomputed_from_raw_fields": true,
-  "feature_semantics": "Names compare direct and token-order-tolerant Jaro-Winkler; DOB tolerates common formats and small day errors; IDs compare normalized text and fuzzy transcription similarity; school codes compare normalized exact values.",
-  "generator_scenarios": [
-    "repeat applications with misspelled/reordered/partial names, DOB entry errors, school transfers, changed guardians, and reissued or mistyped identifiers",
-    "siblings and twins sharing guardian, school, surname, or birth date",
-    "common-name/same-school collisions and occasional reused identifiers in non-duplicate pairs",
-    "missing fields independently distributed across both classes"
+  "training_file": "training\\realistic_pairs_train.csv",
+  "training_sha256": "e7ce16bcb44785cc8cd0344125ef44b32f7906a07f0aebe5826e87f4e247c151",
+  "training_rows": 21000,
+  "training_groups": 10500,
+  "training_unique_identities": 15757,
+  "training_class_counts": {
+    "0": 10514,
+    "1": 10486
+  },
+  "scenario_distribution": {
+    "training": {
+      "tier_definition": "Scenario-design categories only; not real-world prevalence or model inputs.",
+      "groups_note": "A positive identity group can contribute pair rows to more than one tier.",
+      "unique_groups_represented_in_tier": {
+        "easy": {
+          "positive": 2832,
+          "negative": 1542
+        },
+        "moderate": {
+          "positive": 319,
+          "negative": 1922
+        },
+        "hard": {
+          "positive": 2657,
+          "negative": 2876
+        }
+      },
+      "pair_rows": {
+        "easy": {
+          "positive": 5238,
+          "negative": 2554
+        },
+        "moderate": {
+          "positive": 326,
+          "negative": 2924
+        },
+        "hard": {
+          "positive": 4922,
+          "negative": 5036
+        }
+      }
+    },
+    "validation": {
+      "tier_definition": "Scenario-design categories only; not real-world prevalence or model inputs.",
+      "groups_note": "A positive identity group can contribute pair rows to more than one tier.",
+      "unique_groups_represented_in_tier": {
+        "easy": {
+          "positive": 627,
+          "negative": 319
+        },
+        "moderate": {
+          "positive": 60,
+          "negative": 426
+        },
+        "hard": {
+          "positive": 534,
+          "negative": 617
+        }
+      },
+      "pair_rows": {
+        "easy": {
+          "positive": 1163,
+          "negative": 551
+        },
+        "moderate": {
+          "positive": 61,
+          "negative": 665
+        },
+        "hard": {
+          "positive": 982,
+          "negative": 1078
+        }
+      }
+    },
+    "holdout": {
+      "tier_definition": "Scenario-design categories only; not real-world prevalence or model inputs.",
+      "groups_note": "A positive identity group can contribute pair rows to more than one tier.",
+      "unique_groups_represented_in_tier": {
+        "easy": {
+          "positive": 637,
+          "negative": 286
+        },
+        "moderate": {
+          "positive": 63,
+          "negative": 410
+        },
+        "hard": {
+          "positive": 582,
+          "negative": 630
+        }
+      },
+      "pair_rows": {
+        "easy": {
+          "positive": 1167,
+          "negative": 478
+        },
+        "moderate": {
+          "positive": 65,
+          "negative": 621
+        },
+        "hard": {
+          "positive": 1076,
+          "negative": 1093
+        }
+      }
+    }
+  },
+  "generator_metadata_excluded_from_model": [
+    "difficulty",
+    "difficulty_band",
+    "scenario",
+    "variation",
+    "mutations",
+    "group_id",
+    "identity_1",
+    "identity_2"
   ],
+  "validation_file": "evaluation\\realistic_pairs_validation.csv",
+  "validation_sha256": "13a0d7fd259febe52b011ae1cc9565efb5e60a9dc6b6fbb916e800259b8eaf8b",
+  "validation_rows": 4500,
+  "validation_groups": 2250,
+  "validation_unique_identities": 3397,
+  "holdout_file": "evaluation\\realistic_pairs_holdout.csv",
+  "holdout_sha256": "e35cc0560f1d89fbe6d627ca590a51b376658eb23afa6e6fe391e07a4a6e0c6a",
+  "holdout_rows": 4500,
+  "holdout_groups": 2250,
+  "holdout_unique_identities": 3346,
+  "holdout_class_counts": {
+    "0": 2192,
+    "1": 2308
+  },
+  "holdout_used_for_training_or_tuning": false,
+  "holdout_used_for_model_selection": false,
+  "holdout_used_for_threshold_selection": false,
+  "split": "One synthetic population is partitioned by connected identity/guardian components at 70/15/15; train fits preprocessing/model, validation selects candidate and threshold, final test is read only after lock and scored once.",
+  "final_test_read_after_lock": true,
+  "selection": "Cutoff maximises validation F1, ties broken towards the higher cutoff; no holdout information enters the choice.",
+  "threshold_selection": {
+    "threshold": 0.63,
+    "validation_f1": 0.8668458343513316,
+    "validation_fpr": 0.04925893635571055,
+    "max_validation_fpr": 0.05,
+    "fpr_guardrail_satisfied": true,
+    "grid": [
+      0.2,
+      0.8
+    ]
+  },
+  "selected_candidate": "hist_gradient_boosting",
+  "selected_parameters": {
+    "max_iter": 160,
+    "max_leaf_nodes": 7,
+    "l2_regularization": 4.0,
+    "min_samples_leaf": 25,
+    "learning_rate": 0.05
+  },
+  "candidate_selection_file": "experiments/results/model_comparison_validation_20261125.json",
+  "training_metrics": {
+    "threshold": 0.63,
+    "rows": 21000,
+    "accuracy": 0.8811904761904762,
+    "balanced_accuracy": 0.8811004235436102,
+    "precision": 0.9404696284863852,
+    "recall": 0.8135609383940492,
+    "f1": 0.8724241959400726,
+    "specificity": 0.948639908693171,
+    "false_positive_rate": 0.05136009130682895,
+    "false_negative_rate": 0.1864390616059508,
+    "average_precision": 0.9656479206268207,
+    "roc_auc": 0.9677505594477066,
+    "confusion_matrix_labels_0_1": [
+      [
+        9974,
+        540
+      ],
+      [
+        1955,
+        8531
+      ]
+    ],
+    "true_negatives": 9974,
+    "false_positives": 540,
+    "false_negatives": 1955,
+    "true_positives": 8531,
+    "illustrative_precision_at_assumed_prevalence": {
+      "0.01": 0.13793353262435482,
+      "0.05": 0.4546550368835276,
+      "0.1": 0.637686013456262
+    }
+  },
+  "validation_metrics": {
+    "threshold": 0.63,
+    "rows": 4500,
+    "accuracy": 0.8788888888888889,
+    "balanced_accuracy": 0.8774557539436316,
+    "precision": 0.9401165871754107,
+    "recall": 0.8041704442429737,
+    "f1": 0.8668458343513316,
+    "specificity": 0.9507410636442895,
+    "false_positive_rate": 0.04925893635571055,
+    "false_negative_rate": 0.19582955575702632,
+    "average_precision": 0.9645226688122776,
+    "roc_auc": 0.9675436374285553,
+    "confusion_matrix_labels_0_1": [
+      [
+        2181,
+        113
+      ],
+      [
+        432,
+        1774
+      ]
+    ],
+    "true_negatives": 2181,
+    "false_positives": 113,
+    "false_negatives": 432,
+    "true_positives": 1774,
+    "illustrative_precision_at_assumed_prevalence": {
+      "0.01": 0.14155923745580487,
+      "0.05": 0.4621429556164899,
+      "0.1": 0.6446251563030151
+    }
+  },
+  "selected_model_holdout_metrics": {
+    "threshold": 0.63,
+    "rows": 4500,
+    "accuracy": 0.88,
+    "balanced_accuracy": 0.8816513333502005,
+    "precision": 0.940677966101695,
+    "recall": 0.8175909878682842,
+    "f1": 0.874826147426982,
+    "specificity": 0.9457116788321168,
+    "false_positive_rate": 0.05428832116788318,
+    "false_negative_rate": 0.1824090121317158,
+    "average_precision": 0.9678915526778467,
+    "roc_auc": 0.9687757949183418,
+    "confusion_matrix_labels_0_1": [
+      [
+        2073,
+        119
+      ],
+      [
+        421,
+        1887
+      ]
+    ],
+    "true_negatives": 2073,
+    "false_positives": 119,
+    "false_negatives": 421,
+    "true_positives": 1887,
+    "illustrative_precision_at_assumed_prevalence": {
+      "0.01": 0.1320370141244962,
+      "0.05": 0.44216356882727953,
+      "0.1": 0.6259377025900659
+    }
+  },
+  "holdout_metrics_at_reference_threshold": {
+    "threshold": 0.5,
+    "rows": 4500,
+    "accuracy": 0.8944444444444445,
+    "balanced_accuracy": 0.8927061854039899,
+    "precision": 0.8526356290881109,
+    "recall": 0.9601386481802426,
+    "f1": 0.9031995109027919,
+    "specificity": 0.8252737226277372,
+    "false_positive_rate": 0.17472627737226276,
+    "false_negative_rate": 0.03986135181975736,
+    "average_precision": 0.9678915526778467,
+    "roc_auc": 0.9687757949183418,
+    "confusion_matrix_labels_0_1": [
+      [
+        1809,
+        383
+      ],
+      [
+        92,
+        2216
+      ]
+    ],
+    "true_negatives": 1809,
+    "false_positives": 383,
+    "false_negatives": 92,
+    "true_positives": 2216,
+    "illustrative_precision_at_assumed_prevalence": {
+      "0.01": 0.05258716940586322,
+      "0.05": 0.22433471384839682,
+      "0.1": 0.37910059261002843
+    }
+  },
+  "holdout_exact_duplicate_metrics": {
+    "threshold": 0.63,
+    "rows": 60,
+    "accuracy": 0.9833333333333333,
+    "balanced_accuracy": 0.9833333333333333,
+    "precision": 1.0,
+    "recall": 0.9833333333333333,
+    "f1": 0.9915966386554622,
+    "specificity": 0.0,
+    "false_positive_rate": 1.0,
+    "false_negative_rate": 0.01666666666666672,
+    "average_precision": 1.0,
+    "roc_auc": NaN,
+    "confusion_matrix_labels_0_1": [
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        59
+      ]
+    ],
+    "true_negatives": 0,
+    "false_positives": 0,
+    "false_negatives": 1,
+    "true_positives": 59,
+    "illustrative_precision_at_assumed_prevalence": {
+      "0.01": 0.009834972495415902,
+      "0.05": 0.04920767306088407,
+      "0.1": 0.09849749582637729
+    }
+  },
+  "holdout_near_duplicate_metrics": {
+    "threshold": 0.63,
+    "rows": 4440,
+    "accuracy": 0.8786036036036036,
+    "balanced_accuracy": 0.8794394693092968,
+    "precision": 0.9388803287108372,
+    "recall": 0.8131672597864769,
+    "f1": 0.8715137067938021,
+    "specificity": 0.9457116788321168,
+    "false_positive_rate": 0.05428832116788318,
+    "false_negative_rate": 0.18683274021352314,
+    "average_precision": 0.9662744405315137,
+    "roc_auc": 0.968084160778762,
+    "confusion_matrix_labels_0_1": [
+      [
+        2073,
+        119
+      ],
+      [
+        420,
+        1828
+      ]
+    ],
+    "true_negatives": 2073,
+    "false_positives": 119,
+    "false_negatives": 420,
+    "true_positives": 1828,
+    "illustrative_precision_at_assumed_prevalence": {
+      "0.01": 0.1314164886668261,
+      "0.05": 0.44082579586750037,
+      "0.1": 0.6246665411194243
+    }
+  },
+  "holdout_variation_metrics": {
+    "admission_number_format": {
+      "rows": 66,
+      "label": 1,
+      "accuracy": 1.0,
+      "positive_recall": 1.0,
+      "negative_false_positive_rate": null
+    },
+    "admission_number_reuse": {
+      "rows": 112,
+      "label": 0,
+      "accuracy": 1.0,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.0
+    },
+    "birth_certificate_transcription": {
+      "rows": 19,
+      "label": 1,
+      "accuracy": 1.0,
+      "positive_recall": 1.0,
+      "negative_false_positive_rate": null
+    },
+    "combined_changes": {
+      "rows": 1126,
+      "label": 1,
+      "accuracy": 0.91651865008881,
+      "positive_recall": 0.91651865008881,
+      "negative_false_positive_rate": null
+    },
+    "dob_entry_error": {
+      "rows": 120,
+      "label": 1,
+      "accuracy": 0.5833333333333334,
+      "positive_recall": 0.5833333333333334,
+      "negative_false_positive_rate": null
+    },
+    "exact_duplicate": {
+      "rows": 60,
+      "label": 1,
+      "accuracy": 0.9833333333333333,
+      "positive_recall": 0.9833333333333333,
+      "negative_false_positive_rate": null
+    },
+    "guardian_change": {
+      "rows": 47,
+      "label": 1,
+      "accuracy": 0.8297872340425532,
+      "positive_recall": 0.8297872340425532,
+      "negative_false_positive_rate": null
+    },
+    "missing_fields": {
+      "rows": 334,
+      "label": 1,
+      "accuracy": 0.40718562874251496,
+      "positive_recall": 0.40718562874251496,
+      "negative_false_positive_rate": null
+    },
+    "name_variation": {
+      "rows": 422,
+      "label": 1,
+      "accuracy": 0.8364928909952607,
+      "positive_recall": 0.8364928909952607,
+      "negative_false_positive_rate": null
+    },
+    "namesake_same_dob": {
+      "rows": 112,
+      "label": 0,
+      "accuracy": 0.9107142857142857,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.08928571428571429
+    },
+    "partial_identity": {
+      "rows": 70,
+      "label": 0,
+      "accuracy": 1.0,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.0
+    },
+    "registry_collision": {
+      "rows": 164,
+      "label": 0,
+      "accuracy": 0.975609756097561,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.024390243902439025
+    },
+    "same_admission_different_school": {
+      "rows": 32,
+      "label": 0,
+      "accuracy": 1.0,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.0
+    },
+    "same_school": {
+      "rows": 40,
+      "label": 0,
+      "accuracy": 1.0,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.0
+    },
+    "same_school_same_dob_classmates": {
+      "rows": 382,
+      "label": 0,
+      "accuracy": 0.7591623036649214,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.24083769633507854
+    },
+    "school_transfer": {
+      "rows": 114,
+      "label": 1,
+      "accuracy": 0.9912280701754386,
+      "positive_recall": 0.9912280701754386,
+      "negative_false_positive_rate": null
+    },
+    "shared_guardian": {
+      "rows": 86,
+      "label": 0,
+      "accuracy": 1.0,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.0
+    },
+    "siblings_same_household": {
+      "rows": 468,
+      "label": 0,
+      "accuracy": 0.9978632478632479,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.002136752136752137
+    },
+    "similar_admission_numbers": {
+      "rows": 62,
+      "label": 0,
+      "accuracy": 1.0,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.0
+    },
+    "similar_birth_certificate_numbers": {
+      "rows": 54,
+      "label": 0,
+      "accuracy": 1.0,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.0
+    },
+    "similar_names": {
+      "rows": 66,
+      "label": 0,
+      "accuracy": 0.9393939393939394,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.06060606060606061
+    },
+    "twins_same_dob": {
+      "rows": 544,
+      "label": 0,
+      "accuracy": 0.9852941176470589,
+      "positive_recall": null,
+      "negative_false_positive_rate": 0.014705882352941176
+    }
+  },
+  "holdout_feature_analysis": {
+    "jaro_winkler": {
+      "holdout_auc": 0.7620200366228541,
+      "mean_positive": 0.8542446524566104,
+      "mean_negative": 0.6630885154225307,
+      "single_feature_accuracy_at_half": 0.5377777777777778
+    },
+    "dob_match": {
+      "holdout_auc": 0.6702891560930562,
+      "mean_positive": 0.7425043327556327,
+      "mean_negative": 0.42509124087591244,
+      "single_feature_accuracy_at_half": 0.6648888888888889
+    },
+    "school_match": {
+      "holdout_auc": 0.41623312755379577,
+      "mean_positive": 0.639948006932409,
+      "mean_negative": 0.8074817518248175,
+      "single_feature_accuracy_at_half": 0.422
+    },
+    "guardian_match": {
+      "holdout_auc": 0.5084188288276892,
+      "mean_positive": 0.7591993686556078,
+      "mean_negative": 0.7547622668288727,
+      "single_feature_accuracy_at_half": 0.5024444444444445
+    },
+    "admission_number_match": {
+      "holdout_auc": 0.576910563384736,
+      "mean_positive": 0.2504766031195841,
+      "mean_negative": 0.09726277372262773,
+      "single_feature_accuracy_at_half": 0.5691111111111111
+    },
+    "birth_certificate_match": {
+      "holdout_auc": 0.611298648623006,
+      "mean_positive": 0.46854274985557487,
+      "mean_negative": 0.3064859590429846,
+      "single_feature_accuracy_at_half": 0.5713333333333334
+    },
+    "_combined_model_accuracy": 0.88
+  },
+  "holdout_false_positives": [
+    {
+      "score": 0.9831,
+      "variation": "twins_same_dob",
+      "name": [
+        "G. Owino Abdalla",
+        "Okello Abdalla"
+      ],
+      "date_of_birth": [
+        "2002-11-09",
+        "2002-11-09"
+      ],
+      "school": [
+        "SCH008",
+        "SCH008"
+      ],
+      "admission_number": [
+        "ADM-2013-4690",
+        "20134691"
+      ],
+      "birth_certificate": [
+        "BC-704594",
+        "BC-704594"
+      ],
+      "features": {
+        "jaro_winkler": 0.8769,
+        "dob_match": 1.0,
+        "school_match": 1.0,
+        "guardian_match": 1.0,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 1.0
+      }
+    },
+    {
+      "score": 0.9509,
+      "variation": "same_school_same_dob_classmates",
+      "name": [
+        "John Kamau",
+        "Johzn Kamau"
+      ],
+      "date_of_birth": [
+        "2011-04-02",
+        "02/04/2011"
+      ],
+      "school": [
+        NaN,
+        "SCH004"
+      ],
+      "admission_number": [
+        "20130807",
+        NaN
+      ],
+      "birth_certificate": [
+        "BC-474949",
+        NaN
+      ],
+      "features": {
+        "jaro_winkler": 0.9767,
+        "dob_match": 1.0,
+        "school_match": 0.0,
+        "guardian_match": 0.0,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 0.0
+      }
+    },
+    {
+      "score": 0.9502,
+      "variation": "same_school_same_dob_classmates",
+      "name": [
+        "Faith Chepkoech",
+        "Faith Chekoech"
+      ],
+      "date_of_birth": [
+        "2009-04-19",
+        "2009-04-19"
+      ],
+      "school": [
+        NaN,
+        "SCH007"
+      ],
+      "admission_number": [
+        "ADM-2010-0156",
+        NaN
+      ],
+      "birth_certificate": [
+        "BC-439717",
+        NaN
+      ],
+      "features": {
+        "jaro_winkler": 0.9857,
+        "dob_match": 1.0,
+        "school_match": 0.0,
+        "guardian_match": 1.0,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 0.0
+      }
+    },
+    {
+      "score": 0.9406,
+      "variation": "same_school_same_dob_classmates",
+      "name": [
+        "Mary Wanbjiku",
+        "Mary Wanjiku"
+      ],
+      "date_of_birth": [
+        "2006-09-08",
+        "2006-09-08"
+      ],
+      "school": [
+        "SCH002",
+        "SCH002"
+      ],
+      "admission_number": [
+        "ADM-2015-7487",
+        NaN
+      ],
+      "birth_certificate": [
+        "BC-216020",
+        NaN
+      ],
+      "features": {
+        "jaro_winkler": 0.9833,
+        "dob_match": 1.0,
+        "school_match": 1.0,
+        "guardian_match": 0.0,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 0.0
+      }
+    },
+    {
+      "score": 0.9406,
+      "variation": "same_school_same_dob_classmates",
+      "name": [
+        "Faith Chepkoech",
+        "Fatih Chepkoech"
+      ],
+      "date_of_birth": [
+        "2006-11-12",
+        "2006-11-12"
+      ],
+      "school": [
+        "SCH003",
+        "SCH003"
+      ],
+      "admission_number": [
+        "AD-M2014-5975",
+        NaN
+      ],
+      "birth_certificate": [
+        NaN,
+        NaN
+      ],
+      "features": {
+        "jaro_winkler": 0.9857,
+        "dob_match": 1.0,
+        "school_match": 1.0,
+        "guardian_match": 0.0,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 0.0
+      }
+    }
+  ],
+  "holdout_false_negatives": [
+    {
+      "score": 0.0397,
+      "variation": "combined_changes",
+      "name": [
+        "Abdullahi Muriuki",
+        "A. Muriuki"
+      ],
+      "date_of_birth": [
+        "2013-09-28",
+        "2013-09-29"
+      ],
+      "school": [
+        "SCH006",
+        "SCH006"
+      ],
+      "admission_number": [
+        "ADM-2019-2957",
+        NaN
+      ],
+      "birth_certificate": [
+        "BC-797724",
+        NaN
+      ],
+      "features": {
+        "jaro_winkler": 0.6458,
+        "dob_match": 0.8,
+        "school_match": 1.0,
+        "guardian_match": 1.0,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 0.0
+      }
+    },
+    {
+      "score": 0.0405,
+      "variation": "name_variation",
+      "name": [
+        "Samuel Wambua",
+        "S. Wambua"
+      ],
+      "date_of_birth": [
+        "2006-11-01",
+        "2006-11-01"
+      ],
+      "school": [
+        "SCH006",
+        "SCH006"
+      ],
+      "admission_number": [
+        "ADM-2018-7873",
+        NaN
+      ],
+      "birth_certificate": [
+        "BC-730702",
+        NaN
+      ],
+      "features": {
+        "jaro_winkler": 0.7464,
+        "dob_match": 1.0,
+        "school_match": 1.0,
+        "guardian_match": 1.0,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 0.0
+      }
+    },
+    {
+      "score": 0.0488,
+      "variation": "name_variation",
+      "name": [
+        "Faith Said",
+        "F. Said"
+      ],
+      "date_of_birth": [
+        "2016-11-10",
+        "2016-11-10"
+      ],
+      "school": [
+        "SCH009",
+        "SCH009"
+      ],
+      "admission_number": [
+        "ADM-2020-0410",
+        NaN
+      ],
+      "birth_certificate": [
+        "BC-751541",
+        NaN
+      ],
+      "features": {
+        "jaro_winkler": 0.6444,
+        "dob_match": 1.0,
+        "school_match": 1.0,
+        "guardian_match": 1.0,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 0.0
+      }
+    },
+    {
+      "score": 0.0488,
+      "variation": "name_variation",
+      "name": [
+        "Faith Said",
+        "F. Said"
+      ],
+      "date_of_birth": [
+        "2016-11-10",
+        "2016-11-10"
+      ],
+      "school": [
+        "SCH009",
+        "SCH009"
+      ],
+      "admission_number": [
+        "ADM-2020-0410",
+        NaN
+      ],
+      "birth_certificate": [
+        "BC-751541",
+        NaN
+      ],
+      "features": {
+        "jaro_winkler": 0.6444,
+        "dob_match": 1.0,
+        "school_match": 1.0,
+        "guardian_match": 1.0,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 0.0
+      }
+    },
+    {
+      "score": 0.0548,
+      "variation": "combined_changes",
+      "name": [
+        "Masinde Simiyu",
+        "M. Simiyu"
+      ],
+      "date_of_birth": [
+        "2008-03-23",
+        "2007-03-24"
+      ],
+      "school": [
+        "SCH002",
+        "SCH002"
+      ],
+      "admission_number": [
+        "ADM-2022-2832",
+        NaN
+      ],
+      "birth_certificate": [
+        "BC-686055",
+        NaN
+      ],
+      "features": {
+        "jaro_winkler": 0.6264,
+        "dob_match": 0.0,
+        "school_match": 1.0,
+        "guardian_match": 0.6667,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 0.0
+      }
+    }
+  ],
+  "holdout_true_positives": [
+    {
+      "score": 0.6304,
+      "variation": "combined_changes",
+      "name": [
+        "Wambui Makokha",
+        "NOT PROVIDED"
+      ],
+      "date_of_birth": [
+        "2012-01-15",
+        "15/01/2012"
+      ],
+      "school": [
+        "SCH003",
+        "SCH003"
+      ],
+      "admission_number": [
+        "ADM-2011-6479",
+        NaN
+      ],
+      "birth_certificate": [
+        "BC-566134",
+        NaN
+      ],
+      "features": {
+        "jaro_winkler": 0.0,
+        "dob_match": 1.0,
+        "school_match": 1.0,
+        "guardian_match": 0.0,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 0.0
+      }
+    },
+    {
+      "score": 0.6304,
+      "variation": "missing_fields",
+      "name": [
+        "NOT PROVIDED",
+        "NOT PROVIDED"
+      ],
+      "date_of_birth": [
+        "2003-02-05",
+        "2003-02-05"
+      ],
+      "school": [
+        "SCH004",
+        "SCH004"
+      ],
+      "admission_number": [
+        "ADM-2010-0494",
+        NaN
+      ],
+      "birth_certificate": [
+        "BC-371212",
+        NaN
+      ],
+      "features": {
+        "jaro_winkler": 0.0,
+        "dob_match": 1.0,
+        "school_match": 1.0,
+        "guardian_match": 0.0,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 0.0
+      }
+    },
+    {
+      "score": 0.6304,
+      "variation": "missing_fields",
+      "name": [
+        "UNKNOWN",
+        "Wambui inyanjui"
+      ],
+      "date_of_birth": [
+        "2009-02-19",
+        "2009-02-19"
+      ],
+      "school": [
+        "SCH009",
+        "SCH009"
+      ],
+      "admission_number": [
+        NaN,
+        NaN
+      ],
+      "birth_certificate": [
+        "BC-468412",
+        NaN
+      ],
+      "features": {
+        "jaro_winkler": 0.0,
+        "dob_match": 1.0,
+        "school_match": 1.0,
+        "guardian_match": 0.0,
+        "admission_number_match": 0.0,
+        "birth_certificate_match": 0.0
+      }
+    }
+  ],
+  "deployed_model_fit_rows": 21000,
+  "deployed_model_file": "model\\xgb_duplicate_model.joblib",
+  "deployed_model_sha256": "4c788be70fe558003cfa2b79b5b596f1b6a47692a69e613556ba114c04334913",
+  "previous_model_backup": "model\\backups\\xgb_duplicate_model_pre_admission_number.joblib",
+  "model_promoted": true,
+  "algorithm": "hist_gradient_boosting",
+  "feature_semantics": {
+    "jaro_winkler": "Jaro-Winkler on the concatenated name, also computed on sorted tokens so first/middle/surname order changes still match.",
+    "dob_match": "1.0 exact calendar date, 0.8 one day apart, 0.5 up to a week apart, else 0; YYYY-MM-DD, DD/MM/YYYY and separators are accepted.",
+    "school_match": "Normalised exact school-code equality.",
+    "guardian_match": "Normalised identifier equality after removing the G prefix, otherwise Jaro-Winkler.",
+    "admission_number_match": "School-gated: 0 unless both records share a school identity, then 1.0 exact, 0.9 for a character transposition, 0 for any other difference.",
+    "birth_certificate_match": "Normalised identifier equality after removing the BC prefix, otherwise Jaro-Winkler."
+  },
   "scikit_learn_version": "1.9.0",
   "xgboost_version": "3.2.0",
   "limitations": [
     "The data is synthetic and cannot establish performance on real beneficiaries.",
     "The balanced label mix is not the expected operational prevalence; assumed-prevalence precision values are illustrative only.",
-    "The holdout is independently generated from the same simulator, not an external organization or reviewed real-world sample.",
-    "Review confirmed pairs from separate entities before using this model to make operational decisions."
+    "The hard-negative scenario mix is a challenge distribution, not an estimate of registry prevalence.",
+    "Holdout identities come from the same simulator, not an external organisation or adjudicated real sample.",
+    "The school gate means an admission number contributes nothing when the school is unknown on either record.",
+    "Admission-number reuse inside one school is deliberately present in the negatives, so the feature alone cannot decide a case."
   ]
 }

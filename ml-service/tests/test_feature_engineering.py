@@ -18,10 +18,10 @@ class FeatureEngineeringTest(unittest.TestCase):
             "date_of_birth": "2010-05-14",
             "school_code": "SCH-041",
             "guardian_id": "G-4101",
-            "upi": "UPI-4101",
+            "admission_number": "0148",
             "birth_certificate_number": "BC-4101",
         }
-        second = {**first, "full_name": "Amina Wanjikuu", "upi": "UPI-4102"}
+        second = {**first, "full_name": "Amina Wanjikuu", "admission_number": "0148"}
         shared_features = build_pair_features(first, second)
         training_row = feature_row(first, second, label=1, group_id=42)
 
@@ -36,14 +36,14 @@ class FeatureEngineeringTest(unittest.TestCase):
         self.assertEqual(features["dob_match"], 0)
         self.assertEqual(features["school_match"], 0)
         self.assertEqual(features["guardian_match"], 0)
-        self.assertEqual(features["upi_match"], 0)
+        self.assertEqual(features["admission_number_match"], 0)
         self.assertEqual(features["birth_certificate_match"], 0)
 
     def test_identifier_that_is_only_a_field_prefix_is_not_a_match(self):
         first = {
             "full_name": "Nia Wanjiku",
             "guardian_id": "G-",
-            "upi": "UPI-",
+            "admission_number": "ADM-",
             "birth_certificate_number": "BC-",
         }
         second = {
@@ -55,8 +55,16 @@ class FeatureEngineeringTest(unittest.TestCase):
         features = build_pair_features(first, second)
 
         self.assertEqual(features["guardian_match"], 0)
-        self.assertEqual(features["upi_match"], 0)
+        self.assertEqual(features["admission_number_match"], 0)
         self.assertEqual(features["birth_certificate_match"], 0)
+
+    def test_admission_comparison_requires_school_match_feature(self):
+        first = {"school_name": "Nairobi School", "admission_number": "A-100"}
+        second = {"school_name": "Nairobi School", "admission_number": "A-100"}
+        features = build_pair_features(first, second)
+
+        self.assertEqual(features["school_match"], 0)
+        self.assertEqual(features["admission_number_match"], 0)
 
     def test_pair_prediction_uses_shared_features_and_returns_positive_class_score(self):
         class FakeModel:
@@ -67,14 +75,16 @@ class FeatureEngineeringTest(unittest.TestCase):
                 self.values = frame.iloc[0].tolist()
                 return np.array([[0.2, 0.8]])
 
-        first = {"full_name": "Nia Wanjiku", "school_code": "Nairobi School", "upi": "UPI-1001"}
-        second = {**first, "upi": "UPI-1002"}
+        first = {"full_name": "Nia Wanjiku", "school_code": "Nairobi School", "admission_number": "1001"}
+        second = {**first, "admission_number": "1002"}
         model = FakeModel()
         result = predict_pairs([{"first": first, "second": second}], model)[0]
 
         self.assertEqual(model.columns, FEATURE_COLUMNS)
         self.assertEqual(result["score"], 0.8)
         self.assertEqual(result["features"], build_pair_features(first, second))
+        self.assertNotIn("review_evidence", result["features"])
+        self.assertIn("review_evidence", result)
 
 
 if __name__ == "__main__":

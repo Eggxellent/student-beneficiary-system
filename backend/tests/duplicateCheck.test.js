@@ -15,7 +15,7 @@ function student(overrides = {}) {
     date_of_birth: '2005-04-12',
     school_code: 'SCH001',
     guardian_id: 'G123',
-    upi: 'UPI-12345678',
+    admission_number: '0148',
     birth_certificate_number: 'BC-2010-123456',
     ...overrides,
   };
@@ -28,7 +28,7 @@ describe('Duplicate comparison features', () => {
       date_of_birth: 0.04,
       school: 0.02,
       guardian: 0.06,
-      upi: 0.40,
+      admission_number: 0.40,
       birth_certificate: 0.40,
     });
     expect(Object.values(DUPLICATE_SCORE_MAXIMUMS).reduce((sum, weight) => sum + weight, 0)).toBe(1);
@@ -57,7 +57,7 @@ describe('Duplicate comparison features', () => {
       dob_match: 0.71,
       school_match: 0.72,
       guardian_match: 0.71,
-      upi_match: 0,
+      admission_number_match: 0,
       birth_certificate_match: 0,
     };
     const score = calculateDuplicateScore(features);
@@ -69,7 +69,7 @@ describe('Duplicate comparison features', () => {
   });
 
   test('corroboration requires four strong fields and never bypasses automatic duplicate threshold', () => {
-    const threeFields = { jaro_winkler: 1, dob_match: 1, school_match: 1, guardian_match: 0, upi_match: 0, birth_certificate_match: 0 };
+    const threeFields = { jaro_winkler: 1, dob_match: 1, school_match: 1, guardian_match: 0, admission_number_match: 0, birth_certificate_match: 0 };
     const fourFields = { ...threeFields, guardian_match: 1 };
 
     expect(hasCorroboratingMajority(threeFields)).toBe(false);
@@ -96,27 +96,37 @@ describe('Duplicate comparison features', () => {
     expect(duplicateReviewReason(features, calculateDuplicateScore(features), 0.3)).toMatch(/Critical identifier match/i);
   });
 
-  test('a lone exact UPI match is critical below the clear-duplicate threshold', () => {
+  test('a lone exact admission-number match inside one school is critical below the clear-duplicate threshold', () => {
     const features = buildDuplicateFeatures(student(), student({
       full_name: 'Zxq Blr',
       date_of_birth: '2010-09-20',
-      school_code: 'SCH099',
       guardian_id: 'G999',
+      admission_number: 'ADM-0148',
       birth_certificate_number: 'BC-2010-987654',
     }));
 
-    expect(features.upi_match).toBe(1);
+    expect(features.admission_number_match).toBe(1);
     expect(calculateDuplicateScore(features)).toBeGreaterThanOrEqual(0.4);
     expect(calculateDuplicateScore(features)).toBeLessThan(0.7);
-    expect(calculateDuplicateContributions(features).upi).toBe(0.4);
+    expect(calculateDuplicateContributions(features).admission_number).toBe(0.4);
     expect(classifyDuplicate(features, calculateDuplicateScore(features), 0.7, 0.3)).toBe('critical');
     expect(duplicateReviewReason(features, calculateDuplicateScore(features), 0.3)).toMatch(/Critical identifier match/i);
   });
 
+  test('the same admission number at two schools is never a match', () => {
+    const features = buildDuplicateFeatures(
+      student({ school_code: 'Nairobi School', admission_number: '0148' }),
+      student({ school_code: 'Alliance High', admission_number: '0148' })
+    );
+
+    expect(features.admission_number_match).toBe(0);
+    expect(calculateDuplicateContributions(features).admission_number).toBe(0);
+  });
+
   test('an exact National ID match is a deterministic critical review lead outside the weighted model score', () => {
     const features = buildDuplicateFeatures(
-      student({ full_name: 'Nia Wanjiku', date_of_birth: null, school_code: null, guardian_id: null, upi: null, birth_certificate_number: null, national_id_number: '12345678-X' }),
-      student({ full_name: 'Xqz Blr', date_of_birth: null, school_code: null, guardian_id: null, upi: null, birth_certificate_number: null, national_id_number: '1234 5678-x' })
+      student({ full_name: 'Nia Wanjiku', date_of_birth: null, school_code: null, guardian_id: null, admission_number: null, birth_certificate_number: null, national_id_number: '12345678-X' }),
+      student({ full_name: 'Xqz Blr', date_of_birth: null, school_code: null, guardian_id: null, admission_number: null, birth_certificate_number: null, national_id_number: '1234 5678-x' })
     );
 
     expect(features.national_id_match).toBe(1);
@@ -131,7 +141,7 @@ describe('Duplicate comparison features', () => {
       date_of_birth: '2005-04-12',
       school_code: 'SCH001',
       guardian_id: 'G123',
-      upi: 'UPI-96583217',
+      admission_number: '96583217',
       birth_certificate_number: 'BC-2010-123456',
     }));
 
@@ -140,7 +150,7 @@ describe('Duplicate comparison features', () => {
   });
 
   test('scores at 70 percent are classified as clear duplicate candidates', () => {
-    const features = { jaro_winkler: 0, dob_match: 0, school_match: 0, guardian_match: 0, upi_match: 0, birth_certificate_match: 0 };
+    const features = { jaro_winkler: 0, dob_match: 0, school_match: 0, guardian_match: 0, admission_number_match: 0, birth_certificate_match: 0 };
 
     expect(classifyDuplicate(features, 0.6999, 0.7, 0.3)).toBe('review');
     expect(classifyDuplicate(features, 0.7, 0.7, 0.3)).toBe('duplicate');
@@ -157,13 +167,13 @@ describe('Duplicate comparison features', () => {
 
   test('unique identifiers only match exactly and receive no fuzzy credit for typos', () => {
     const features = buildDuplicateFeatures(
-      student({ upi: 'UPI-12345678', birth_certificate_number: 'BC-2010-123456' }),
-      student({ upi: 'UPI-12345679', birth_certificate_number: 'BC-2010-123457' })
+      student({ admission_number: '0148', birth_certificate_number: 'BC-2010-123456' }),
+      student({ admission_number: '0149', birth_certificate_number: 'BC-2010-123457' })
     );
 
-    expect(features.upi_match).toBe(0);
+    expect(features.admission_number_match).toBe(0);
     expect(features.birth_certificate_match).toBe(0);
-    expect(calculateDuplicateContributions(features).upi).toBe(0);
+    expect(calculateDuplicateContributions(features).admission_number).toBe(0);
     expect(calculateDuplicateContributions(features).birth_certificate).toBe(0);
   });
 
@@ -173,14 +183,14 @@ describe('Duplicate comparison features', () => {
       date_of_birth: '2010-05-14',
       school_code: 'SCH-014',
       guardian_id: 'G-123456',
-      upi: 'UPI-12345678',
+      admission_number: '0148',
       birth_certificate_number: 'BC-2010-123456',
     }), student({
       full_name: 'Amina Hassan',
       date_of_birth: '2010-05-14',
       school_code: 'SCH-079',
       guardian_id: 'G-654321',
-      upi: 'UPI-87654321',
+      admission_number: '8765',
       birth_certificate_number: 'BC-2010-654321',
     }));
     const score = calculateDuplicateScore(features);
@@ -201,11 +211,11 @@ describe('Duplicate comparison features', () => {
 
   test('unrelated identifiers with the same type prefix do not receive match credit', () => {
     const features = buildDuplicateFeatures(student(), student({
-      upi: 'UPI-98765432',
+      admission_number: '9876',
       birth_certificate_number: 'BC-2010-987654',
     }));
 
-    expect(features.upi_match).toBe(0);
+    expect(features.admission_number_match).toBe(0);
     expect(features.birth_certificate_match).toBe(0);
     expect(calculateDuplicateScore(features)).toBe(0.2);
   });

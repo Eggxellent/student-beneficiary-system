@@ -225,7 +225,7 @@ export default function Awards() {
     <main className="mx-auto max-w-7xl space-y-5 p-5 sm:p-8">
       <header>
         <h1 className="text-2xl font-bold text-slate-900">Bursary awards</h1>
-        <p className="mt-1 text-sm text-slate-600">The field officer proposes, an administrator decides. One bursary per student per calendar year. Only an approved award counts &mdash; its bursary approval invoice is generated automatically for printing. No payment is implied.</p>
+        <p className="mt-1 text-sm text-slate-600">Submit proposals for Admin approval. One approved award per student each year; its invoice does not indicate payment.</p>
       </header>
 
       {error && <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p>}

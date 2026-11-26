@@ -6,12 +6,12 @@ function withoutQrToken(student) {
   return safeStudent;
 }
 
-async function create({ full_name, date_of_birth, school_code, school_name, guardian_id, upi, birth_certificate_number, national_id_number, primary_phone, qr_token }, executor = pool) {
+async function create({ full_name, date_of_birth, school_code, school_name, guardian_id, admission_number, upi, birth_certificate_number, national_id_number, primary_phone, qr_token }, executor = pool) {
   const { rows } = await executor.query(
-    `INSERT INTO students (full_name, date_of_birth, school_code, school_name, guardian_id, upi, birth_certificate_number, national_id_number, primary_phone, qr_token)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `INSERT INTO students (full_name, date_of_birth, school_code, school_name, guardian_id, admission_number, upi, birth_certificate_number, national_id_number, primary_phone, qr_token)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
-    [full_name, date_of_birth || null, school_code || null, school_name || null, guardian_id || null, upi || null, birth_certificate_number || null, national_id_number || null, primary_phone || null, qr_token || null]
+    [full_name, date_of_birth || null, school_code || null, school_name || null, guardian_id || null, admission_number || null, upi || null, birth_certificate_number || null, national_id_number || null, primary_phone || null, qr_token || null]
   );
   return withoutQrToken(rows[0]);
 }
@@ -207,7 +207,7 @@ async function getFieldOfficerRegisteredStudents() {
   const { rows } = await pool.query(
     `SELECT s.id, s.full_name, s.date_of_birth,
             COALESCE(s.school_code, s.school_name) AS school_code, s.school_name,
-            s.guardian_id, s.upi, s.primary_phone, s.birth_certificate_number,
+            s.guardian_id, s.admission_number, s.upi, s.primary_phone, s.birth_certificate_number,
             s.national_id_number, s.created_at,
             a.score, a.category, a.recommended_min, a.recommended_max,
             a.recommended_currency, a.recommendation_provisional, a.recommendation_source,

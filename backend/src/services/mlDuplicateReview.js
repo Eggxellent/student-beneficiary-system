@@ -3,10 +3,16 @@ const { getMlReviewScoreThreshold, getDuplicateThreshold } = require('../config/
 
 const PREDICTION_BATCH_SIZE = 200;
 const MISSING_IDENTIFIERS = new Set(['', 'na', 'nan', 'none', 'null', 'unknown', 'notprovided', 'notavailable']);
+// Identifiers that stand alone as evidence a reviewer can check against source documents.
+// The admission number is not in this list because it is only unique inside one school; it is
+// compared separately by exactAdmissionNumberMatch().
 const REVIEW_IDENTIFIER_FIELDS = Object.freeze([
-  ['upi', 'UPI'],
   ['birth_certificate_number', 'birth certificate number'],
-  ['national_id_number', 'National ID'],
+]);
+const ADMISSION_NUMBER_LABEL = 'admission number';
+const ADMISSION_NUMBER_PREFIXES = Object.freeze([
+  'admissionnumber', 'admissionno', 'admission', 'admno', 'adm',
+  'registrationnumber', 'regno', 'reg',
 ]);
 
 function configuredThreshold() {
@@ -26,16 +32,52 @@ function usableIdentifier(value) {
   return !MISSING_IDENTIFIERS.has(normalized) && !(normalized.length >= 4 && /^0+$/.test(normalized));
 }
 
+function exactSchoolCodeMatch(first, second) {
+  const left = normalizedIdentifier(first && first.school_code);
+  const right = normalizedIdentifier(second && second.school_code);
+  return usableIdentifier(left) && left === right && usableIdentifier(right);
+}
+
 function exactNationalIdMatch(first, second) {
-  return exactReviewIdentifierMatches(first, second).includes('National ID');
+  const left = normalizedIdentifier(first && first.national_id_number);
+  const right = normalizedIdentifier(second && second.national_id_number);
+  return usableIdentifier(left) && usableIdentifier(right) && left === right;
+}
+
+// Presentation only: case, spaces, slashes and a leading field prefix are removed. Leading zeros
+// are preserved, because 0148 and 148 are two register entries, not one.
+function admissionNumberKey(value) {
+  let compact = normalizedIdentifier(value);
+  if (!usableIdentifier(compact)) return '';
+  for (const prefix of ADMISSION_NUMBER_PREFIXES) {
+    if (compact.startsWith(prefix) && compact.length > prefix.length) {
+      compact = compact.slice(prefix.length);
+      break;
+    }
+  }
+  return compact;
+}
+
+/**
+ * Match the model's training/inference gate exactly: both records need the same usable
+ * school_code. Free-text school names do not make admission numbers comparable in this model.
+ */
+function exactAdmissionNumberMatch(first, second) {
+  if (!exactSchoolCodeMatch(first, second)) return false;
+  const left = admissionNumberKey(first && first.admission_number);
+  const right = admissionNumberKey(second && second.admission_number);
+  return Boolean(left && right && left === right);
 }
 
 function exactReviewIdentifierMatches(first, second) {
-  return REVIEW_IDENTIFIER_FIELDS.flatMap(([field, label]) => {
-    const left = normalizedIdentifier(first[field]);
-    const right = normalizedIdentifier(second[field]);
+  const matches = REVIEW_IDENTIFIER_FIELDS.flatMap(([field, label]) => {
+    const left = normalizedIdentifier(first && first[field]);
+    const right = normalizedIdentifier(second && second[field]);
     return usableIdentifier(left) && usableIdentifier(right) && left === right ? [label] : [];
   });
+  if (exactAdmissionNumberMatch(first, second)) matches.unshift(ADMISSION_NUMBER_LABEL);
+  if (exactNationalIdMatch(first, second)) matches.push('National ID');
+  return matches;
 }
 
 /**
@@ -121,6 +163,8 @@ module.exports = {
   configuredThreshold,
   dateOnly,
   predictorRecord,
+  exactSchoolCodeMatch,
+  exactAdmissionNumberMatch,
   exactNationalIdMatch,
   exactReviewIdentifierMatches,
   reviewPriority,

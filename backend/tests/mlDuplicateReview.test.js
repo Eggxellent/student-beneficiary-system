@@ -3,12 +3,18 @@ jest.mock('../src/services/duplicateCheck', () => ({
 }));
 
 const { scoreStudentPairs } = require('../src/services/duplicateCheck');
-const { scorePairs, PREDICTION_BATCH_SIZE, exactNationalIdMatch, exactReviewIdentifierMatches, reviewPriority } = require('../src/services/mlDuplicateReview');
+const {
+  scorePairs,
+  PREDICTION_BATCH_SIZE,
+  exactNationalIdMatch,
+  exactReviewIdentifierMatches,
+  reviewPriority,
+} = require('../src/services/mlDuplicateReview');
 const { getDuplicateThreshold } = require('../src/config/settings');
 
 function scoredBatch(pairs) {
   return {
-    model_version: 'xgboost:test-artifact',
+    model_version: 'histgradientboostingclassifier:test-artifact',
     results: pairs.map(() => ({ score: 0.42, features: { jaro_winkler: 0.9, school_match: 1 } })),
   };
 }
@@ -30,14 +36,28 @@ describe('ML duplicate review adapter', () => {
     expect(scoreStudentPairs.mock.calls.map(([batch]) => batch.length)).toEqual([PREDICTION_BATCH_SIZE, 1]);
     expect(result.results).toHaveLength(pairs.length);
     expect(result.results[0].score).toBe(0.42);
-    expect(result.model_version).toBe('xgboost:test-artifact');
+    expect(result.model_version).toBe('histgradientboostingclassifier:test-artifact');
   });
 
   test('asks predictor to identify artifact version when there are no pairs', async () => {
     scoreStudentPairs.mockResolvedValueOnce(scoredBatch([]));
 
-    await expect(scorePairs([])).resolves.toEqual({ model_version: 'xgboost:test-artifact', results: [] });
+    await expect(scorePairs([])).resolves.toEqual({ model_version: 'histgradientboostingclassifier:test-artifact', results: [] });
     expect(scoreStudentPairs).toHaveBeenCalledWith([]);
+  });
+
+  test('surfaces prediction process failures to the registration caller', async () => {
+    scoreStudentPairs.mockRejectedValueOnce(new Error('predictor exited'));
+
+    await expect(scorePairs([{ first: {}, second: {} }])).rejects.toMatchObject({
+      code: 'DUPLICATE_PREDICTOR_FAILED',
+    });
+  });
+
+  test('rejects incomplete or invalid prediction responses', async () => {
+    scoreStudentPairs.mockResolvedValueOnce({ model_version: 'histgradientboostingclassifier:test', results: [] });
+
+    await expect(scorePairs([{ first: {}, second: {} }])).rejects.toThrow(/invalid response/);
   });
 
   test('rejects normalized exact national IDs as a separate review signal', () => {
@@ -45,14 +65,45 @@ describe('ML duplicate review adapter', () => {
     expect(exactNationalIdMatch({ national_id_number: 'UNKNOWN' }, { national_id_number: 'UNKNOWN' })).toBe(false);
   });
 
-  test('treats exact UPI and birth-certificate identifiers as human-review signals', () => {
+  test('treats an in-school admission number and a birth-certificate match as human-review signals', () => {
     expect(exactReviewIdentifierMatches(
-      { upi: 'UPI-12345', birth_certificate_number: 'BC-2012-45678' },
-      { upi: 'upi 12345', birth_certificate_number: 'bc201245678' }
-    )).toEqual(['UPI', 'birth certificate number']);
+      { school_code: 'Nairobi School', admission_number: 'ADM-0148', birth_certificate_number: 'BC-2012-45678' },
+      { school_code: 'Nairobi School', admission_number: '0148', birth_certificate_number: 'bc201245678' }
+    )).toEqual(['admission number', 'birth certificate number']);
     expect(exactReviewIdentifierMatches(
-      { upi: 'UNKNOWN', birth_certificate_number: '000000' },
-      { upi: 'UNKNOWN', birth_certificate_number: '000000' }
+      { school_code: 'NAIROBI', admission_number: 'UNKNOWN', birth_certificate_number: '000000' },
+      { school_code: 'NAIROBI', admission_number: 'UNKNOWN', birth_certificate_number: '000000' }
+    )).toEqual([]);
+  });
+
+  test('never treats the same admission number at two schools, or without a school, as a match', () => {
+    const first = { school_code: 'Nairobi School', admission_number: '0148' };
+    expect(exactReviewIdentifierMatches(first, { school_code: 'Alliance High', admission_number: '0148' })).toEqual([]);
+    expect(exactReviewIdentifierMatches(first, { admission_number: '0148' })).toEqual([]);
+    expect(exactReviewIdentifierMatches({ admission_number: '0148' }, { admission_number: '0148' })).toEqual([]);
+  });
+
+  test('keeps leading zeros distinct when comparing admission numbers', () => {
+    const first = { school_code: 'Nairobi School', admission_number: '0148' };
+    expect(exactReviewIdentifierMatches(first, { school_code: 'Nairobi School', admission_number: '148' })).toEqual([]);
+    expect(exactReviewIdentifierMatches(first, { school_code: 'Nairobi School', admission_number: '0148' })).toEqual(['admission number']);
+  });
+
+  test('does not treat a free-text school name as an admission-number model match', () => {
+    expect(exactReviewIdentifierMatches(
+      { school_name: 'St. Mary\u2019s Girls', admission_number: 'ADM-22' },
+      { school_name: 'st marys girls', admission_number: '22' }
+    )).toEqual([]);
+  });
+
+  test('only treats an admission number as exact evidence under a shared school code', () => {
+    expect(exactReviewIdentifierMatches(
+      { school_code: 'NAIROBI-01', admission_number: 'ADM-22' },
+      { school_code: 'Nairobi 01', admission_number: '22' },
+    )).toEqual(['admission number']);
+    expect(exactReviewIdentifierMatches(
+      { school_code: 'NAIROBI-01', school_name: 'Same Name', admission_number: '22' },
+      { school_name: 'Same Name', admission_number: '22' },
     )).toEqual([]);
   });
 });

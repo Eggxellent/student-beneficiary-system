@@ -1,5 +1,8 @@
 # CHAPTER 5 FINAL EVIDENCE PACKAGE
 
+> HISTORICAL SNAPSHOT NOTICE -- 25 November 2026: This document reflects the 3 November audit only. Azure deployment was completed earlier; later API/frontend deployment records are in `docs/azure-deployment-log-2026-10-31.md`. Do not interpret old image/404 claims or action items as current deployment status or pending work. Current phase: local testing and verification. Do not modify production. See `docs/final-report-evidence/09_DEPLOYMENT_STATUS_AND_LOCAL_VERIFICATION.md`.
+
+
 > Evidence for `CHAPTER_5_IMPLEMENTATION_TESTING_AND_EVALUATION.md`, revalidated 2026-11-03 at HEAD `cca0625`.
 > Section numbering follows the existing draft. Where the draft's numbers no longer hold, the correction is stated.
 
@@ -82,7 +85,7 @@ Use `SBMS_SCREENSHOT_INSERTION_CHECKLIST.md`. Two rules that follow from this pa
 
 1. Classifier name and feature count (XGBoost / six features).
 2. Backend test total and the commit it was measured at.
-3. Certificate feature: implemented and tested, **not deployed**.
+3. Certificate feature was absent from the **3 November 2026 snapshot**; later deployment records in `docs/azure-deployment-log-2026-10-31.md` include certificate issuance checks. This old snapshot is not current deployment evidence.
 4. The deployment narrative names only the Azure topology; no alternative hosting configuration exists in the repository.
 5. ML service described as an in-container Python child process, not a microservice.
 6. Any UAT sentence reclassified as "not conducted" rather than "passed".

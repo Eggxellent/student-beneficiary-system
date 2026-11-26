@@ -21,8 +21,9 @@ Usage (from ``ml-service/``):
 
 Limitations to state whenever this output is quoted:
 
-* Every label is synthetic. Positives are all ``repeat_application`` cases, so the
-  recall figure covers that one duplicate pattern only.
+* Every label is synthetic. Positive scenarios cover the same identity with varied
+  name, DOB, school, guardian, and identifier changes; recall still describes only
+  the generator's selected scenario mix.
 * Negatives are deliberately hard (siblings, twins, identifier collisions, common
   names), but they are still generated, not sampled from real applicants.
 * Registration-level rates are simulated. Candidate scores are drawn with
@@ -52,8 +53,7 @@ from evaluate_false_positive_rate import unrelated_student
 from feature_engineering import FEATURE_COLUMNS, build_pair_features
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_HOLDOUT = BASE_DIR / "evaluation" / "realistic_pairs_holdout.csv"
-DEFAULT_OUTPUT = BASE_DIR / "evaluation" / "operating_point_2026-10-30.json"
+DEFAULT_OUTPUT = BASE_DIR / "evaluation" / "operating_point_2026-11-25.json"
 DEFAULT_CUTOFFS = tuple(round(0.30 + 0.05 * step, 2) for step in range(14))
 DEFAULT_REGISTRY_SIZES = (100, 500, 1000, 5000)
 DEFAULT_SIMULATIONS = 2000
@@ -65,18 +65,18 @@ FIELD_MAP = {
     "dob": "date_of_birth",
     "school": "school_code",
     "guardian": "guardian_id",
-    "upi": "upi",
+    "admission_number": "admission_number",
     "birth_certificate": "birth_certificate_number",
 }
 
 CORROBORATION_VARIANTS = {
-    "identifier": "upi_match == 1 or birth_certificate_match == 1",
+    "identifier": "admission_number_match == 1 or birth_certificate_match == 1",
     "identifier_or_name_and_dob": "identifier or (dob_match == 1 and jaro_winkler >= 0.90)",
 }
 
 LIMITATIONS = [
-    "All labels are synthetic; positives are only repeat_application cases, so recall "
-    "covers that single duplicate pattern.",
+    "All labels are synthetic; positive scenarios are generated identity variations, "
+    "so recall describes only this chosen scenario mix.",
     "Negatives are generated hard negatives (siblings, twins, identifier collisions, "
     "common names), not a sample of real applicants.",
     "Registration-level rates come from simulation with independent candidate draws, "
@@ -452,9 +452,12 @@ def corroboration_analysis(
     positive = labels == 1
     flagged = {cutoff: scores >= cutoff for cutoff in cutoffs}
     masks = {
-        "identifier": ((features["upi_match"] == 1) | (features["birth_certificate_match"] == 1)).to_numpy(),
+        "identifier": (
+            (features["admission_number_match"] == 1)
+            | (features["birth_certificate_match"] == 1)
+        ).to_numpy(),
         "identifier_or_name_and_dob": (
-            (features["upi_match"] == 1)
+            (features["admission_number_match"] == 1)
             | (features["birth_certificate_match"] == 1)
             | ((features["dob_match"] == 1) & (features["jaro_winkler"] >= 0.90))
         ).to_numpy(),
@@ -540,7 +543,7 @@ def summarize(report: dict[str, object], label: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Operating-point analysis of the deployed duplicate model.")
-    parser.add_argument("--holdout", type=Path, default=DEFAULT_HOLDOUT, help="labelled pair CSV")
+    parser.add_argument("--holdout", type=Path, required=True, help="explicit labelled pair CSV; this opens and evaluates it")
     parser.add_argument("--model", type=Path, default=predict.MODEL_FILE, help="artifact to analyse (read-only)")
     parser.add_argument("--output", type=Path, default=None, help="defaults to the dated evidence file")
     parser.add_argument("--cutoffs", type=float, nargs="+", default=list(DEFAULT_CUTOFFS))

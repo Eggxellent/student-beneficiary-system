@@ -24,7 +24,7 @@ describe("Guardian submission pipeline", () => {
   let primaryStudentId;
   let primaryReference;
   let primarySchoolName;
-  let candidateId;
+  const candidateIds = [];
   let flaggedStudentId;
   let flaggedFlagId;
   let secondFlaggedStudentId;
@@ -266,12 +266,13 @@ describe("Guardian submission pipeline", () => {
        VALUES ($1, $2, 'Nairobi School', 'Nairobi School', $3) RETURNING id`,
       [`Pipeline Existing ${suffix}`, "2011-03-09", `EXIST-${suffix}`],
     );
-    candidateId = candidate.rows[0].id;
+    candidateIds.push(candidate.rows[0].id);
 
     const response = await submit(applicationPayload({
       student_full_name: `Pipeline Existing ${suffix}`,
       student_date_of_birth: "2011-03-09",
       student_identifier: `EXIST-${suffix}`,
+      admission_number: `EXIST-ADM-${suffix}`,
       school_name: "Nairobi School",
     }));
 
@@ -294,6 +295,49 @@ describe("Guardian submission pipeline", () => {
       .set("Authorization", `Bearer ${officerToken}`);
     expect(overview.body.needs_attention.map((student) => student.id)).not.toContain(flaggedStudentId);
     expect(overview.body.recent_registrations.map((student) => student.id)).not.toContain(flaggedStudentId);
+  });
+
+  test("an exact in-school admission number creates a pending review flag", async () => {
+    const candidate = await pool.query(
+      `INSERT INTO students (full_name, date_of_birth, school_code, school_name, admission_number)
+       VALUES ($1, $2, 'Nairobi School', 'Nairobi School', $3) RETURNING id`,
+      [`Admission Match ${suffix}`, "2012-06-18", `ADM-${suffix}`],
+    );
+    candidateIds.push(candidate.rows[0].id);
+
+    const response = await submit(applicationPayload({
+      student_full_name: `Admission Match ${suffix} Jr`,
+      student_date_of_birth: "2012-06-19",
+      student_identifier: `BC-UNIQUE-${suffix}`,
+      admission_number: `adm ${suffix}`,
+      school_name: "Nairobi School",
+    }));
+
+    expect(response.statusCode).toBe(201);
+    expect(response.body.duplicate_screening.flagged).toBe(true);
+    expect(response.body.assessment.status).toBe("blocked");
+    const flag = await pool.query(
+      `SELECT status, comparison_features FROM duplicate_flags
+        WHERE student_id = $1 AND matched_student_id = $2
+        ORDER BY created_at DESC LIMIT 1`,
+      [response.body.student.id, candidate.rows[0].id],
+    );
+    expect(flag.rows[0]?.status).toBe("pending");
+    expect(Number(flag.rows[0]?.comparison_features?.admission_number_match)).toBe(1);
+  });
+
+  test("two children of one guardian are not flagged from guardian similarity alone", async () => {
+    const response = await submit(applicationPayload({
+      student_full_name: `Sibling Child ${suffix}`,
+      student_date_of_birth: "2014-02-03",
+      student_identifier: `BC-SIBLING-${suffix}`,
+      admission_number: `SIB-${suffix}`,
+      school_name: primarySchoolName,
+    }));
+
+    expect(response.statusCode).toBe(201);
+    expect(response.body.duplicate_screening.flagged).toBe(false);
+    expect(response.body.assessment.status).toBe("complete");
   });
 
   test("an administrator clearing the case records the clearance assessment", async () => {
@@ -458,10 +502,10 @@ describe("Guardian submission pipeline", () => {
           [createdUserIds],
         ));
       }
-      if (candidateId) {
+      if (candidateIds.length) {
         await attemptCleanup("candidate cleanup", () => pool.query(
-          "DELETE FROM students WHERE id = $1",
-          [candidateId],
+          "DELETE FROM students WHERE id = ANY($1::uuid[])",
+          [candidateIds],
         ));
       }
       if (createdUserIds.length) {

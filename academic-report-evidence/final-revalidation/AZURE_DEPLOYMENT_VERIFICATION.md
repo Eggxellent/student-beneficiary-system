@@ -1,5 +1,10 @@
 # AZURE DEPLOYMENT VERIFICATION
 
+> **HISTORICAL SNAPSHOT NOTICE -- 25 November 2026:** This package records an audit performed on 3 November 2026. Azure deployment was completed earlier, and later deployment activity is recorded in `docs/azure-deployment-log-2026-10-31.md`, including November 12 API deployment evidence and November 18 frontend redeployments. Do not treat the 3 November image comparison or action items as current deployment status or pending work. The current project phase is local testing and verification. Do not modify the live application or production database. See `docs/final-report-evidence/09_DEPLOYMENT_STATUS_AND_LOCAL_VERIFICATION.md` for the current handoff distinction.
+
+
+
+
 > Inspected 2026-11-03 01:19–01:27 +03:00 with an authenticated Azure CLI (`az account show` succeeded).
 > **Re-confirmed 2026-11-03 10:44 +03:00** in pass 2: `az account show` → subscription `31c8bf09-…`,
 > `az resource list -g rg-sbms` → still exactly 5 resources (`cae-sbms`, `asp-sbms-web`, `sbms-web`, `pg-sbms`,

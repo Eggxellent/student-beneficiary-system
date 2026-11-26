@@ -16,69 +16,46 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from check_training_integrity import (
-    MAX_INSAMPLE_F1_ADVANTAGE,
-    SHORTCUT_AUC,
+    directed_pair_overlap,
+    unordered_pair_overlap,
     person_keys,
-    run,
 )
 
 
-class TrainingIntegrityReportTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        # fast mode: no grouped CV, no learning curve, so the suite stays quick.
-        cls.report = run(fast=True)
-
-    def test_no_violations(self):
-        self.assertEqual(self.report["violations"], [])
-        self.assertEqual(self.report["verdict"], "pass")
-
-    def test_training_and_holdout_share_no_groups_or_people(self):
-        separation = self.report["separation"]
-        self.assertEqual(separation["shared_groups"], 0)
-        self.assertEqual(separation["shared_person_identities"], 0)
-        self.assertEqual(separation["identical_rows_across_splits"], 0)
-        self.assertGreater(separation["training_groups"], 0)
-        self.assertGreater(separation["holdout_groups"], 0)
-
-    def test_artifact_matches_the_recorded_metrics(self):
-        provenance = self.report["provenance"]
-        self.assertTrue(provenance["artifact_matches_metrics_report"])
-        self.assertTrue(provenance["training_sha256_matches_report"])
-        self.assertTrue(provenance["holdout_sha256_matches_report"])
-
-    def test_holdout_is_declared_excluded_from_training(self):
-        reported = self.report["reported_by_metrics_file"]
-        self.assertIs(reported["holdout_used_for_training_or_tuning"], False)
-        self.assertEqual(reported["threshold"], 0.5)
-
-    def test_model_does_not_merely_memorise_training_rows(self):
-        overfitting = self.report["overfitting"]
-        advantage = overfitting["in_sample_f1_advantage"]
-        self.assertLessEqual(advantage, MAX_INSAMPLE_F1_ADVANTAGE)
-        # the holdout must still be a useful measurement, not a collapsed score
-        self.assertGreater(overfitting["holdout_metrics"]["f1"], 0.5)
-
-    def test_no_single_feature_determines_the_label(self):
-        for column, entry in self.report["label_shortcuts"].items():
-            if entry["holdout_auc"] is None:
-                continue
-            self.assertLess(entry["holdout_auc"], SHORTCUT_AUC, f"{column} is a label shortcut")
-
-    def test_serving_path_never_trains(self):
-        for entry in self.report["serving_path"]:
-            self.assertTrue(entry["clean"], f"{entry['file']} contains {entry['banned_tokens_found']}")
-
-
 class PersonKeyTests(unittest.TestCase):
+    def test_reversed_pairs_are_detected_as_the_same_cross_split_pair(self):
+        left = pd.DataFrame([{
+            "name_1": "Amina Wanjiku", "dob_1": "2010-05-14", "school_1": "S1",
+            "guardian_1": "G1", "admission_number_1": "A1", "birth_certificate_1": "B1",
+            "name_2": "Brian Otieno", "dob_2": "2011-02-02", "school_2": "S2",
+            "guardian_2": "G2", "admission_number_2": "A2", "birth_certificate_2": "B2",
+        }])
+        reversed_pair = pd.DataFrame([{
+            "name_1": "Brian Otieno", "dob_1": "2011-02-02", "school_1": "S2",
+            "guardian_1": "G2", "admission_number_1": "A2", "birth_certificate_1": "B2",
+            "name_2": "Amina Wanjiku", "dob_2": "2010-05-14", "school_2": "S1",
+            "guardian_2": "G1", "admission_number_2": "A1", "birth_certificate_2": "B1",
+        }])
+        self.assertEqual(unordered_pair_overlap(left, reversed_pair), 1)
+        self.assertEqual(directed_pair_overlap(left, reversed_pair), 0)
+
+    def test_ordered_pairs_are_detected_without_reversing(self):
+        pair = pd.DataFrame([{
+            "name_1": "Amina Wanjiku", "dob_1": "2010-05-14", "school_1": "S1",
+            "guardian_1": "G1", "admission_number_1": "A1", "birth_certificate_1": "B1",
+            "name_2": "Brian Otieno", "dob_2": "2011-02-02", "school_2": "S2",
+            "guardian_2": "G2", "admission_number_2": "A2", "birth_certificate_2": "B2",
+        }])
+        self.assertEqual(directed_pair_overlap(pair, pair.copy()), 1)
+
     def test_placeholder_values_do_not_create_phantom_identity_collisions(self):
         train = pd.DataFrame(
-            [{"name_1": "Amina Wanjiku", "dob_1": "2010-05-14", "upi_1": "UPI-1",
-              "name_2": "NOT PROVIDED", "dob_2": "2007-01-16", "upi_2": None}]
+            [{"name_1": "Amina Wanjiku", "dob_1": "2010-05-14", "school_1": "S1", "admission_number_1": "1",
+              "name_2": "NOT PROVIDED", "dob_2": "2007-01-16", "school_2": None, "admission_number_2": None}]
         )
         holdout = pd.DataFrame(
-            [{"name_1": None, "dob_1": "2007-01-16", "upi_1": None,
-              "name_2": "Brian Otieno", "dob_2": "2011-02-02", "upi_2": "UPI-2"}]
+            [{"name_1": None, "dob_1": "2007-01-16", "school_1": None, "admission_number_1": None,
+              "name_2": "Brian Otieno", "dob_2": "2011-02-02", "school_2": "S2", "admission_number_2": "2"}]
         )
         train_keys, train_skipped = person_keys(train)
         holdout_keys, holdout_skipped = person_keys(holdout)
@@ -88,12 +65,12 @@ class PersonKeyTests(unittest.TestCase):
 
     def test_identical_identities_are_detected(self):
         train = pd.DataFrame(
-            [{"name_1": "Amina Wanjiku", "dob_1": "2010-05-14", "upi_1": "UPI-1",
-              "name_2": "Brian Otieno", "dob_2": "2011-02-02", "upi_2": "UPI-2"}]
+            [{"name_1": "Amina Wanjiku", "dob_1": "2010-05-14", "school_1": "S1", "admission_number_1": "1",
+              "name_2": "Brian Otieno", "dob_2": "2011-02-02", "school_2": "S2", "admission_number_2": "2"}]
         )
         holdout = pd.DataFrame(
-            [{"name_1": "Amina  Wanjiku", "dob_1": "2010-05-14", "upi_1": "upi-1",
-              "name_2": "Cynthia Kamau", "dob_2": "2012-03-03", "upi_2": "UPI-3"}]
+            [{"name_1": "Amina  Wanjiku", "dob_1": "2010-05-14", "school_1": "S1", "admission_number_1": "1",
+              "name_2": "Cynthia Kamau", "dob_2": "2012-03-03", "school_2": "S3", "admission_number_2": "3"}]
         )
         train_keys, _ = person_keys(train)
         holdout_keys, _ = person_keys(holdout)

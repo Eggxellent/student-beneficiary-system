@@ -29,9 +29,17 @@ async function screenAndCreateStudent({ client, submitted, actorId, schoolName =
 
   await client.query("SELECT pg_advisory_xact_lock(hashtext('sbms.student.registration'))");
   const { rows: candidates } = await client.query(
-    `SELECT id, full_name, date_of_birth, school_code, guardian_id, upi,
-            birth_certificate_number, national_id_number
-       FROM students ORDER BY created_at ASC, id ASC FOR UPDATE`
+    `SELECT s.id, s.full_name, s.date_of_birth, s.school_code, s.school_name, s.guardian_id,
+            s.admission_number, s.birth_certificate_number, s.national_id_number,
+            ga.guardian_full_name AS guardian_name
+       FROM students s
+       LEFT JOIN LATERAL (
+         SELECT guardian_full_name FROM guardian_applications
+          WHERE student_id = s.id
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1
+       ) ga ON TRUE
+      ORDER BY s.created_at ASC, s.id ASC FOR UPDATE OF s`
   );
 
   let prediction;
@@ -48,6 +56,7 @@ async function screenAndCreateStudent({ client, submitted, actorId, schoolName =
       candidate,
       score: result.score,
       features: result.features,
+      reviewEvidence: result.review_evidence,
       exactIdentifiers: exactReviewIdentifierMatches(submitted, candidate),
     };
   });
@@ -70,7 +79,10 @@ async function screenAndCreateStudent({ client, submitted, actorId, schoolName =
          (student_id, matched_student_id, probability, status, model_version, review_threshold, comparison_features)
        VALUES ($1, $2, $3, 'pending', $4, $5, $6)
        ON CONFLICT DO NOTHING RETURNING *`,
-      [student.id, result.candidate.id, result.score, prediction.model_version, threshold, result.features]
+      [student.id, result.candidate.id, result.score, prediction.model_version, threshold, {
+        ...result.features,
+        review_evidence: result.reviewEvidence,
+      }]
     );
     if (!rows[0]) continue;
     flags.push({
@@ -84,7 +96,9 @@ async function screenAndCreateStudent({ client, submitted, actorId, schoolName =
       exact_identifier_matches: result.exactIdentifiers,
       review_reason: result.exactIdentifiers.length
         ? `Exact ${result.exactIdentifiers.join(' and ')} match; an administrator must verify the source documents.`
-        : `Model score met the provisional human-review cutoff (${threshold.toFixed(2)}).`,
+        : result.reviewEvidence?.near_match_review
+          ? `Near-match evidence across ${result.reviewEvidence.signals.join(', ')}; administrator review is required. The model score is not a decision.`
+          : `Model score met the provisional human-review cutoff (${threshold.toFixed(2)}).`,
     });
   }
 
@@ -97,6 +111,7 @@ async function screenAndCreateStudent({ client, submitted, actorId, schoolName =
     duplicate_candidates_considered: aggregation.candidates_considered,
     duplicate_candidates_qualifying: aggregation.candidates_qualifying,
     duplicate_candidates_guardian_only: aggregation.candidates_guardian_only,
+    duplicate_candidates_near_match: aggregation.candidates_near_match,
     duplicate_candidates_suppressed: aggregation.candidates_suppressed,
     duplicate_flags_created: flags.length,
   }, client);
@@ -114,6 +129,7 @@ async function screenAndCreateStudent({ client, submitted, actorId, schoolName =
       candidates_considered: aggregation.candidates_considered,
       candidates_qualifying: aggregation.candidates_qualifying,
       candidates_guardian_only: aggregation.candidates_guardian_only,
+      candidates_near_match: aggregation.candidates_near_match,
       candidates_suppressed: aggregation.candidates_suppressed,
       flagged: flags.length > 0,
     },

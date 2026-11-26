@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
@@ -63,6 +63,7 @@ export default function Applications() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const detailsRef = useRef(null);
 
   async function loadApplications() {
     setLoading(true);
@@ -106,6 +107,20 @@ export default function Applications() {
 
   const selected = applications.find((application) => application.id === selectedId) || null;
 
+  useEffect(() => {
+    if (selectedId) detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selectedId]);
+
+  function toggleApplicationDetails(application) {
+    if (application.id === selectedId) {
+      setSelectedId(null);
+      return;
+    }
+    setSelectedId(application.id);
+    setNote(application.detail?.decisionNote || "");
+    setNotice("");
+  }
+
   async function recordDecision(status) {
     if (!selected) return;
     setSaving(true);
@@ -134,12 +149,7 @@ export default function Applications() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Guardian applications</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Every guardian submission and the student record it created. A submission whose student
-            record is missing was stored before the linkage pipeline and can be repaired with
-            <code className="mx-1 rounded bg-slate-100 px-1 py-0.5 text-xs">
-              npm run db:link-guardian-applications -- --apply
-            </code>
-            (dry run by default).
+            Review guardian submissions and their linked student records.
           </p>
         </div>
         <button
@@ -175,103 +185,111 @@ export default function Applications() {
         </select>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-3 font-medium">Reference</th>
-              <th className="px-4 py-3 font-medium">Student</th>
-              <th className="px-4 py-3 font-medium">Guardian account</th>
-              <th className="px-4 py-3 font-medium">School</th>
-              <th className="px-4 py-3 font-medium">Submitted</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">Student record</th>
-              <th className="px-4 py-3 font-medium">Screening / assessment</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filtered.map((application) => (
-              <tr
-                key={application.id}
-                onClick={() => {
-                  setSelectedId(application.id);
-                  setNote(application.detail?.decisionNote || "");
-                  setNotice("");
-                }}
-                className={`cursor-pointer align-top text-slate-700 hover:bg-slate-50 ${
-                  application.id === selectedId ? "bg-blue-50/60" : ""
-                }`}
-              >
-                <td className="px-4 py-4 font-medium text-slate-900">{application.reference}</td>
-                <td className="px-4 py-4">
-                  <p>{application.student}</p>
-                  <p className="mt-1 text-xs text-slate-500">{application.school}</p>
-                </td>
-                <td className="px-4 py-4">
-                  <p>{application.guardianAccount}</p>
-                  <p className="mt-1 text-xs text-slate-500">{application.guardianEmail}</p>
-                </td>
-                <td className="px-4 py-4">{application.school}</td>
-                <td className="px-4 py-4">{shortDate(application.submitted_at)}</td>
-                <td className="px-4 py-4">
-                  <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${STATUS_STYLES[application.status_code] || STATUS_STYLES.submitted}`}>
-                    {application.status}
+      <section aria-label="Application results" className="space-y-3">
+        {!loading && filtered.length > 0 && (
+          <p className="text-sm text-slate-500">
+            Showing {filtered.length} {filtered.length === 1 ? "application" : "applications"}
+          </p>
+        )}
+        {filtered.map((application) => {
+          const isSelected = application.id === selectedId;
+          return (
+            <article
+              key={application.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`${isSelected ? "Close" : "Open"} details for ${application.reference}`}
+              aria-expanded={isSelected}
+              onClick={() => toggleApplicationDetails(application)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  toggleApplicationDetails(application);
+                }
+              }}
+              className={`cursor-pointer rounded-xl border bg-white p-4 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-200 sm:p-5 ${
+                isSelected ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-slate-300"
+              }`}
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="break-words text-base font-semibold text-slate-900">
+                      {application.student || "Student name unavailable"}
+                    </h2>
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[application.status_code] || STATUS_STYLES.submitted}`}>
+                      {application.status}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">{application.school || "School unavailable"}</p>
+                </div>
+              </div>
+
+              <dl className="mt-4 grid gap-x-6 gap-y-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                <div className="min-w-0">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Guardian</dt>
+                  <dd className="mt-0.5 truncate font-medium text-slate-800" title={application.guardianAccount}>
+                    {application.guardianAccount || "Not provided"}
+                  </dd>
+                  {application.guardianEmail && (
+                    <dd className="truncate text-xs text-slate-500" title={application.guardianEmail}>
+                      {application.guardianEmail}
+                    </dd>
+                  )}
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Submitted</dt>
+                  <dd className="mt-0.5 text-slate-800">{shortDate(application.submitted_at)}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Application</dt>
+                  <dd className="mt-0.5 break-all font-medium text-slate-800">{application.reference}</dd>
+                </div>
+              </dl>
+
+              <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                {application.registeredStudent ? (
+                  <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
+                    <span className="font-semibold">Student record</span>
+                    <span className="truncate">Admission no. {application.registeredStudent.admission_number || "Not captured"}</span>
                   </span>
-                </td>
-                <td className="px-4 py-4">
-                  {application.registeredStudent ? (
-                    <>
-                      <p>{application.registeredStudent.full_name}</p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {application.registeredStudent.upi || "UPI not captured"}
-                      </p>
-                    </>
-                  ) : (
-                    <span className="inline-flex rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">
-                      Not linked
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-4">
-                  {application.duplicate ? (
-                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${DUPLICATE_STYLES[application.duplicate.status] || DUPLICATE_STYLES.pending}`}>
-                      {label(application.duplicate.status)}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-slate-500">No duplicate flag</span>
-                  )}
-                  <p className="mt-1 text-xs text-slate-500">
-                    {application.assessment
-                      ? `${label(application.assessment.status)} assessment${
-                          application.assessment.score === null
-                            ? ""
-                            : ` · ${application.assessment.score}/100`
-                        }`
-                      : "No assessment yet"}
-                  </p>
-                </td>
-              </tr>
-            ))}
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan="8" className="px-4 py-10 text-center text-slate-500">
-                  No guardian applications match this filter.
-                </td>
-              </tr>
-            )}
-            {loading && (
-              <tr>
-                <td colSpan="8" className="px-4 py-10 text-center text-slate-500">
-                  Loading applications...
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                ) : (
+                  <span className="inline-flex rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+                    Student record not linked
+                  </span>
+                )}
+                {application.duplicate ? (
+                  <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${DUPLICATE_STYLES[application.duplicate.status] || DUPLICATE_STYLES.pending}`}>
+                    Duplicate review: {label(application.duplicate.status)}
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">No duplicate flag</span>
+                )}
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
+                  {application.assessment
+                    ? `${label(application.assessment.status)} assessment${
+                        application.assessment.score === null ? "" : ` · ${application.assessment.score}/100`
+                      }`
+                    : "No assessment yet"}
+                </span>
+              </div>
+            </article>
+          );
+        })}
+        {!loading && filtered.length === 0 && (
+          <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-slate-500">
+            No guardian applications match this filter.
+          </p>
+        )}
+        {loading && (
+          <p className="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-slate-500">
+            Loading applications...
+          </p>
+        )}
+      </section>
 
       {selected && (
-        <section className="mt-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <section ref={detailsRef} className="mt-6 scroll-mt-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">{selected.reference}</h2>
@@ -300,10 +318,7 @@ export default function Applications() {
 
           {!selected.registeredStudent && (
             <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-              This application has no student record. Duplicate screening, eligibility and the Field
-              Officer screens cannot see it until it is linked. Run the repair script with
-              <code className="mx-1 rounded bg-white px-1 py-0.5 text-xs">--apply</code>
-              to create the student from this application.
+              No student record is linked to this application yet. Contact system support to restore it.
             </p>
           )}
 

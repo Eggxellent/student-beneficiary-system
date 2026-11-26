@@ -11,15 +11,9 @@ RUN npm ci --omit=dev --prefix ./backend
 
 COPY ml-service/requirements.txt ./ml-service/requirements.txt
 
-# xgboost declares a Linux-only transitive dependency on nvidia-nccl-cu12 (~350 MB) for
-# distributed GPU communication. This service does single-process CPU inference:
-# xgboost imports NCCL lazily inside collective.CommunicatorContext (wrapped in
-# try/except ImportError) and predict.py never reaches it. Install every requirement
-# normally, then xgboost itself with --no-deps, so the CUDA wheel is never downloaded.
-# The version is read back out of requirements.txt so it cannot drift.
-# The wheel set here is ~300 MB and the link measured ~35 kB/s, so pip's default socket timeout
-# aborts with ReadTimeoutError before the build can fail for a real reason. Timeout + retries are
-# raised explicitly; the local build died on exactly this.
+# The serving estimator is HistGradientBoosting and uses pandas, scikit-learn and jellyfish.
+# XGBoost remains in the ML requirements for research/training scripts but is not a runtime
+# dependency of the serving image.
 ENV PIP_DEFAULT_TIMEOUT=120 \
     PIP_RETRIES=10 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -27,14 +21,12 @@ ENV PIP_DEFAULT_TIMEOUT=120 \
 RUN python3 -m venv /app/ml-service/.venv \
     && grep -v -E '^[[:space:]]*xgboost[[:space:]]*==' /app/ml-service/requirements.txt > /tmp/requirements-no-xgboost.txt \
     && /app/ml-service/.venv/bin/python -m pip install --no-cache-dir -r /tmp/requirements-no-xgboost.txt \
-    && XGBOOST_VERSION="$(sed -n -E 's/^[[:space:]]*xgboost[[:space:]]*==[[:space:]]*([^[:space:]]+).*/\1/p' /app/ml-service/requirements.txt)" \
-    && test -n "$XGBOOST_VERSION" \
-    && /app/ml-service/.venv/bin/python -m pip install --no-cache-dir --no-deps "xgboost==$XGBOOST_VERSION" \
     && ! /app/ml-service/.venv/bin/python -m pip list 2>/dev/null | grep -qi '^nvidia-'
 
 COPY backend/src ./backend/src
 COPY backend/scripts ./backend/scripts
 COPY ml-service/predict.py ml-service/feature_engineering.py ./ml-service/
+COPY ml-service/model/xgb_duplicate_model.metadata.json ./ml-service/model/xgb_duplicate_model.metadata.json
 COPY ml-service/model/xgb_duplicate_model.joblib ./ml-service/model/xgb_duplicate_model.joblib
 
 RUN test -s /app/ml-service/model/xgb_duplicate_model.joblib \

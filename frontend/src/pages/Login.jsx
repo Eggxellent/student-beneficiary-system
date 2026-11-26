@@ -27,7 +27,7 @@ function Brand() {
   return (
     <div className="sbms-login-brand">
       <span className="sbms-login-brand-mark" aria-hidden="true">S</span>
-      <span>Student Beneficiary<br />Management System</span>
+      <span>SBMS</span>
     </div>
   );
 }

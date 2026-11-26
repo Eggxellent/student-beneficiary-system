@@ -8,11 +8,6 @@ name: Publish API image
 # Building here uses the runner's network and the automatic GITHUB_TOKEN, and still produces exactly the
 # image described by the repository's own Dockerfile. Trigger it manually; it is not wired to every push.
 on:
-  push:
-    paths:
-      - 'backend/**'
-      - 'Dockerfile'
-      - '.github/workflows/publish-api-image.yml'
   workflow_dispatch:
     inputs:
       reason:
@@ -61,14 +56,14 @@ jobs:
           sys.path.insert(0, '/app/ml-service')
           from predict import predict_pairs, model_version
           a = {"full_name": "Jane Wanjiku Kamau", "date_of_birth": "2010-04-12", "school_code": "SCH-001",
-               "guardian_id": "G-778812", "upi": "UPI-99112233", "birth_certificate_number": "BC-445566"}
+               "guardian_id": "G-778812", "admission_number": "ADM-99112233", "birth_certificate_number": "BC-445566"}
           c = {"full_name": "Brian Otieno Ouma", "date_of_birth": "2009-11-02", "school_code": "SCH-014",
-               "guardian_id": "G-112233", "upi": "UPI-55667788", "birth_certificate_number": "BC-998877"}
+               "guardian_id": "G-112233", "admission_number": "ADM-55667788", "birth_certificate_number": "BC-998877"}
           same, other = predict_pairs([{"first": a, "second": dict(a)}, {"first": a, "second": c}])
           assert same["score"] > 0.9, same
           assert other["score"] < 0.5, other
           assert list(same["features"]) == ["jaro_winkler", "dob_match", "school_match",
-                                            "guardian_match", "upi_match", "birth_certificate_match"]
+                                            "guardian_match", "admission_number_match", "birth_certificate_match"]
           print("duplicate", same["score"], "unrelated", other["score"], "model", model_version()[:16])
           PY
 

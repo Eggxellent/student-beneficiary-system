@@ -26,10 +26,7 @@ export function PublicVerificationLayout({ children }) {
           <span className="grid h-10 w-10 place-items-center rounded-lg bg-[#173D35] text-[#C8A45D]">
             <GraduationCap size={20} aria-hidden="true" />
           </span>
-          <div>
-            <p className="text-sm font-bold tracking-tight text-[#173D35]">SBMS</p>
-            <p className="text-xs text-slate-600">Student Beneficiary Management System</p>
-          </div>
+          <p className="text-sm font-bold tracking-tight text-[#173D35]">SBMS</p>
         </header>
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" aria-live="polite">

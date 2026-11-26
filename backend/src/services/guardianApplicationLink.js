@@ -35,8 +35,13 @@ function submittedStudentFor(application) {
     full_name: application.student_full_name,
     date_of_birth: application.student_date_of_birth || null,
     school_code: resolveSchoolCode(application.school_name),
+    school_name: application.school_name,
     guardian_id: application.user_id,
-    upi: null, // the guardian form records the birth certificate and admission number, not a UPI
+    guardian_name: application.guardian_full_name || null,
+    // The admission number is the identifier the guardian form collects, and the only one the
+    // model can use as decisive evidence. `upi` stays null: the form never captures one.
+    admission_number: application.admission_number || null,
+    upi: null,
     birth_certificate_number: application.student_identifier || null,
     national_id_number: null,
     primary_phone: kenyanPhoneOrNull(application.guardian_phone),

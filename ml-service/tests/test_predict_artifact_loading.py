@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+import hashlib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,7 +10,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from feature_engineering import FEATURE_COLUMNS
-from predict import MODEL_FILE, load_model, predict_pairs
+from predict import MODEL_FILE, load_metadata, load_model, model_type, model_version, predict_pairs
 
 
 class FakeModel:
@@ -20,8 +21,14 @@ class FakeModel:
 
 class ProductionArtifactLoadingTests(unittest.TestCase):
     def test_default_loader_uses_the_production_artifact_only(self):
-        sentinel_model = object()
-        with patch("predict.joblib.load", return_value=sentinel_model) as load:
+        class SchemaModel:
+            feature_names_in_ = FEATURE_COLUMNS
+
+        sentinel_model = SchemaModel()
+        digest = hashlib.sha256(MODEL_FILE.read_bytes()).hexdigest()
+        with patch("predict.joblib.load", return_value=sentinel_model) as load, patch(
+            "predict.load_metadata", return_value={"model_sha256": digest, "model_type": model_type(sentinel_model)}
+        ):
             self.assertIs(load_model(), sentinel_model)
 
         load.assert_called_once_with(MODEL_FILE)
@@ -31,7 +38,7 @@ class ProductionArtifactLoadingTests(unittest.TestCase):
     def test_missing_artifact_fails_with_a_specific_error(self):
         with tempfile.TemporaryDirectory() as directory:
             missing = Path(directory) / "xgb_duplicate_model.joblib"
-            with self.assertRaisesRegex(FileNotFoundError, "(?i)production XGBoost model artifact is missing"):
+            with self.assertRaisesRegex(FileNotFoundError, "(?i)production model artifact is missing"):
                 load_model(missing)
 
     def test_corrupt_artifact_fails_closed(self):
@@ -40,6 +47,17 @@ class ProductionArtifactLoadingTests(unittest.TestCase):
             corrupt.write_bytes(b"not a valid joblib model")
             with self.assertRaisesRegex(RuntimeError, "could not be loaded"):
                 load_model(corrupt)
+
+    def test_artifact_metadata_hash_mismatch_fails_closed(self):
+        class SchemaModel:
+            feature_names_in_ = FEATURE_COLUMNS
+
+        with patch("predict.joblib.load", return_value=SchemaModel()), patch(
+            "predict.load_metadata",
+            return_value={"model_sha256": "0" * 64, "model_type": model_type(SchemaModel())},
+        ):
+            with self.assertRaisesRegex(RuntimeError, "hash does not match its metadata"):
+                load_model()
 
     def test_prediction_preserves_feature_order_and_valid_output(self):
         first = {
@@ -78,6 +96,21 @@ class ProductionArtifactLoadingTests(unittest.TestCase):
         self.assertEqual(list(result["features"]), FEATURE_COLUMNS)
         self.assertGreaterEqual(result["score"], 0)
         self.assertLessEqual(result["score"], 1)
+
+    def test_metadata_and_model_version_identify_the_fitted_estimator(self):
+        model = load_model()
+        metadata = load_metadata()
+
+        self.assertEqual(
+            metadata["model_type"],
+            "sklearn.pipeline.Pipeline(SimpleImputer, HistGradientBoostingClassifier)",
+        )
+        self.assertEqual(model_version(model).split(":", 1)[0], "histgradientboostingclassifier")
+
+    def test_default_python_decision_cutoff_matches_model_metadata(self):
+        from predict import DEFAULT_REVIEW_THRESHOLD
+
+        self.assertEqual(float(load_metadata()["review_threshold"]), DEFAULT_REVIEW_THRESHOLD)
 
 
 if __name__ == "__main__":

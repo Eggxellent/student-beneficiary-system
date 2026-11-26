@@ -50,7 +50,7 @@ export default function Students() {
   const filteredStudents = students.filter((student) => {
     const searchable = [
       student.full_name,
-      student.upi,
+      student.admission_number,
       student.guardian_id,
       student.school_code,
       student.birth_certificate_number,
@@ -65,8 +65,7 @@ export default function Students() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Registered students</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Guardian registrations that duplicate screening has cleared and that carry a saved eligibility assessment.
-            Pending or confirmed duplicate cases and unassessed records are withheld until they are resolved.
+            Only duplicate-cleared guardian registrations with completed assessments appear here.
           </p>
         </div>
       </div>
@@ -75,77 +74,82 @@ export default function Students() {
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search name, unique ID, guardian, school, or birth certificate"
+        placeholder="Search name, admission number, guardian, school, or birth certificate"
         className="mb-5 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
       />
 
       {error && <p className="mb-5 rounded-lg bg-red-50 p-4 text-sm text-red-700">{error}</p>}
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-5 py-3 font-medium">Student</th>
-              <th className="px-5 py-3 font-medium">Unique ID</th>
-              <th className="px-5 py-3 font-medium">School</th>
-              <th className="px-5 py-3 font-medium">Registration</th>
-              <th className="px-5 py-3 font-medium">Eligibility</th>
-              <th className="px-5 py-3 font-medium">Recommended range</th>
-              <th className="px-5 py-3 font-medium">Assessment status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredStudents.map((student) => (
-              <tr key={student.id} className="align-top text-slate-700">
-                <td className="px-5 py-4">
-                  <p className="font-medium text-slate-900">{student.full_name}</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {student.date_of_birth ? `Date of birth ${shortDate(student.date_of_birth)}` : "Date of birth not captured"}
-                  </p>
-                </td>
-                <td className="px-5 py-4">
-                  <p>{student.upi || "Not captured"}</p>
-                  {student.birth_certificate_number && (
-                    <p className="mt-1 text-xs text-slate-500">Birth certificate {student.birth_certificate_number}</p>
-                  )}
-                </td>
-                <td className="px-5 py-4">{student.school_code || "-"}</td>
-                <td className="px-5 py-4">
-                  <p>Guardian {student.guardian_id}</p>
-                  <p className="mt-1 text-xs text-slate-500">Registered {shortDate(student.created_at)}</p>
-                  <p className="text-xs text-slate-500">Duplicate screening cleared</p>
-                </td>
-                <td className="px-5 py-4">
-                  <p className="font-semibold text-slate-900">{student.score} / 100</p>
-                  <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${CATEGORY_STYLES[student.category] || CATEGORY_STYLES.low}`}>
-                    {categoryLabel(student.category)}
-                  </span>
-                </td>
-                <td className="px-5 py-4">
-                  <p>{recommendedRange(student)}</p>
-                  {student.recommendation_provisional && (
-                    <p className="mt-1 text-xs text-slate-500">Provisional recommendation</p>
-                  )}
-                </td>
-                <td className="px-5 py-4">
-                  <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-800">
-                    Assessed
-                  </span>
-                  <p className="mt-1 text-xs text-slate-500">{shortDate(student.assessed_at)}</p>
-                </td>
-              </tr>
-            ))}
-            {!loading && filteredStudents.length === 0 && (
-              <tr>
-                <td colSpan="7" className="px-5 py-10 text-center text-slate-500">
-                  No students to show. A guardian registration appears here once duplicate screening is cleared and an eligibility assessment is saved.
-                </td>
-              </tr>
-            )}
-            {loading && <tr><td colSpan="7" className="px-5 py-10 text-center text-slate-500">Loading students...</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <section aria-label="Registered students" className="space-y-3">
+        {filteredStudents.map((student) => (
+          <article key={student.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <h2 className="break-words text-lg font-semibold text-slate-900">{student.full_name}</h2>
+                <p className="mt-1 text-sm text-slate-600">{student.school_code || "School not recorded"}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2 self-start">
+                <span className="text-lg font-bold tabular-nums text-slate-900">{student.score} / 100</span>
+                <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${CATEGORY_STYLES[student.category] || CATEGORY_STYLES.low}`}>
+                  {categoryLabel(student.category)}
+                </span>
+              </div>
+            </div>
+
+            <dl className="mt-4 grid gap-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              <div className="min-w-0">
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Admission number</dt>
+                <dd className="mt-0.5 break-all font-medium text-slate-800">{student.admission_number || "Not captured"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Recommended range</dt>
+                <dd className="mt-0.5 font-medium text-slate-800">{recommendedRange(student)}</dd>
+                {student.recommendation_provisional && (
+                  <dd className="text-xs text-slate-500">Provisional recommendation</dd>
+                )}
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Registration</dt>
+                <dd className="mt-0.5 text-slate-800">{shortDate(student.created_at)} · duplicate check cleared</dd>
+              </div>
+            </dl>
+
+            <details className="mt-4 border-t border-slate-100 pt-3 text-sm">
+              <summary className="w-fit cursor-pointer font-medium text-blue-700 hover:text-blue-800">
+                More student details
+              </summary>
+              <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Date of birth</dt>
+                  <dd className="mt-0.5 text-slate-800">{shortDate(student.date_of_birth)}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Birth certificate</dt>
+                  <dd className="mt-0.5 break-all text-slate-800">{student.birth_certificate_number || "Not captured"}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Guardian reference</dt>
+                  <dd className="mt-0.5 break-all text-slate-800">{student.guardian_id || "Not recorded"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Assessment</dt>
+                  <dd className="mt-0.5 text-slate-800">Assessed {shortDate(student.assessed_at)}</dd>
+                </div>
+              </dl>
+            </details>
+          </article>
+        ))}
+        {!loading && filteredStudents.length === 0 && (
+          <p className="rounded-xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center text-slate-500">
+            No students to show. A guardian registration appears here once duplicate screening is cleared and an eligibility assessment is saved.
+          </p>
+        )}
+        {loading && (
+          <p className="rounded-xl border border-slate-200 bg-white px-5 py-10 text-center text-slate-500">
+            Loading students...
+          </p>
+        )}
+      </section>
     </main>
   );
 }

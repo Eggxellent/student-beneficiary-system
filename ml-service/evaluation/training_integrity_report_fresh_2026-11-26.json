@@ -1,0 +1,54 @@
+{
+  "audit_type": "structural-only; labels, features, predictions, and test metrics were not loaded",
+  "verdict": "pass",
+  "violations": [],
+  "splits": {
+    "training": {
+      "file": "training\\realistic_pairs_train.csv",
+      "rows": 21000,
+      "groups": 10500,
+      "identity_ids": 15757,
+      "guardian_clusters": 15988
+    },
+    "validation": {
+      "file": "evaluation\\realistic_pairs_validation.csv",
+      "rows": 4500,
+      "groups": 2250,
+      "identity_ids": 3397,
+      "guardian_clusters": 3416
+    },
+    "test": {
+      "file": "evaluation\\realistic_pairs_holdout.csv",
+      "rows": 4500,
+      "groups": 2250,
+      "identity_ids": 3346,
+      "guardian_clusters": 3382
+    }
+  },
+  "pairwise_overlaps": {
+    "training_validation": {
+      "groups": 0,
+      "identity_ids": 0,
+      "guardian_clusters": 0,
+      "identical_rows": 0,
+      "directed_pairs": 0,
+      "undirected_pairs_including_reversals": 0
+    },
+    "training_test": {
+      "groups": 0,
+      "identity_ids": 0,
+      "guardian_clusters": 0,
+      "identical_rows": 0,
+      "directed_pairs": 0,
+      "undirected_pairs_including_reversals": 0
+    },
+    "validation_test": {
+      "groups": 0,
+      "identity_ids": 0,
+      "guardian_clusters": 0,
+      "identical_rows": 0,
+      "directed_pairs": 0,
+      "undirected_pairs_including_reversals": 0
+    }
+  }
+}
