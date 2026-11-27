@@ -32,6 +32,8 @@ class ReviewEvidenceTests(unittest.TestCase):
     def test_identifiers_preserve_zeroes_and_reject_unbounded_rearrangements(self):
         self.assertEqual(identifier_similarity("28416", "28146"), 0.88)
         self.assertEqual(identifier_similarity("0361358260", "0361358620"), 0.88)
+        self.assertEqual(identifier_similarity("36897", "36798"), 0.84)
+        self.assertEqual(identifier_similarity("0368478135", "0368473581"), 0.84)
         self.assertEqual(identifier_similarity("00123456", "0123456"), 0.72)
         self.assertEqual(identifier_similarity("123456", "654321"), 0.0)
 
@@ -108,6 +110,44 @@ class ReviewEvidenceTests(unittest.TestCase):
         self.assertEqual(evidence["birth_certificate"], 0.88)
         self.assertGreaterEqual(evidence["name"], 0.9)
         self.assertEqual(evidence["dob"], 0.9)
+
+    def test_achieng_boniface_nonadjacent_identifier_rearrangements_route_to_review(self):
+        original = {
+            "full_name": "Boniface Achieng Ochieng", "date_of_birth": "2013-01-16",
+            "school_code": None, "school_name": "SCH-007",
+            "guardian_id": "shared-guardian", "guardian_name": "Peter Odhiambo",
+            "admission_number": "36798", "birth_certificate_number": "0368473581",
+        }
+        submitted = {
+            "full_name": "Achieng O. Boniface", "date_of_birth": "2013-01-15",
+            "school_code": None, "school_name": "SCH-070",
+            "guardian_id": "shared-guardian", "guardian_name": "Peter Odhiambo",
+            "admission_number": "36897", "birth_certificate_number": "0368478135",
+        }
+
+        evidence = build_review_evidence(submitted, original)
+
+        self.assertTrue(evidence["near_match_review"])
+        self.assertEqual(evidence["comparisons"]["school"]["match_type"], "adjacent_code_transposition")
+        self.assertEqual(identifier_similarity("36897", "36798"), 0.84)
+        self.assertEqual(evidence["comparisons"]["birth_certificate"]["match_type"], "digit_rearrangement")
+        self.assertEqual(evidence["qualification_rule"], "strong_name_plus_dob_and_identifier")
+        self.assertEqual(evidence["suppression_reasons"], [])
+
+        prediction = predict_pairs([{"first": submitted, "second": original}], load_model())[0]
+        self.assertEqual(list(prediction["features"]), FEATURE_COLUMNS)
+        self.assertEqual(prediction["features"]["admission_number_match"], 0.0)  # school-code gate stays unchanged
+        self.assertEqual(prediction["features"]["birth_certificate_match"], 0.96)
+        self.assertGreaterEqual(prediction["score"], 0.5)
+        self.assertTrue(prediction["review_evidence"]["near_match_review"])
+
+    def test_nonadjacent_digit_rearrangement_needs_independent_strong_evidence(self):
+        evidence = build_review_evidence(
+            {"full_name": "Amina Hassan", "date_of_birth": "2011-05-14", "school_name": "SCH-001", "guardian_id": "g", "admission_number": "36897"},
+            {"full_name": "Brian Otieno", "date_of_birth": "2009-09-02", "school_name": "SCH-001", "guardian_id": "g", "admission_number": "36798"},
+        )
+        self.assertEqual(evidence["comparisons"]["admission_number"]["match_type"], "digit_rearrangement")
+        self.assertFalse(evidence["near_match_review"])
 
     def test_registered_different_schools_block_admission_number_similarity(self):
         first = {"full_name": "Faith Wanjiru Mwangi", "date_of_birth": "2010-09-22", "school_code": "Nairobi School", "admission_number": "00123", "birth_certificate_number": "0368246159"}

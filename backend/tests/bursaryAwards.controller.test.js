@@ -120,7 +120,11 @@ describe('bursary award proposals (isolated; no database)', () => {
         // Order matters: the annual-award lookup embeds a students subquery, so match the award
         // query before the plain student lookup.
         if (/FROM bursary_awards/.test(sql)) return { rows: existingAward ? [existingAward] : [] };
-        if (/FROM students/.test(sql)) return { rows: [{ id: studentId, full_name: 'Test Learner', school_code: 'Nairobi School', ...studentRow }] };
+        if (/FROM students/.test(sql)) {
+          const row = { id: studentId, full_name: 'Test Learner', school_code: 'Nairobi School', ...studentRow };
+          if (!row.school_code && row.school_name) row.school_code = row.school_name;
+          return { rows: [row] };
+        }
         return { rows: [] };
       }),
     };
@@ -145,6 +149,19 @@ describe('bursary award proposals (isolated; no database)', () => {
     expect(res.body.existing_award.id).toBe(approvedAward.id);
     expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_awards/.test(sql))).toBe(false);
     expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  test('proposes an award for a legacy student whose school code is stored in school_name', async () => {
+    const client = setupCreateClient({ studentRow: { school_code: null, school_name: 'SCH-009' } });
+    const res = makeResponse();
+
+    await controller.create({ body: { student_id: studentId, requested_amount: 25000 }, user: { id: actorId } }, res, jest.fn());
+
+    expect(res.statusCode).toBe(201);
+    const studentLookup = client.query.mock.calls.find(([sql]) => /FROM students s WHERE s\.id = \$1 FOR UPDATE/.test(sql));
+    expect(studentLookup[0]).toMatch(/COALESCE\(NULLIF\(BTRIM\(s\.school_code\)/);
+    const insert = client.query.mock.calls.find(([sql]) => /INSERT INTO bursary_awards/.test(sql));
+    expect(insert[1][1]).toBe('SCH-009');
   });
 
   test('blocks a second proposal while a proposal for the same year is pending', async () => {

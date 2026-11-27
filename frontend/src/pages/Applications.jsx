@@ -57,6 +57,7 @@ function detailRows(detail) {
     ["County", detail.school?.location],
     ["Guardian on application", detail.household?.guardianName],
     ["Guardian phone", detail.household?.phone],
+    ["Guardian National ID", detail.household?.guardianNationalId],
     ["Household", detail.household?.size],
     ["Income source", detail.household?.incomeSource],
     ["Monthly income", detail.household?.monthlyIncome],
@@ -79,19 +80,40 @@ export default function Applications() {
     setLoading(true);
     setError("");
     try {
+      const requestedPage = Number(nextPage);
+      const requestedPageSize = Number(nextPageSize);
+      const safePage = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const safePageSize = Number.isSafeInteger(requestedPageSize) && requestedPageSize > 0
+        ? Math.min(10, requestedPageSize)
+        : 10;
       const { data } = await api.get("/guardian/staff/applications", {
-        params: { page: nextPage, page_size: nextPageSize, search: nextQuery, status: nextStatus === "all" ? "" : nextStatus },
+        params: {
+          page: safePage,
+          page_size: safePageSize,
+          search: nextQuery,
+          status: ["under_review", "approved", "rejected"].includes(nextStatus) ? nextStatus : "",
+        },
       });
       const rows = Array.isArray(data?.applications) ? data.applications : [];
       setApplications(rows);
-      const resultPage = data?.pagination?.page || nextPage;
-      setPagination(data?.pagination || { page: resultPage, pageSize: nextPageSize, totalPages: 1, totalRecords: rows.length });
+      const responsePage = Number(data?.pagination?.page);
+      const resultPage = Number.isSafeInteger(responsePage) && responsePage > 0 ? responsePage : safePage;
+      const responsePageSize = Number(data?.pagination?.pageSize);
+      const responseTotalPages = Number(data?.pagination?.totalPages);
+      const responseTotalRecords = Number(data?.pagination?.totalRecords);
+      setPagination({
+        page: resultPage,
+        pageSize: Number.isSafeInteger(responsePageSize) && responsePageSize > 0 ? responsePageSize : safePageSize,
+        totalPages: Number.isSafeInteger(responseTotalPages) && responseTotalPages > 0 ? responseTotalPages : 1,
+        totalRecords: Number.isSafeInteger(responseTotalRecords) && responseTotalRecords >= 0 ? responseTotalRecords : rows.length,
+      });
       setPage(resultPage);
       setSelectedId((current) =>
         current && rows.some((row) => row.id === current) ? current : null,
       );
     } catch (requestError) {
-      setError(requestError.response?.data?.error || "Unable to load guardian applications.");
+      const message = requestError.response?.data?.error;
+      setError(typeof message === "string" && message.trim() ? message : "Unable to load guardian applications. Please refresh and try again.");
     } finally {
       setLoading(false);
     }
@@ -152,7 +174,6 @@ export default function Applications() {
         >
           <option value="all">All statuses</option>
           <option value="under_review">Under review</option>
-          <option value="submitted">Submitted</option>
           <option value="approved">Approved</option>
           <option value="rejected">Rejected</option>
         </select>

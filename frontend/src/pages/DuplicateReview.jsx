@@ -5,34 +5,6 @@ import { useAuth } from "../context/AuthContext";
 
 const initialSummary = { high_priority_pending: 0, standard_review_pending: 0, awaiting_verification: 0 };
 const initialTotals = { flagged: 0, confirmed_duplicate: 0, not_duplicate: 0, unresolved: 0 };
-const evidenceLabels = {
-  name: "Name similarity",
-  date_of_birth: "Date of birth",
-  school: "School identifier",
-  admission_number: "Admission number",
-  birth_certificate: "Birth certificate",
-  national_id: "National ID",
-};
-
-// Names, dates of birth and school codes are not unique: two people can share all three and share
-// nothing else. So the comparison shows a weak field only when its similarity actually cleared the
-// threshold, while the three identifiers that cannot be partly shared (admission number within one
-// school, birth certificate, national ID) are shown either way — agreement proves the match,
-// disagreement refutes it.
-const DECISIVE_FIELDS = new Set(["admission_number", "birth_certificate", "national_id"]);
-
-function evidenceSurpassesThreshold(key, value) {
-  if (!value) return false;
-  if (DECISIVE_FIELDS.has(key)) return true;
-  return value === "matches" || value.startsWith("high similarity");
-}
-
-function visibleEvidence(evidence) {
-  return Object.entries(evidenceLabels)
-    .filter(([key]) => evidenceSurpassesThreshold(key, evidence?.[key]))
-    .map(([key, label]) => [key, label, evidence[key]]);
-}
-
 function prettyStatus(status) {
   return ({ pending: "Pending review", needs_verification: "Needs further verification", confirmed_duplicate: "Confirmed duplicate", not_duplicate: "Not a duplicate" })[status] || status;
 }
@@ -50,7 +22,7 @@ function identityRows(student) {
     ["Guardian no:", student.guardian_contact],
     ["Admission number", student.admission_number],
     ["Birth certificate", student.birth_certificate_number],
-    ["National ID", student.national_id_number],
+    ["Guardian National ID", student.guardian_national_id],
   ];
 }
 
@@ -276,8 +248,51 @@ export default function DuplicateReview() {
               return <article key={student.reference} className="rounded border border-slate-200 p-4"><h3 className="font-semibold">{student.full_name}{student.duplicate_of_student_id && <span className="ml-2 rounded border border-amber-400 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Marked duplicate</span>}</h3><p className="mb-3 text-xs text-slate-500">Case reference: {student.reference}</p><dl className="space-y-2 text-sm">{identityRows(shown).map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b border-slate-100 pb-1"><dt className="text-slate-500">{label}</dt><dd className="text-right font-medium">{value || "Unavailable"}</dd></div>)}</dl></article>;
             })}
           </div>
-          <section className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Decisive fields</h3><p className="mt-1 text-xs text-slate-500">Only fields whose similarity cleared the threshold, plus every admission-number, birth-certificate and national-ID comparison. A shared name, date of birth or school proves nothing: none of them is unique.</p><dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{visibleEvidence(selected.evidence).map(([key, label, value]) => <div key={key} className="flex justify-between gap-3"><dt>{label}</dt><dd className="font-medium capitalize">{value}</dd></div>)}</dl>{selected.exact_identifier_matches.length > 0 && <p className="mt-3 text-sm font-semibold text-slate-800">Exact match: {selected.exact_identifier_matches.join(", ")}. Verify it; this is not proof of misconduct.</p>}</section>
-          {selected.evidence.near_match_review?.comparisons && <details className="mt-4 rounded border border-slate-200 p-4"><summary className="cursor-pointer font-semibold">Near-match evidence and comparison methods</summary><p className="mt-2 text-xs text-slate-600">These are review clues, not probabilities or a duplicate decision. Original student identifiers are shown only after the audited reveal. Guardian National ID is shown as match context only; its value is never displayed.</p><dl className="mt-3 space-y-2 text-sm">{Object.entries(selected.evidence.near_match_review.comparisons).map(([field, comparison]) => { const detail = revealedEvidence?.comparisons?.[field] || comparison; const labels = { name: "Name", date_of_birth: "Date of birth", school: "School", guardian: "Guardian (context only)", guardian_context: "Guardian National ID (context only)", admission_number: "Admission number", birth_certificate: "Birth certificate" }; return <div key={field} className="grid gap-1 border-b border-slate-100 pb-2 sm:grid-cols-[9rem_1fr]"><dt className="font-medium">{labels[field] || field}</dt><dd><span>{detail.match_type || "not compared"}</span>{detail.evidence_role && <span> · {detail.evidence_role.replaceAll("_", " ")}</span>}{Number.isFinite(Number(detail.similarity)) && <span> · evidence {Math.round(Number(detail.similarity) * 100)}%</span>}{detail.status && <span> · school status: {detail.status.replaceAll("_", " ")}</span>}{detail.normalized && <div className="mt-1 text-xs text-slate-600">Compared values: {detail.normalized.map((value) => value || "unavailable").join(" ↔ ")}</div>}</dd></div>; })}</dl>{selected.evidence.near_match_review.conflicts?.length > 0 && <p className="mt-3 text-xs text-amber-800">Conflicting or uncertain evidence: {selected.evidence.near_match_review.conflicts.join(", ").replaceAll("_", " ")}.</p>}</details>}
+          {(selected.evidence.near_match_review?.comparisons || selected.exact_identifier_matches?.length > 0) && (
+            <details className="mt-4 rounded border border-slate-200 p-4">
+              <summary className="cursor-pointer font-semibold">Near-match evidence and comparison methods</summary>
+              <p className="mt-2 text-xs text-slate-600">
+                These are review clues, not probabilities or a duplicate decision. Guardian National ID is household context only. Its value is masked until an Admin opens the audited reveal.
+              </p>
+              {selected.exact_identifier_matches?.length > 0 && (
+                <p className="mt-3 text-sm font-semibold text-slate-800">
+                  Exact match: {selected.exact_identifier_matches.join(", ")}. Verify it; this is not proof of misconduct.
+                </p>
+              )}
+              {selected.evidence.near_match_review?.comparisons && <dl className="mt-3 space-y-2 text-sm">
+                {Object.entries(selected.evidence.near_match_review.comparisons).map(([field, comparison]) => {
+                  const detail = revealedEvidence?.comparisons?.[field] || comparison;
+                  const matchLabel = field === "guardian_context" && detail.match_type === "unavailable_or_invalid"
+                    ? "Unavailable: a profile ID is missing or not a valid 8-digit value"
+                    : (detail.match_type || "not compared").replaceAll("_", " ");
+                  const labels = {
+                    name: "Name",
+                    date_of_birth: "Date of birth",
+                    school: "School code",
+                    guardian: "Guardian (context only)",
+                    guardian_context: "Guardian National ID (context only)",
+                    admission_number: "Admission number",
+                    birth_certificate: "Birth certificate",
+                  };
+                  return <div key={field} className="grid gap-1 border-b border-slate-100 pb-2 sm:grid-cols-[9rem_1fr]">
+                    <dt className="font-medium">{labels[field] || field}</dt>
+                    <dd>
+                      <span>{matchLabel}</span>
+                      {detail.evidence_role && <span> | {detail.evidence_role.replaceAll("_", " ")}</span>}
+                      {Number.isFinite(Number(detail.similarity)) && <span> | evidence {Math.round(Number(detail.similarity) * 100)}%</span>}
+                      {detail.status && <span> | school status: {detail.status.replaceAll("_", " ")}</span>}
+                      {detail.normalized && <div className="mt-1 text-xs text-slate-600">Compared values: {detail.normalized.map((value) => value || "unavailable").join(" vs ")}</div>}
+                    </dd>
+                  </div>;
+                })}
+              </dl>}
+              {selected.evidence.near_match_review?.conflicts?.length > 0 && (
+                <p className="mt-3 text-xs text-amber-800">
+                  Conflicting or uncertain evidence: {selected.evidence.near_match_review.conflicts.join(", ").replaceAll("_", " ")}.
+                </p>
+              )}
+            </details>
+          )}
           <section className="mt-5 rounded border border-slate-200 p-4"><h3 className="font-semibold">Review history</h3>{selected.history.length ? <ol className="mt-2 space-y-3">{selected.history.map((event) => <li key={event.id} className="border-l-2 border-slate-300 pl-3 text-sm"><p className="font-medium">{prettyStatus(event.decision)} · {event.reviewer_name}</p><p className="text-slate-700">Reason: {event.reason}</p>{event.notes && <p className="text-slate-600">Notes: {event.notes}</p>}<time className="text-xs text-slate-500">{formatDate(event.created_at)}</time></li>)}</ol> : <p className="mt-2 text-sm text-slate-500">No previous review actions.</p>}</section>
           {isAdmin && selected.status === "confirmed_duplicate" && (selected.resolution ? (
             <section className="mt-5 rounded border border-green-300 bg-green-50 p-4">

@@ -243,7 +243,9 @@ async function create(req, res, next) {
     await client.query('BEGIN');
     await client.query("SELECT pg_advisory_xact_lock(hashtext('sbms.student.registration'))");
     const student = await client.query(
-      `SELECT s.id, s.full_name, s.school_code, s.duplicate_of_student_id,
+      `SELECT s.id, s.full_name,
+              COALESCE(NULLIF(BTRIM(s.school_code), ''), NULLIF(BTRIM(s.school_name), '')) AS school_code,
+              s.duplicate_of_student_id,
               EXISTS (
                 SELECT 1 FROM guardian_applications a
                  WHERE a.student_id = s.id

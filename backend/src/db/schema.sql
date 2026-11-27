@@ -60,7 +60,9 @@ CREATE TABLE IF NOT EXISTS students (
   eligibility_assessed_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW(),
   CONSTRAINT students_school_supported_check
-    CHECK (school_code IS NULL OR school_code IN ('Nairobi School', 'Alliance High', 'Bishop Gatimu', 'Loreto Limuru', 'Maranda'))
+    CHECK (school_code IS NULL
+      OR school_code IN ('Nairobi School', 'Alliance High', 'Bishop Gatimu', 'Loreto Limuru', 'Maranda')
+      OR school_code ~ '^SCH-[0-9]{3}$')
 );
 
 ALTER TABLE students DROP CONSTRAINT IF EXISTS students_upi_key;
@@ -198,6 +200,7 @@ CREATE TABLE IF NOT EXISTS guardian_applications (
   school_county VARCHAR(150),
   guardian_full_name VARCHAR(255) NOT NULL,
   guardian_phone VARCHAR(50) NOT NULL,
+  guardian_national_id VARCHAR(100),
   household_size INTEGER,
   income_source VARCHAR(150),
   monthly_income NUMERIC(14, 2),

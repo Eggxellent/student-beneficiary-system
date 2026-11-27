@@ -16,12 +16,13 @@ const { normalizeKenyanPhone } = require('./studentRecordFormat');
 const { APPROVED_SCHOOLS } = require('../config/schools');
 const { isValidGuardianNationalId } = require('./guardianNationalId');
 
-// students.school_code only accepts the configured codes, while the guardian form takes a free-text
-// school name. Only an exact (case-insensitive) match is used; anything else keeps the submitted
-// name on students.school_name instead of guessing a code.
-function resolveSchoolCode(schoolName) {
-  const wanted = String(schoolName || '').trim().toLowerCase();
-  return APPROVED_SCHOOLS.find((school) => school.toLowerCase() === wanted) || null;
+// Guardian applications now capture school codes. Preserve legacy supported school names, and
+// store valid SBMS codes as codes so awards and duplicate screening can use them directly.
+function resolveSchoolCode(schoolValue) {
+  const wanted = String(schoolValue || '').trim();
+  const legacyName = APPROVED_SCHOOLS.find((school) => school.toLowerCase() === wanted.toLowerCase());
+  if (legacyName) return legacyName;
+  return /^SCH-\d{3}$/i.test(wanted) ? wanted.toUpperCase() : null;
 }
 
 function kenyanPhoneOrNull(value) {
@@ -57,6 +58,12 @@ async function linkGuardianApplicationStudent({ client, application, actorId }) 
     [application.user_id],
   );
   const guardianNationalId = guardianProfile.rows[0]?.national_id;
+  await client.query(
+    `UPDATE guardian_applications
+        SET guardian_national_id = $1
+      WHERE id = $2 AND NULLIF(BTRIM(guardian_national_id), '') IS NULL`,
+    [guardianNationalId || null, application.id],
+  );
   const registration = await screenAndCreateStudent({
     client,
     submitted: {

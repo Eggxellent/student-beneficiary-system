@@ -80,7 +80,7 @@ export default function Awards() {
     setError("");
     try {
       const requests = [api.get("/awards")];
-      if (!isAdmin) requests.push(api.get("/students"));
+      if (!isAdmin) requests.push(api.get("/students/registered"));
       const results = await Promise.all(requests);
       setAwards(results[0].data.awards || []);
       if (!isAdmin) setStudents(Array.isArray(results[1].data) ? results[1].data : results[1].data?.value || []);
@@ -138,6 +138,7 @@ export default function Awards() {
   // rendered directly instead: administrators decide, field officers propose the award amount.
   const showDecision = isAdmin && pendingAwards.length > 0;
   const showProposal = !isAdmin;
+  const selectedAwardStudent = students.find((student) => student.id === awardForm.student_id);
   const visibleAwards = statusFilter === "all" ? awards : awards.filter((award) => award.status === statusFilter);
 
   async function submitAward(event) {
@@ -225,7 +226,7 @@ export default function Awards() {
     <main className="mx-auto max-w-7xl space-y-5 p-5 sm:p-8">
       <header>
         <h1 className="text-2xl font-bold text-slate-900">Bursary awards</h1>
-        <p className="mt-1 text-sm text-slate-600">Submit proposals for Admin approval. One approved award per student each year; its invoice does not indicate payment.</p>
+        <p className="mt-1 text-sm text-slate-600">Propose bursary amounts for eligible students.</p>
       </header>
 
       {error && <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p>}
@@ -243,27 +244,29 @@ export default function Awards() {
           <div className="p-4">
             {showProposal && (
               <>
-                <p className="mb-3 text-xs text-slate-500">A proposal is not an award; an administrator must approve it.</p>
                 <form onSubmit={submitAward} className="grid gap-3 sm:grid-cols-3">
                   <label className={label}>Student
                     <select required value={awardForm.student_id} onChange={(e) => setAwardForm({ ...awardForm, student_id: e.target.value })} className={field}>
                       <option value="">Select student</option>
                       {students.map((student) => (
                         <option key={student.id} value={student.id} disabled={awardedStudentIds.has(student.id)}>
-                          {student.full_name} - {student.school_code || "No school"}
+                          {student.full_name} - {student.school_code || student.school_name || "No school"}
                           {awardedStudentIds.has(student.id) ? ` (bursary already awarded for ${currentYear})` : ""}
                         </option>
                       ))}
                     </select>
+                    {selectedAwardStudent?.recommended_min != null && selectedAwardStudent?.recommended_max != null && (
+                      <span className="mt-2 block text-xs font-normal text-slate-600">
+                        Eligible range: {money(selectedAwardStudent.recommended_min)} – {money(selectedAwardStudent.recommended_max)}
+                      </span>
+                    )}
                   </label>
                   <label className={label}>Amount (KSh)
                     <input required type="number" min="0.01" step="0.01" value={awardForm.requested_amount} onChange={(e) => setAwardForm({ ...awardForm, requested_amount: e.target.value })} className={field} />
                   </label>
                   <button disabled={saving || awardedStudentIds.has(awardForm.student_id)} className={`self-end ${primary}`}>{saving ? "Saving..." : "Propose award"}</button>
                 </form>
-                <p className="mt-2 text-xs text-slate-500">
-                  A student can receive one bursary per calendar year ({currentYear}). A proposal occupies the year until it is decided.
-                </p>
+                <p className="mt-2 text-xs text-slate-500">One proposal per student per year; Admin approval is required.</p>
                 {!students.length && (
                   <p className="mt-2 text-xs text-slate-500">No students are registered yet, so there is nobody to propose an award for.</p>
                 )}

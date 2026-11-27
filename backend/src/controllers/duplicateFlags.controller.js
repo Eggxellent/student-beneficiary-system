@@ -80,7 +80,7 @@ function publicReviewEvidence(evidence, { includeStudentNormalized = false } = {
 }
 
 const CASE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const REVEALED_IDENTIFIER_FIELDS = ['guardian_contact', 'admission_number', 'birth_certificate_number', 'national_id_number', 'near_match_normalized_values'];
+const REVEALED_IDENTIFIER_FIELDS = ['guardian_contact', 'admission_number', 'birth_certificate_number', 'guardian_national_id', 'near_match_normalized_values'];
 
 function toReviewCase(row) {
   const first = {
@@ -92,7 +92,7 @@ function toReviewCase(row) {
     primary_phone: row.student_guardian_contact,
     admission_number: row.student_admission_number,
     birth_certificate_number: row.student_birth_certificate_number,
-    national_id_number: row.student_national_id_number,
+    guardian_national_id: row.student_guardian_national_id,
     is_synthetic: row.student_is_synthetic,
   };
   const second = {
@@ -104,7 +104,7 @@ function toReviewCase(row) {
     primary_phone: row.matched_guardian_contact,
     admission_number: row.matched_admission_number,
     birth_certificate_number: row.matched_birth_certificate_number,
-    national_id_number: row.matched_national_id_number,
+    guardian_national_id: row.matched_guardian_national_id,
     is_synthetic: row.matched_student_is_synthetic,
   };
   const legacyFeatures = buildDuplicateFeatures(first, second);
@@ -115,8 +115,7 @@ function toReviewCase(row) {
     : null;
   const score = Number(row.probability);
   const threshold = row.review_threshold == null ? getReviewThreshold() : Number(row.review_threshold);
-  // One school-aware comparison shared with the registration path: the admission number counts
-  // only inside the same school, and the birth certificate / National ID stay decisive identifiers.
+  // Guardian National ID is contextual household evidence, never student-unique evidence.
   const exactIdentifiers = exactReviewIdentifierMatches(first, second);
   // Shared with the registration response so the queue and the confirmation screen cannot
   // disagree about how serious the same case is. `threshold` above is the review cutoff
@@ -164,8 +163,8 @@ function toReviewCase(row) {
     reason,
     exact_identifier_matches: exactIdentifiers,
     students: [
-      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code || first.school_name, school_code: first.school_code || first.school_name, resolved_school_code: first.school_code, guardian_contact: maskIdentifier(first.primary_phone), admission_number: maskIdentifier(first.admission_number), birth_certificate_number: maskIdentifier(first.birth_certificate_number), national_id_number: maskIdentifier(first.national_id_number), duplicate_of_student_id: row.student_duplicate_of || null, application_status: row.student_application_status || null },
-      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code || second.school_name, school_code: second.school_code || second.school_name, resolved_school_code: second.school_code, guardian_contact: maskIdentifier(second.primary_phone), admission_number: maskIdentifier(second.admission_number), birth_certificate_number: maskIdentifier(second.birth_certificate_number), national_id_number: maskIdentifier(second.national_id_number), duplicate_of_student_id: row.matched_duplicate_of || null, application_status: row.matched_application_status || null },
+      { reference: row.student_id, full_name: first.full_name, is_synthetic: first.is_synthetic, date_of_birth: first.date_of_birth, school: first.school_code || first.school_name, school_code: first.school_code || first.school_name, resolved_school_code: first.school_code, guardian_contact: maskIdentifier(first.primary_phone), admission_number: maskIdentifier(first.admission_number), birth_certificate_number: maskIdentifier(first.birth_certificate_number), guardian_national_id: maskIdentifier(first.guardian_national_id), duplicate_of_student_id: row.student_duplicate_of || null, application_status: row.student_application_status || null },
+      { reference: row.matched_student_id, full_name: second.full_name, is_synthetic: second.is_synthetic, date_of_birth: second.date_of_birth, school: second.school_code || second.school_name, school_code: second.school_code || second.school_name, resolved_school_code: second.school_code, guardian_contact: maskIdentifier(second.primary_phone), admission_number: maskIdentifier(second.admission_number), birth_certificate_number: maskIdentifier(second.birth_certificate_number), guardian_national_id: maskIdentifier(second.guardian_national_id), duplicate_of_student_id: row.matched_duplicate_of || null, application_status: row.matched_application_status || null },
     ],
     resolution: row.resolution_id ? {
       id: row.resolution_id,
@@ -181,7 +180,7 @@ function toReviewCase(row) {
       school: fieldEvidence(first.school_code, second.school_code, 'school', features.school_match || 0),
       admission_number: features.admission_number_match > 0 ? `similar (${Math.round(features.admission_number_match * 100)}%)` : fieldEvidence(first.admission_number, second.admission_number),
       birth_certificate: features.birth_certificate_match > 0 ? `similar (${Math.round(features.birth_certificate_match * 100)}%)` : fieldEvidence(first.birth_certificate_number, second.birth_certificate_number),
-      national_id: fieldEvidence(first.national_id_number, second.national_id_number),
+      guardian_national_id: fieldEvidence(first.guardian_national_id, second.guardian_national_id),
       near_match_review: publicReviewEvidence(reviewEvidence),
     },
     model_features: modelFeatures,
@@ -381,7 +380,6 @@ async function list(req, res, next) {
               s1.guardian_id AS student_guardian_id,
               s1.admission_number AS student_admission_number,
               s1.birth_certificate_number AS student_birth_certificate_number,
-              s1.national_id_number AS student_national_id_number,
               s1.primary_phone AS student_guardian_contact,
               s2.full_name AS matched_student_name, s2.school_code AS matched_school,
               s2.school_name AS matched_school_name,
@@ -389,12 +387,13 @@ async function list(req, res, next) {
               s2.guardian_id AS matched_guardian_id,
               s2.admission_number AS matched_admission_number,
               s2.birth_certificate_number AS matched_birth_certificate_number,
-              s2.national_id_number AS matched_national_id_number,
               s2.primary_phone AS matched_guardian_contact,
               s1.duplicate_of_student_id AS student_duplicate_of,
               s2.duplicate_of_student_id AS matched_duplicate_of,
               application1.status AS student_application_status,
+              application1.guardian_national_id AS student_guardian_national_id,
               application2.status AS matched_application_status,
+              application2.guardian_national_id AS matched_guardian_national_id,
               dfr.id AS resolution_id,
               dfr.canonical_student_id AS resolution_canonical_student_id,
               dfr.duplicate_student_id AS resolution_duplicate_student_id,
@@ -412,11 +411,11 @@ async function list(req, res, next) {
        JOIN students s1 ON df.student_id = s1.id
        JOIN students s2 ON df.matched_student_id = s2.id
        LEFT JOIN LATERAL (
-         SELECT status FROM guardian_applications WHERE student_id = s1.id
+         SELECT status, guardian_national_id FROM guardian_applications WHERE student_id = s1.id
           ORDER BY created_at DESC, id DESC LIMIT 1
        ) application1 ON TRUE
        LEFT JOIN LATERAL (
-         SELECT status FROM guardian_applications WHERE student_id = s2.id
+         SELECT status, guardian_national_id FROM guardian_applications WHERE student_id = s2.id
           ORDER BY created_at DESC, id DESC LIMIT 1
        ) application2 ON TRUE
        LEFT JOIN duplicate_resolutions dfr ON dfr.duplicate_flag_id = df.id
@@ -504,7 +503,7 @@ async function revealIdentifiers(req, res, next) {
               s1.primary_phone AS student_guardian_contact,
               s1.admission_number AS student_admission_number,
               s1.birth_certificate_number AS student_birth_certificate_number,
-              s1.national_id_number AS student_national_id_number,
+              (SELECT guardian_national_id FROM guardian_applications WHERE student_id = s1.id ORDER BY created_at DESC, id DESC LIMIT 1) AS student_guardian_national_id,
               s2.id AS matched_student_id, s2.full_name AS matched_student_name,
               s2.is_synthetic AS matched_student_is_synthetic,
               TO_CHAR(s2.date_of_birth, 'YYYY-MM-DD') AS matched_date_of_birth,
@@ -513,7 +512,7 @@ async function revealIdentifiers(req, res, next) {
               s2.primary_phone AS matched_guardian_contact,
               s2.admission_number AS matched_admission_number,
               s2.birth_certificate_number AS matched_birth_certificate_number,
-              s2.national_id_number AS matched_national_id_number
+              (SELECT guardian_national_id FROM guardian_applications WHERE student_id = s2.id ORDER BY created_at DESC, id DESC LIMIT 1) AS matched_guardian_national_id
        FROM duplicate_flags df
        JOIN students s1 ON df.student_id = s1.id
        JOIN students s2 ON df.matched_student_id = s2.id
@@ -534,7 +533,7 @@ async function revealIdentifiers(req, res, next) {
         guardian_contact: row.student_guardian_contact,
         admission_number: row.student_admission_number,
         birth_certificate_number: row.student_birth_certificate_number,
-        national_id_number: row.student_national_id_number,
+        guardian_national_id: row.student_guardian_national_id,
       },
       {
         reference: row.matched_student_id,
@@ -546,7 +545,7 @@ async function revealIdentifiers(req, res, next) {
         guardian_contact: row.matched_guardian_contact,
         admission_number: row.matched_admission_number,
         birth_certificate_number: row.matched_birth_certificate_number,
-        national_id_number: row.matched_national_id_number,
+        guardian_national_id: row.matched_guardian_national_id,
       },
     ];
 

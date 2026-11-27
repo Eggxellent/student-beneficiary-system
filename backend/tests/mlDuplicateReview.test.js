@@ -6,7 +6,6 @@ const { scoreStudentPairs } = require('../src/services/duplicateCheck');
 const {
   scorePairs,
   PREDICTION_BATCH_SIZE,
-  exactNationalIdMatch,
   exactReviewIdentifierMatches,
   reviewPriority,
 } = require('../src/services/mlDuplicateReview');
@@ -60,9 +59,11 @@ describe('ML duplicate review adapter', () => {
     await expect(scorePairs([{ first: {}, second: {} }])).rejects.toThrow(/invalid response/);
   });
 
-  test('rejects normalized exact national IDs as a separate review signal', () => {
-    expect(exactNationalIdMatch({ national_id_number: '1234 5678-X' }, { national_id_number: '12345678-x' })).toBe(true);
-    expect(exactNationalIdMatch({ national_id_number: 'UNKNOWN' }, { national_id_number: 'UNKNOWN' })).toBe(false);
+  test('guardian national IDs are never student-unique review signals', () => {
+    expect(exactReviewIdentifierMatches(
+      { guardian_national_id: '12345678' },
+      { guardian_national_id: '12345678' },
+    )).toEqual([]);
   });
 
   test('treats an in-school admission number and a birth-certificate match as human-review signals', () => {

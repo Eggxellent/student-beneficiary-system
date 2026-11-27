@@ -38,12 +38,6 @@ function exactSchoolCodeMatch(first, second) {
   return usableIdentifier(left) && left === right && usableIdentifier(right);
 }
 
-function exactNationalIdMatch(first, second) {
-  const left = normalizedIdentifier(first && first.national_id_number);
-  const right = normalizedIdentifier(second && second.national_id_number);
-  return usableIdentifier(left) && usableIdentifier(right) && left === right;
-}
-
 // Presentation only: case, spaces, slashes and a leading field prefix are removed. Leading zeros
 // are preserved, because 0148 and 148 are two register entries, not one.
 function admissionNumberKey(value) {
@@ -76,7 +70,7 @@ function exactReviewIdentifierMatches(first, second) {
     return usableIdentifier(left) && usableIdentifier(right) && left === right ? [label] : [];
   });
   if (exactAdmissionNumberMatch(first, second)) matches.unshift(ADMISSION_NUMBER_LABEL);
-  if (exactNationalIdMatch(first, second)) matches.push('National ID');
+  // National ID belongs to the guardian. It is context only, not student identity evidence.
   return matches;
 }
 
@@ -165,7 +159,6 @@ module.exports = {
   predictorRecord,
   exactSchoolCodeMatch,
   exactAdmissionNumberMatch,
-  exactNationalIdMatch,
   exactReviewIdentifierMatches,
   reviewPriority,
   scorePairs,

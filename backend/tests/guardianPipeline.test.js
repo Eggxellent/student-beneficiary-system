@@ -332,9 +332,9 @@ describe("Guardian submission pipeline", () => {
     candidateIds.push(candidate.rows[0].id);
     await pool.query(
       `INSERT INTO guardian_applications
-         (reference, user_id, student_id, student_full_name, school_name, guardian_full_name, guardian_phone)
-       VALUES ($1, $2, $3, $4, 'Nairobi School', $5, '0712345679')`,
-      [`APP-TEST-${suffix}`, otherGuardian.rows[0].id, candidate.rows[0].id, `Pipeline Existing ${suffix}`, `Other Guardian ${suffix}`],
+         (reference, user_id, student_id, student_full_name, school_name, guardian_full_name, guardian_phone, guardian_national_id)
+       VALUES ($1, $2, $3, $4, 'Nairobi School', $5, '0712345679', $6)`,
+      [`APP-TEST-${suffix}`, otherGuardian.rows[0].id, candidate.rows[0].id, `Pipeline Existing ${suffix}`, `Other Guardian ${suffix}`, otherGuardianNationalId],
     );
 
     const response = await submit(applicationPayload({
@@ -383,6 +383,8 @@ describe("Guardian submission pipeline", () => {
 
     const studentRow = await pool.query("SELECT national_id_number FROM students WHERE id = $1", [flaggedStudentId]);
     expect(studentRow.rows[0].national_id_number).toBeNull();
+    const savedGuardianId = await pool.query("SELECT guardian_national_id FROM guardian_applications WHERE student_id = $1 ORDER BY created_at DESC LIMIT 1", [flaggedStudentId]);
+    expect(savedGuardianId.rows[0].guardian_national_id).toBe(otherGuardianNationalId);
 
     const overview = await request(app)
       .get("/api/students/registered/overview")

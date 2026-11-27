@@ -225,6 +225,7 @@ function presentDetail(row) {
     household: {
       guardianName: row.guardian_full_name,
       phone: row.guardian_phone,
+      guardianNationalId: maskGuardianNationalId(row.guardian_national_id),
       size: row.household_size === null ? '' : `${row.household_size} members`,
       incomeSource: row.income_source || '',
       monthlyIncome:
@@ -244,6 +245,12 @@ function presentDetail(row) {
     },
     decisionNote: row.decision_note || '',
   };
+}
+
+function maskGuardianNationalId(value) {
+  const identifier = String(value || '').trim();
+  if (!identifier) return '';
+  return `${'*'.repeat(Math.max(4, Math.min(8, identifier.length - 4)))}${identifier.slice(-4)}`;
 }
 
 function presentGuardianDetail(row) {

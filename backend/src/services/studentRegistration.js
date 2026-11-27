@@ -32,10 +32,10 @@ async function screenAndCreateStudent({ client, submitted, actorId, schoolName =
     `SELECT s.id, s.full_name, s.date_of_birth, s.school_code, s.school_name, s.guardian_id,
             s.admission_number, s.birth_certificate_number, s.national_id_number,
             ga.guardian_full_name AS guardian_name,
-            guardian_profile.national_id AS guardian_national_id
+            COALESCE(NULLIF(ga.guardian_national_id, ''), guardian_profile.national_id) AS guardian_national_id
        FROM students s
        LEFT JOIN LATERAL (
-         SELECT guardian_full_name, user_id FROM guardian_applications
+         SELECT guardian_full_name, user_id, guardian_national_id FROM guardian_applications
           WHERE student_id = s.id
           ORDER BY created_at DESC, id DESC
           LIMIT 1

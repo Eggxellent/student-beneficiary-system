@@ -224,7 +224,8 @@ describe('Duplicate flags and award API', () => {
     expect(reveal.statusCode).toBe(200);
     expect(reveal.body.students[0].admission_number).toBe(sharedAdmission);
     expect(reveal.body.students[0].birth_certificate_number).toBe(sharedCertificate);
-    expect(reveal.body.students[0].national_id_number).toBe('NID-REVEAL-001');
+    expect(reveal.body.students[0].national_id_number).toBeUndefined();
+    expect(reveal.body.students[0].guardian_national_id).toBeUndefined();
     expect(reveal.body.students[0].guardian_contact).toBe('+254712345678');
     expect(reveal.body.students[1].admission_number).toBe(`${sharedAdmission}-B`);
     expect(reveal.body.near_match_evidence.comparisons.admission_number.normalized).toEqual(['00123', '00132']);

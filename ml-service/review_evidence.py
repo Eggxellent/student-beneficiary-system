@@ -7,6 +7,7 @@ path. It emits comparison explanations and a review-only qualification decision.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from datetime import date, datetime
 from typing import Any
 
@@ -156,6 +157,17 @@ def _identifier_comparison(left: Any, right: Any, prefixes: tuple[str, ...] = ()
     if len(first) == len(second) and len(first) >= minimum_length:
         if _adjacent_transposition(first, second):
             return result | {"similarity": 0.88, "match_type": "adjacent_transposition"}
+        # Some transcriptions move more than one digit (e.g. 36897 -> 36798).
+        # Treat equal-length numeric permutations as weak evidence only; the
+        # caller still requires a strong name/DOB match and independent identifiers.
+        changed_positions = sum(a != b for a, b in zip(first, second))
+        if (
+            first.isdigit() and second.isdigit()
+            and len(first) >= max(5, minimum_length)
+            and changed_positions in {2, 4}
+            and Counter(first) == Counter(second)
+        ):
+            return result | {"similarity": 0.84, "match_type": "digit_rearrangement"}
         if sum(a != b for a, b in zip(first, second)) == 1:
             return result | {"similarity": 0.78, "match_type": "single_character_substitution"}
     # One insertion/deletion is weak evidence and only accepted for longer identifiers.
