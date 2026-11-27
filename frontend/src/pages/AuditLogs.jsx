@@ -1,35 +1,52 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import api from "../services/api";
 
-// The audit trail is the evidence page, so every row shows the readable label and keeps the raw
-// action code and table name underneath it. An operator can quote the exact event to an auditor
-// without losing either the plain-English meaning or the stored jargon.
 const actionLabels = {
   CREATE: "Student registered",
+  GUARDIAN_REGISTERED: "Guardian account created",
+  GUARDIAN_PROFILE_UPDATED: "Guardian profile updated",
+  GUARDIAN_APPLICATION_SUBMITTED: "Application submitted",
+  GUARDIAN_APPLICATION_DECIDED: "Application decision recorded",
+  GUARDIAN_APPLICATION_LINKED_STUDENT: "Student record linked",
+  GUARDIAN_APPLICATION_AUTO_APPROVED: "Application cleared",
+  GUARDIAN_APPLICATION_REJECTED_DUPLICATE: "Duplicate application rejected",
+  GUARDIAN_APPLICATION_DUPLICATE_RESCREEN_FLAGGED: "Duplicate review opened",
+  DUPLICATE_CONFIRMED_DUPLICATE: "Duplicate confirmed",
+  DUPLICATE_NOT_DUPLICATE: "Cleared as not duplicate",
+  DUPLICATE_NEEDS_VERIFICATION: "More review requested",
+  DUPLICATE_CASE_RESOLVED: "Duplicate case resolved",
   AWARD_SUBMITTED: "Bursary award submitted",
   AWARD_APPROVED: "Bursary award approved",
   AWARD_REJECTED: "Bursary award rejected",
-  AWARD_VERIFICATION_RECORDED: "Award verification recorded",
-  AWARD_CERTIFICATE_ISSUED: "Bursary approval invoice issued",
+  AWARD_ERROR_REPORTED: "Award issue reported",
+  AWARD_CORRECTED: "Award corrected",
+  AWARD_VOIDED: "Award cancelled",
+  AWARD_CERTIFICATE_ISSUED: "Award invoice issued",
   SCAN_DUPLICATES: "Duplicate screening run",
-  REVEAL_DUPLICATE_IDENTIFIERS: "Duplicate identifiers revealed",
+  REVEAL_DUPLICATE_IDENTIFIERS: "Duplicate details revealed",
   ELIGIBILITY_CALCULATED: "Eligibility assessed",
+  ELIGIBILITY_ASSESSMENT_INCOMPLETE: "Eligibility incomplete",
+  ELIGIBILITY_INPUTS_CORRECTED: "Eligibility details corrected",
   GENERATE_REPORT: "Report generated",
   ADMIN_UPDATE_DUPLICATE_THRESHOLDS: "Duplicate thresholds changed",
   ADMIN_ISSUE_PASSWORD_RESET: "Password reset link issued",
+  ADMIN_CREATE_USER: "User account created",
+  ADMIN_CHANGE_USER_ROLE: "User access changed",
+  ADMIN_DEACTIVATE_USER: "User deactivated",
   USER_PASSWORD_RESET: "Password changed with reset link",
 };
 
 const resourceLabels = {
   students: "Student record",
   bursary_awards: "Bursary award",
-  bursary_certificates: "Bursary approval invoice",
+  bursary_certificates: "Award invoice",
   duplicate_flags: "Duplicate review case",
   system_settings: "System settings",
   reports: "Report",
   users: "User account",
   disbursements: "Disbursement",
+  guardian_applications: "Guardian application",
 };
 
 const detailLabels = {
@@ -56,9 +73,20 @@ const detailLabels = {
   duplicate_model_version: "Duplicate model version",
   duplicate_review_threshold: "Duplicate review threshold",
   duplicate_aggregation_policy: "Aggregation policy",
+  reference: "Reference",
+  assessment_status: "Assessment status",
+  duplicate_flags_created: "Duplicate flags",
+  registration_source: "Registration source",
+  guardian_application_id: "Application record",
+  duplicate_candidates_considered: "Candidates checked",
+  duplicate_candidates_near_match: "Near matches",
+  duplicate_candidates_qualifying: "Candidates flagged",
+  duplicate_candidates_suppressed: "Candidates withheld",
+  duplicate_candidates_guardian_only: "Guardian-only matches",
+  action: "Action",
 };
 
-const emptyFilters = { search: "", action: "all", resource: "all", from: "", to: "" };
+const emptyFilters = { search: "", category: "all", resource: "all", from: "", to: "" };
 const pageSizes = [25, 50, 100];
 
 function humanize(value) {
@@ -67,7 +95,8 @@ function humanize(value) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-function actionLabel(action) {
+function actionLabel(action, details) {
+  if (action === "CREATE" && details?.registration_source === "guardian_application") return "Student record created";
   return actionLabels[action] || humanize(action);
 }
 
@@ -80,9 +109,37 @@ function detailLabel(key) {
   return detailLabels[key] || humanize(key);
 }
 
-// Details are stored as JSONB and the shape differs per action: amounts, arrays of identifiers,
-// or before/after objects for threshold changes. Every value is rendered in full, so nothing the
-// system captured is hidden behind a collapsed JSON blob.
+function eventCategory(log) {
+  const action = String(log.action || "");
+  if (action === "GUARDIAN_APPLICATION_DUPLICATE_RESCREEN_FLAGGED") return "Duplicate review";
+  if (action.startsWith("GUARDIAN_APPLICATION_")) return "Applications";
+  if (action === "GUARDIAN_REGISTERED" || action === "GUARDIAN_PROFILE_UPDATED") return "Guardian accounts";
+  if (action.startsWith("DUPLICATE_") || ["SCAN_DUPLICATES", "REVEAL_DUPLICATE_IDENTIFIERS", "ADMIN_UPDATE_DUPLICATE_THRESHOLDS"].includes(action)) return "Duplicate review";
+  if (action.startsWith("ELIGIBILITY_")) return "Eligibility";
+  if (action.startsWith("AWARD_")) return "Bursary";
+  if (action === "GENERATE_REPORT") return "Reports";
+  if (action.startsWith("ADMIN_") || action.startsWith("USER_")) return "User access";
+  if (action === "CREATE" || log.table_name === "students") return "Student records";
+  const resource = log.table_name;
+  if (resource === "guardian_applications") return "Applications";
+  if (["bursary_awards", "bursary_certificates", "disbursements"].includes(resource)) return "Bursary";
+  if (resource === "duplicate_flags" || resource === "system_settings") return "Duplicate review";
+  if (resource === "reports") return "Reports";
+  if (resource === "users") return "User access";
+  return "Other events";
+}
+
+// The collapsed card shows only a short operational summary; the full captured JSON stays
+// available inside the event for audit use.
+function previewDetails(details) {
+  if (!details || typeof details !== "object" || Array.isArray(details)) return "No additional details";
+  const preferred = ["reference", "decision", "status", "assessment_status", "duplicate_flags_created", "score", "model_score", "category", "requested_amount", "approved_amount", "award_id", "certificate_reference", "outcome", "reason"];
+  const entries = Object.entries(details).filter(([key, value]) => value !== null && value !== undefined && value !== "");
+  const selected = preferred.flatMap((key) => entries.filter(([entryKey]) => entryKey === key)).slice(0, 2);
+  if (!selected.length) return entries.length ? `${entries.length} captured value${entries.length === 1 ? "" : "s"}` : "No additional details";
+  return selected.map(([key, value]) => `${detailLabel(key)}: ${formatValue(key, value)}`).join(" · ");
+}
+
 function formatValue(key, value) {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -103,12 +160,12 @@ function formatValue(key, value) {
 }
 
 function formatTime(value) {
-  return value ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—";
+  return value ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
 }
 
 function formatDay(value) {
   return value
-    ? new Date(value).toLocaleDateString([], { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    ? new Date(value).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: "numeric" })
     : "Unknown date";
 }
 
@@ -139,10 +196,9 @@ export default function AuditLogs() {
     setFilters((current) => ({ ...current, [name]: value }));
   };
 
-  // Options come from the loaded trail, so the menus never offer an action or record type that
-  // has no matching event.
-  const actionOptions = useMemo(
-    () => Array.from(new Set(logs.map((log) => log.action).filter(Boolean))).sort((a, b) => actionLabel(a).localeCompare(actionLabel(b))),
+  // Filters only offer categories and records present in the current audit trail.
+  const categoryOptions = useMemo(
+    () => Array.from(new Set(logs.map(eventCategory))).sort(),
     [logs]
   );
   const resourceOptions = useMemo(
@@ -156,15 +212,16 @@ export default function AuditLogs() {
     const to = filters.to ? new Date(`${filters.to}T23:59:59.999`).getTime() : null;
 
     return logs.filter((log) => {
-      if (filters.action !== "all" && log.action !== filters.action) return false;
+      if (filters.category !== "all" && eventCategory(log) !== filters.category) return false;
       if (filters.resource !== "all" && log.table_name !== filters.resource) return false;
       const recordedAt = new Date(log.created_at).getTime();
       if (from !== null && !(recordedAt >= from)) return false;
       if (to !== null && !(recordedAt <= to)) return false;
       if (!term) return true;
       return [
-        actionLabel(log.action),
+        actionLabel(log.action, log.details),
         log.action,
+        eventCategory(log),
         resourceLabel(log.table_name),
         log.table_name,
         log.record_id,
@@ -180,31 +237,6 @@ export default function AuditLogs() {
   }, [logs, filters]);
 
   const visible = useMemo(() => filtered.slice(0, pageSize), [filtered, pageSize]);
-
-  const summary = useMemo(() => {
-    const actors = new Set();
-    const actionCounts = new Map();
-    const times = [];
-
-    logs.forEach((log) => {
-      actors.add(log.user_email || log.user_name || "system");
-      actionCounts.set(log.action, (actionCounts.get(log.action) || 0) + 1);
-      const recordedAt = new Date(log.created_at).getTime();
-      if (Number.isFinite(recordedAt)) times.push(recordedAt);
-    });
-
-    const [topAction, topCount] = Array.from(actionCounts.entries()).sort((a, b) => b[1] - a[1])[0] || [];
-
-    return {
-      total: logs.length,
-      actors: actors.size,
-      actionTypes: actionCounts.size,
-      topLabel: topAction ? actionLabel(topAction) : "—",
-      topCount: topAction ? `${topCount} of ${logs.length} events` : "no events recorded",
-      first: times.length ? formatDay(Math.min(...times)) : "—",
-      last: times.length ? formatDay(Math.max(...times)) : "—",
-    };
-  }, [logs]);
 
   // One block per calendar day, in the order the API returned them, so a long trail reads as a
   // dated sequence of sessions instead of one undifferentiated wall of rows.
@@ -222,20 +254,11 @@ export default function AuditLogs() {
   return (
     <main className="mx-auto max-w-7xl p-5 sm:p-8">
       <header>
-        <h1 className="text-2xl font-bold text-slate-900">Audit Report</h1>
-        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-600">
-          Review recorded actions and decisions, newest first.
-        </p>
+        <h1 className="text-2xl font-bold text-slate-900">Audit log</h1>
+        <p className="mt-1 text-sm text-slate-600">Actions and decisions, newest first.</p>
       </header>
 
-      <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Audit summary">
-        <SummaryCard label="Events recorded" value={summary.total} hint={`${filtered.length} match the filters`} />
-        <SummaryCard label="People involved" value={summary.actors} hint="Accounts, plus unauthenticated system events" />
-        <SummaryCard label="Most frequent action" value={summary.topLabel} hint={summary.topCount} />
-        <SummaryCard label="Action types" value={summary.actionTypes} hint={`${summary.first} to ${summary.last}`} />
-      </section>
-
-      <section className="mt-5 grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-6" aria-label="Filter audit events">
+      <section className="mt-4 grid gap-2 rounded border border-slate-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-6" aria-label="Filter audit events">
         <label className="relative text-xs font-medium text-slate-600 sm:col-span-2">
           Search person, action, record or value
           <Search size={14} className="absolute left-2 top-8 text-slate-400" aria-hidden="true" />
@@ -243,15 +266,15 @@ export default function AuditLogs() {
             name="search"
             value={filters.search}
             onChange={updateFilter}
-            placeholder="e.g. approved, admin@sbms, 4f1a"
+            placeholder="Name, action, email or reference"
             className="mt-1 h-9 w-full border border-slate-300 pl-7 pr-2 text-sm"
           />
         </label>
         <label className="text-xs font-medium text-slate-600">
-          Action
-          <select name="action" value={filters.action} onChange={updateFilter} className="mt-1 h-9 w-full border border-slate-300 px-2 text-sm">
-            <option value="all">All actions</option>
-            {actionOptions.map((action) => <option key={action} value={action}>{actionLabel(action)}</option>)}
+          Event type
+          <select name="category" value={filters.category} onChange={updateFilter} className="mt-1 h-9 w-full border border-slate-300 px-2 text-sm">
+            <option value="all">All event types</option>
+            {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
           </select>
         </label>
         <label className="text-xs font-medium text-slate-600">
@@ -273,8 +296,8 @@ export default function AuditLogs() {
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-slate-500" role="status">
-          Showing {visible.length} of {filtered.length} matching events
-          {filtered.length !== logs.length ? ` (${logs.length} recorded)` : ""}. Newest first.
+          Showing {visible.length} of {filtered.length} events
+          {filtered.length !== logs.length ? ` · ${logs.length} total` : ""}
         </p>
         <div className="flex items-center gap-3">
           <label className="text-xs font-medium text-slate-600">
@@ -305,89 +328,66 @@ export default function AuditLogs() {
           <p className="mt-1 text-sm text-slate-600">
             {logs.length === 0
               ? "SBMS has not recorded any audited events yet."
-              : "No event matches this search, action, record type or date range. Clear the filters to read the full trail."}
+              : "No event matches these filters. Clear filters to view the full log."}
           </p>
         </div>
       )}
 
       {!loading && !error && groups.map((group) => (
-        <section key={group.key} className="mt-6 overflow-hidden rounded border border-slate-200 bg-white shadow-sm">
+        <section key={group.key} className="mt-3 overflow-hidden rounded border border-slate-200 bg-white">
           <h2 className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-4 py-2">
             <span className="text-sm font-semibold text-slate-800">{formatDay(group.date)}</span>
             <span className="text-xs text-slate-500">{group.entries.length} event{group.entries.length === 1 ? "" : "s"}</span>
           </h2>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-y border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th scope="col" className="px-4 py-2 font-medium">Time</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Who</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Action</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Record</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Captured values</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {group.entries.map((log) => (
-                  <tr key={log.id} className="align-top text-slate-700">
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">
-                      <time dateTime={log.created_at}>{formatTime(log.created_at)}</time>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-slate-900">{log.user_name || "System"}</p>
-                      <p className="text-xs text-slate-500">{log.user_email || "no signed-in account"}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-slate-900">{actionLabel(log.action)}</p>
-                      <p className="font-mono text-[11px] text-slate-500">{log.action}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-slate-800">{resourceLabel(log.table_name)}</p>
-                      <p className="break-all font-mono text-[11px] text-slate-500">{log.record_id || "no record id"}</p>
-                    </td>
-                    <td className="px-4 py-3"><DetailList details={log.details} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="divide-y divide-slate-100">
+            {group.entries.map((log) => (
+              <details key={log.id} className="group px-3 py-2 sm:px-4">
+                <summary className="flex cursor-pointer list-none items-center gap-3 rounded px-1 py-1 marker:hidden hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#173D35] [&::-webkit-details-marker]:hidden">
+                  <time dateTime={log.created_at} className="w-[4.75rem] shrink-0 text-xs tabular-nums text-slate-500">{formatTime(log.created_at)}</time>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span className="font-medium text-slate-900">{actionLabel(log.action, log.details)}</span>
+                      <span className="text-xs text-slate-500">{log.user_name || "System"} · {resourceLabel(log.table_name)}</span>
+                    </span>
+                    <span className="block truncate text-xs text-slate-500">{previewDetails(log.details)}</span>
+                  </span>
+                  <ChevronDown size={16} className="shrink-0 text-slate-500 transition-transform group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                <div className="ml-[4.75rem] mt-2 rounded bg-slate-50 p-3 text-xs sm:ml-[5.5rem]">
+                  <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-slate-600">
+                    <span>{log.user_email || "System event"}</span>
+                    <span>{resourceLabel(log.table_name)} · {log.record_id || "No record ID"}</span>
+                    <span className="font-mono">{log.action}</span>
+                  </div>
+                  <DetailList details={log.details} />
+                </div>
+              </details>
+            ))}
           </div>
         </section>
       ))}
 
       {!loading && !error && visible.length > 0 && (
         <p className="mt-4 text-xs leading-relaxed text-slate-500">
-          Audit entries are append-only: SBMS records what happened and does not rewrite or delete past
-          events. Times are shown in this device's time zone.
+          Audit entries are permanent. Times use this device's time zone.
         </p>
       )}
     </main>
   );
 }
 
-function SummaryCard({ label, value, hint }) {
-  return (
-    <div className="rounded border border-slate-200 bg-white p-4">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 text-lg font-bold leading-snug text-slate-900">{value}</p>
-      {hint && <p className="mt-1 text-xs leading-relaxed text-slate-500">{hint}</p>}
-    </div>
-  );
-}
-
-// One line per captured field, labelled and readable, instead of a single run-on string. Nulls and
-// empty collections still appear so an auditor can see that a field was captured but blank.
 function DetailList({ details }) {
   const entries = details && typeof details === "object" && !Array.isArray(details) ? Object.entries(details) : [];
   if (entries.length === 0) return <p className="text-xs text-slate-400">No values captured</p>;
 
   return (
-    <ul className="space-y-0.5 text-xs">
+    <dl className="grid gap-x-5 gap-y-2 text-xs sm:grid-cols-2">
       {entries.map(([key, value]) => (
-        <li key={key} className="break-words">
-          <span className="font-medium text-slate-500">{detailLabel(key)}:</span>{" "}
-          <span className="text-slate-700">{formatValue(key, value)}</span>
-        </li>
+        <div key={key} className="min-w-0">
+          <dt className="font-medium text-slate-500">{detailLabel(key)}</dt>
+          <dd className="break-words text-slate-700">{formatValue(key, value)}</dd>
+        </div>
       ))}
-    </ul>
+    </dl>
   );
 }

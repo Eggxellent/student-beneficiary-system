@@ -188,9 +188,9 @@ export default function DuplicateReview() {
           <Search size={14} className="absolute left-2 top-8 text-slate-400" aria-hidden="true" />
           <input name="search" value={filters.search} onChange={updateFilter} className="mt-1 h-9 w-full border border-slate-300 pl-7 pr-2 text-sm" />
         </label>
-        <label className="text-xs font-medium text-slate-600">Status
+        <label className="text-xs font-medium text-slate-600">Case status
           <select name="status" value={filters.status} onChange={updateFilter} className="mt-1 h-9 w-full border border-slate-300 px-2 text-sm">
-            <option value="open">Open</option><option value="pending">Pending</option><option value="needs_verification">Needs verification</option><option value="confirmed_duplicate">Confirmed duplicate</option><option value="not_duplicate">Not a duplicate</option><option value="all">All</option>
+            <option value="open">Open cases</option><option value="pending">Pending review</option><option value="needs_verification">Awaiting verification</option><option value="confirmed_duplicate">Confirmed duplicate</option><option value="not_duplicate">Cleared (not duplicate)</option><option value="all">All cases</option>
           </select>
         </label>
         <label className="text-xs font-medium text-slate-600">Priority
@@ -212,18 +212,37 @@ export default function DuplicateReview() {
         </div>
       ) : (
         <>
-          <div className="mt-5 overflow-x-auto rounded border border-slate-200 bg-white">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="px-4 py-3">Case</th><th className="px-4 py-3">Priority</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Reason</th><th className="px-4 py-3">Created</th><th className="px-4 py-3">Action</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {cases.map((item) => <tr key={item.id}>
-                  <td className="px-4 py-3"><span className="font-medium">{item.students[0].full_name}</span><span className="px-2 text-slate-400">↔</span>{item.students[1].full_name}<div className="text-xs text-slate-500">School identifier: {item.students[0].school_code || "Unavailable"} · {item.students[1].school_code || "Unavailable"}</div></td>
-                  <td className="px-4 py-3 capitalize">{item.priority}</td><td className="px-4 py-3">{prettyStatus(item.status)}</td><td className="max-w-xs px-4 py-3 text-xs text-slate-600">{item.reason}</td>
-                  <td className="px-4 py-3 text-xs">{formatDate(item.created_at)}</td>
-                  <td className="px-4 py-3"><button type="button" onClick={() => { setSelectedId(item.id); setReason(""); setNotes(""); setDecision("not_duplicate"); }} className="rounded border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50">{isAdmin ? "View case" : "Review case"}</button></td>
-                </tr>)}
-              </tbody>
-            </table>
+          <div className="mt-5 space-y-2">
+            {cases.map((item) => {
+              const left = item.students[0];
+              const right = item.students[1];
+              const comparisons = item.evidence?.near_match_review?.comparisons || {};
+              const labels = { name: "Name", date_of_birth: "Date of birth", school: "School", guardian: "Guardian", guardian_context: "Guardian ID", admission_number: "Admission number", birth_certificate: "Birth certificate" };
+              const signals = Object.entries(comparisons)
+                .filter(([, comparison]) => comparison.match_type && !["no_match", "not_compared", "unavailable_or_invalid"].includes(comparison.match_type))
+                .map(([field]) => labels[field] || field.replaceAll("_", " "));
+              return <details key={item.id} className="group rounded-lg border border-slate-200 bg-white shadow-sm">
+                <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                  <span className="min-w-0 flex-1 font-medium text-slate-900">{left.full_name}<span className="px-2 text-slate-400">↔</span>{right.full_name}</span>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${item.priority === "high" ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-700"}`}>{item.priority === "high" ? "High priority" : "Standard"}</span>
+                  <span className="text-sm text-slate-700">{prettyStatus(item.status)}</span>
+                  <span className="w-full text-xs text-slate-500 sm:w-auto">{left.school_code || "No school code"} · {right.school_code || "No school code"}</span>
+                  <span className="text-xs text-slate-500">{new Date(item.created_at).toLocaleDateString()}</span>
+                  <span aria-hidden="true" className="text-slate-400 transition group-open:rotate-180">⌄</span>
+                </summary>
+                <div className="border-t border-slate-100 px-4 py-3">
+                  <dl className="grid gap-3 text-sm sm:grid-cols-3">
+                    <div><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Case reason</dt><dd className="mt-1 text-slate-800">{item.reason || "No reason recorded"}</dd></div>
+                    <div><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">School codes</dt><dd className="mt-1 text-slate-800">{left.school_code || "Unavailable"} <span className="text-slate-400">and</span> {right.school_code || "Unavailable"}</dd></div>
+                    <div><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Review signals</dt><dd className="mt-1 text-slate-800">{signals.length ? signals.join(", ") : "See case evidence"}</dd></div>
+                  </dl>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                    <span className="text-xs text-slate-500">Created {formatDate(item.created_at)}</span>
+                    <button type="button" onClick={() => { setSelectedId(item.id); setReason(""); setNotes(""); setDecision("not_duplicate"); }} className="rounded border border-blue-200 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50">{isAdmin ? "View case" : "Review case"}</button>
+                  </div>
+                </div>
+              </details>;
+            })}
           </div>
           <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
             <span>{pagination.total} case{pagination.total === 1 ? "" : "s"} · page {pagination.page} of {Math.max(1, pagination.pages)}</span>
