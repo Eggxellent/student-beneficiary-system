@@ -196,6 +196,13 @@ function parseAdoptionList(value, files = listMigrationFiles()) {
   return names;
 }
 
+function normalizeAppliedMigrationNames(rows, files = listMigrationFiles()) {
+  const knownNames = new Set([...files.map((item) => item.name), ...RETIRED_MIGRATIONS]);
+  return new Set(rows.map(({ name }) => (
+    knownNames.has(name) ? name : knownNames.has(`${name}.sql`) ? `${name}.sql` : name
+  )));
+}
+
 async function run() {
   const command = process.argv[2];
   const args = process.argv.slice(3);
@@ -251,7 +258,7 @@ async function run() {
     const applied = ledgerExists.rows[0].exists
       ? await client.query(`SELECT name FROM ${LEDGER_TABLE} ORDER BY name`)
       : { rows: [] };
-    const appliedNames = new Set(applied.rows.map((row) => row.name));
+    const appliedNames = normalizeAppliedMigrationNames(applied.rows, files);
     const knownNames = new Set([...files.map((item) => item.name), ...RETIRED_MIGRATIONS]);
     const unknownApplied = [...appliedNames].filter((name) => !knownNames.has(name));
     if (unknownApplied.length) throw new Error(`Migration ledger has unknown entries: ${unknownApplied.join(', ')}.`);
@@ -328,7 +335,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  listMigrationFiles, parseAdoptionList, parseTarget, validateTargetDatabaseUrl,
+  listMigrationFiles, parseAdoptionList, normalizeAppliedMigrationNames, parseTarget, validateTargetDatabaseUrl,
   resolveConnectionString, applyMigrationFile, createMigrationLedger,
   MIGRATIONS_DIR, TARGETS, MIGRATION_ORDER, MANUAL_MIGRATIONS, RETIRED_MIGRATIONS, LEDGER_TABLE,
 };

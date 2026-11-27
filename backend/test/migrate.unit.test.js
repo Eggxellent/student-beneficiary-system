@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { listMigrationFiles, parseAdoptionList, validateTargetDatabaseUrl, MIGRATION_ORDER, MANUAL_MIGRATIONS, TARGETS } = require('../scripts/migrate');
+const { listMigrationFiles, parseAdoptionList, normalizeAppliedMigrationNames, validateTargetDatabaseUrl, MIGRATION_ORDER, MANUAL_MIGRATIONS, TARGETS } = require('../scripts/migrate');
 
 test('migration target accepts only the local approved test database identity', () => {
   const url = 'postgresql://sbms_test_runner:local-only@localhost:5432/sbms_test';
@@ -37,6 +37,15 @@ test('ledger adoption accepts only explicit known migration names', () => {
   assert.deepEqual(parseAdoptionList(`${MIGRATION_ORDER[0]},${MANUAL_MIGRATIONS[0]}`, files), [MIGRATION_ORDER[0], MANUAL_MIGRATIONS[0]]);
   assert.throws(() => parseAdoptionList('unknown.sql', files), /unknown migration name/);
   assert.throws(() => parseAdoptionList(`${MIGRATION_ORDER[0]},${MIGRATION_ORDER[0]}`, files), /repeated/);
+});
+
+test('existing migration ledger names without .sql still match their migration files', () => {
+  const applied = normalizeAppliedMigrationNames([
+    { name: '20261112_award_annual_restriction' },
+    { name: '20261113_notifications_dismiss_on_read' },
+  ]);
+  assert.ok(applied.has('20261112_award_annual_restriction.sql'));
+  assert.ok(applied.has('20261113_notifications_dismiss_on_read.sql'));
 });
 
 test('award reconciliation migration delegates transaction ownership to the runner', () => {
