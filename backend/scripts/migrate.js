@@ -26,6 +26,15 @@ const TARGETS = Object.freeze({
     confirmationFlag: '--confirm-local-dev',
     label: 'local development database',
   }),
+  production: Object.freeze({
+    key: 'production',
+    database: 'sbms',
+    username: 'sbmsadmin',
+    hostname: 'pg-sbms.postgres.database.azure.com',
+    approval: 'sbms',
+    confirmationFlag: '--confirm-production',
+    label: 'Azure production database',
+  }),
 });
 const TEST_DATABASE = TARGETS.test;
 
@@ -85,14 +94,21 @@ function validateTargetDatabaseUrl(value, target = TEST_DATABASE) {
   const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   const database = decodeURIComponent(url.pathname.slice(1));
   const username = decodeURIComponent(url.username);
+  const allowedHost = target.key === 'production'
+    ? host === target.hostname
+    : LOCAL_DATABASE_HOSTS.has(host);
+  const allowedQuery = target.key === 'production'
+    ? url.searchParams.size === 1 && url.searchParams.get('sslmode') === 'require'
+    : url.search === '';
   if (!['postgres:', 'postgresql:'].includes(url.protocol)
-    || !LOCAL_DATABASE_HOSTS.has(host)
+    || !allowedHost
     || database !== target.database
     || (target.username !== null && username !== target.username)
-    || url.search || url.hash
+    || !allowedQuery || url.hash
     || url.pathname !== `/${target.database}`) {
     const role = target.username ? ` using ${target.username}` : '';
-    throw new Error(`Refusing migration connection: only the local ${target.database} database${role} is allowed.`);
+    const location = target.key === 'production' ? target.hostname : 'local';
+    throw new Error(`Refusing migration connection: only the ${location} ${target.database} database${role} is allowed.`);
   }
   return value;
 }
@@ -121,6 +137,7 @@ function readEnvFile() {
 // at the same database.
 function resolveConnectionString(target) {
   if (target.key === 'test') return process.env.SBMS_MIGRATION_DATABASE_URL;
+  if (target.key === 'production') return process.env.DATABASE_URL;
   return readEnvFile().DATABASE_URL;
 }
 
@@ -204,6 +221,11 @@ async function run() {
   // separate approval variable because it shares a cluster with other local verification tooling.
   const approvedByExpectedName = migrationTarget.key === 'dev'
     && (readEnvFile().SBMS_EXPECTED_DATABASE_NAME || '').trim() === migrationTarget.database;
+  if (migrationTarget.key === 'production'
+      && (process.env.NODE_ENV !== 'production'
+        || (process.env.SBMS_EXPECTED_DATABASE_NAME || '').trim() !== migrationTarget.database)) {
+    throw new Error('Production migration requires NODE_ENV=production and SBMS_EXPECTED_DATABASE_NAME=sbms.');
+  }
   if (['apply', 'adopt'].includes(command) && !approvedByEnv && !approvedByExpectedName) {
     throw new Error(`${command} also requires SBMS_MIGRATIONS_APPROVED=${migrationTarget.approval}.`);
   }

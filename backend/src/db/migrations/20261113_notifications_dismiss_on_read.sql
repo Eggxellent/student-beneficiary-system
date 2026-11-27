@@ -4,7 +4,20 @@
 -- Why delete instead of keeping a read flag: the bell exists to ask someone to act. A row that has
 -- been opened has no further job, and keeping it only grows the table, the payload and the badge
 -- query. Dismissal is the read: one row removed, `unread_count` falls with it.
-DELETE FROM notifications WHERE read_at IS NOT NULL;
+-- Some existing installations already have the final table shape without this marker. Keep the
+-- migration repeatable against those databases instead of failing before the guarded DROP below.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'notifications'
+       AND column_name = 'read_at'
+  ) THEN
+    DELETE FROM notifications WHERE read_at IS NOT NULL;
+  END IF;
+END $$;
 
 -- The column had exactly one meaning, the read marker this migration removes. Keeping it would
 -- reintroduce a state the API no longer writes.
