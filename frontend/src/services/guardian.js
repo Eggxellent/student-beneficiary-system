@@ -38,9 +38,9 @@ export async function fetchGuardianApplication(reference) {
   return data.application;
 }
 
-export async function downloadGuardianApplicationReceipt(reference) {
+export async function downloadGuardianApplicationInvoice(reference) {
   const { data } = await api.get(
-    `/guardian/applications/${encodeURIComponent(reference)}/receipt.pdf`,
+    `/guardian/applications/${encodeURIComponent(reference)}/invoice.pdf`,
     { responseType: "blob" },
   );
   return data;

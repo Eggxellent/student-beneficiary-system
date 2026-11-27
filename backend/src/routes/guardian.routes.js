@@ -19,12 +19,11 @@ router.patch('/me', requireRole('guardian'), asyncHandler(controller.updateProfi
 router.get('/dashboard', requireRole('guardian'), asyncHandler(controller.dashboard));
 router.get('/applications', requireRole('guardian'), asyncHandler(controller.listApplications));
 router.post('/applications', requireRole('guardian'), asyncHandler(controller.createApplication));
-router.get('/applications/:reference/receipt.pdf', requireRole('guardian'), asyncHandler(controller.downloadReceipt));
+router.get('/applications/:reference/invoice.pdf', requireRole('guardian'), asyncHandler(controller.downloadApplicationInvoice));
 router.get('/applications/:reference', requireRole('guardian'), asyncHandler(controller.getApplication));
 
-// Staff review of guardian applications. This is the administrator's queue: Field Officers work
-// from the registered-student views (duplicate-cleared and assessed only) and never see a raw
-// application. Only an administrator records the decision.
+// Admins can inspect application submissions. Status is automatic: clear duplicate screening
+// approves; an open case waits for Duplicate Review; duplicate decisions approve or reject it.
 router.get(
   '/staff/applications',
   requireRole('admin'),

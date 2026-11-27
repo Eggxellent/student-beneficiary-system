@@ -70,13 +70,19 @@ async function linkGuardianApplicationStudent({ client, application, actorId }) 
   });
 
   const linked = await client.query(
-    'UPDATE guardian_applications SET student_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
-    [registration.student.id, application.id],
+    `UPDATE guardian_applications
+        SET student_id = $1,
+            status = $2,
+            decided_at = CASE WHEN $3 THEN NOW() ELSE NULL END,
+            decision_note = NULL,
+            updated_at = NOW()
+      WHERE id = $4 RETURNING *`,
+    [registration.student.id, registration.flags.length ? 'under_review' : 'approved', registration.flags.length === 0, application.id],
   );
   const linkedApplication = linked.rows[0];
 
-  // Unflagged registrations proceed straight to assessment. A flagged one is blocked inside
-  // assessAutomatically and stays out of the Field Officer list until an administrator clears it.
+  // An unflagged application is approved by duplicate screening and proceeds to assessment. A
+  // flagged application stays under review and is blocked until an administrator clears the case.
   const assessment = await assessAutomatically({
     client,
     studentId: registration.student.id,

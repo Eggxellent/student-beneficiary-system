@@ -237,7 +237,6 @@ export default function NewApplication() {
                   options={[
                     { value: "female", label: "Female" },
                     { value: "male", label: "Male" },
-                    { value: "prefer-not-to-say", label: "Prefer not to say" },
                   ]}
                 />
               </Field>
@@ -304,7 +303,6 @@ export default function NewApplication() {
 
           <FormCard
             title="Parent and Household Information"
-            description="Provide information about the household supporting this student."
           >
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <Field label="Parent / Guardian Full Name" htmlFor="guardian-name" required>
@@ -331,7 +329,6 @@ export default function NewApplication() {
               <Field
                 label="Guardian National ID"
                 htmlFor="guardian-national-id"
-                description="Read-only from your guardian profile; used only as supporting guardian-context evidence."
               >
                 <Input
                   id="guardian-national-id"
@@ -340,11 +337,8 @@ export default function NewApplication() {
                   readOnly
                   aria-readonly="true"
                   autoComplete="off"
-                  placeholder={guardianProfile?.national_id_status === "invalid_legacy" ? "Invalid profile value withheld" : "Not provided"}
+                  placeholder="Not provided"
                 />
-                {guardianProfile?.national_id_status === "invalid_legacy" && (
-                  <p className="text-xs leading-5 text-amber-700">The saved profile value does not meet the current 8-digit format. It was not changed or used for comparison.</p>
-                )}
               </Field>
 
               <Field label="Household Size" htmlFor="household-size" required>
@@ -478,11 +472,6 @@ export default function NewApplication() {
                     *
                   </span>
                 </label>
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                  The information submitted may be reviewed by authorised SBMS officers as part of the
-                  bursary assessment process. Any necessary corrections after submission must be
-                  handled by an authorised officer.
-                </p>
               </div>
             </div>
           </FormCard>

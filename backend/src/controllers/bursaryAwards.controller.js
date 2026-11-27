@@ -4,6 +4,7 @@ const logAudit = require('../services/auditLog');
 const { issueForApprovedAward } = require('../services/certificateIssue');
 const { notifyAwardSubmitted, notifyAwardDecision } = require('../services/notifications');
 const { loadEligibilityWorkflow, awardReadinessError } = require('../services/eligibilityWorkflow');
+const { calculateEligibility } = require('../services/eligibility');
 
 const createSchema = z.object({
   student_id: z.string().uuid(),
@@ -165,7 +166,7 @@ async function detail(req, res, next) {
     const award = rows[0];
     if (!award) return res.status(404).json({ message: 'Award not found.' });
 
-    const eligibility = award.assessed_at ? {
+    let eligibility = award.assessed_at ? {
       score: award.eligibility_score,
       max_score: 100,
       category: award.eligibility_category,
@@ -185,6 +186,23 @@ async function detail(req, res, next) {
       assessed_at: award.assessed_at,
       assessed_by_name: award.assessed_by_name,
     } : null;
+    if (eligibility) {
+      const scoreExplanation = calculateEligibility({
+        fee_balance: eligibility.fee_balance,
+        household_income: eligibility.household_income,
+        vulnerability_status: eligibility.vulnerability_status,
+        siblings_in_school: eligibility.siblings_in_school,
+        prior_bursary_history: eligibility.prior_bursary_history,
+      });
+      const pointsTotal = scoreExplanation.factors.reduce((total, factor) => total + factor.points, 0);
+      eligibility = {
+        ...eligibility,
+        scoring_breakdown: pointsTotal === Number(eligibility.score)
+          && scoreExplanation.category === eligibility.category
+          ? scoreExplanation.factors
+          : null,
+      };
+    }
 
     res.json({
       award,

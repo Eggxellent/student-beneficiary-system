@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
@@ -32,14 +32,6 @@ const DUPLICATE_LABELS = {
   cleared: "Cleared",
   not_screened: "Not Screened",
 };
-const ELIGIBILITY_FIELDS = [
-  ["fee_balance", "Outstanding fee balance (KES)", "number"],
-  ["household_income", "Monthly household income (KES)", "number"],
-  ["vulnerability_status", "Vulnerability", "vulnerability"],
-  ["siblings_in_school", "Siblings in school", "integer"],
-  ["prior_bursary_history", "Previous bursary assistance", "history"],
-];
-
 function label(value) {
   if (!value) return "—";
   return String(value).replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -76,24 +68,25 @@ export default function Applications() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
-  const [note, setNote] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [pagination, setPagination] = useState({ page: 1, pageSize: 10, totalPages: 1, totalRecords: 0 });
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [correctionValues, setCorrectionValues] = useState({});
-  const [correctionBaseline, setCorrectionBaseline] = useState({});
-  const [correctionReason, setCorrectionReason] = useState("");
-  const [correcting, setCorrecting] = useState(false);
   const detailsRef = useRef(null);
 
-  async function loadApplications() {
+  async function loadApplications({ nextPage = page, nextPageSize = pageSize, nextQuery = query, nextStatus = statusFilter } = {}) {
     setLoading(true);
     setError("");
     try {
-      const { data } = await api.get("/guardian/staff/applications");
+      const { data } = await api.get("/guardian/staff/applications", {
+        params: { page: nextPage, page_size: nextPageSize, search: nextQuery, status: nextStatus === "all" ? "" : nextStatus },
+      });
       const rows = Array.isArray(data?.applications) ? data.applications : [];
       setApplications(rows);
+      const resultPage = data?.pagination?.page || nextPage;
+      setPagination(data?.pagination || { page: resultPage, pageSize: nextPageSize, totalPages: 1, totalRecords: rows.length });
+      setPage(resultPage);
       setSelectedId((current) =>
         current && rows.some((row) => row.id === current) ? current : null,
       );
@@ -105,27 +98,8 @@ export default function Applications() {
   }
 
   useEffect(() => {
-    loadApplications();
-  }, []);
-
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return applications.filter((application) => {
-      if (statusFilter !== "all" && application.status_code !== statusFilter) return false;
-      if (!needle) return true;
-      return [
-        application.reference,
-        application.student,
-        application.school,
-        application.guardianAccount,
-        application.guardianEmail,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(needle);
-    });
-  }, [applications, query, statusFilter]);
+    loadApplications({ nextPage: page, nextPageSize: pageSize, nextQuery: query, nextStatus: statusFilter });
+  }, [page, pageSize, query, statusFilter]);
 
   const selected = applications.find((application) => application.id === selectedId) || null;
 
@@ -139,71 +113,7 @@ export default function Applications() {
       return;
     }
     setSelectedId(application.id);
-    setNote(application.detail?.decisionNote || "");
-    setNotice("");
-    const values = Object.fromEntries(ELIGIBILITY_FIELDS.map(([key]) => [
-      key,
-      application.eligibility_inputs?.[key] == null ? "" : String(application.eligibility_inputs[key]),
-    ]));
-    setCorrectionValues(values);
-    setCorrectionBaseline(values);
-    setCorrectionReason("");
   }
-
-  async function recordDecision(status) {
-    if (!selected) return;
-    setSaving(true);
-    setError("");
-    setNotice("");
-    try {
-      await api.patch(`/guardian/staff/applications/${selected.id}/status`, {
-        status,
-        note: note.trim() || undefined,
-      });
-      setNotice(`Application ${selected.reference} marked ${label(status).toLowerCase()}.`);
-      setNote("");
-      await loadApplications();
-    } catch (requestError) {
-      setError(requestError.response?.data?.error || "Unable to record this decision.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function correctEligibilityInputs(event) {
-    event.preventDefault();
-    if (!selected?.student_id) return;
-    const changes = {};
-    for (const [key, , type] of ELIGIBILITY_FIELDS) {
-      const value = correctionValues[key] ?? "";
-      if (value === correctionBaseline[key] || value.trim() === "") continue;
-      changes[key] = type === "number" || type === "integer" ? Number(value) : value;
-    }
-    if (!Object.keys(changes).length) {
-      setError("Change at least one value before saving a correction.");
-      return;
-    }
-    setCorrecting(true);
-    setError("");
-    setNotice("");
-    try {
-      const { data } = await api.patch(`/eligibility/${selected.student_id}/correction`, {
-        ...changes,
-        reason: correctionReason.trim(),
-      });
-      setNotice(data.message);
-      setCorrectionReason("");
-      await loadApplications();
-    } catch (requestError) {
-      setError(requestError.response?.data?.message || "Unable to save the eligibility correction.");
-    } finally {
-      setCorrecting(false);
-    }
-  }
-
-  const duplicateDecisionLocked = selected && (!selected.student_id || ["under_review", "confirmed_duplicate", "not_screened"].includes(
-    selected.duplicate?.status,
-  ));
 
 
 
@@ -218,7 +128,8 @@ export default function Applications() {
         </div>
         <button
           type="button"
-          onClick={loadApplications}
+          disabled={loading}
+          onClick={() => loadApplications({ nextPage: page, nextPageSize: pageSize, nextQuery: query, nextStatus: statusFilter })}
           className="inline-flex items-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
           <RefreshCw size={14} aria-hidden="true" /> Refresh
@@ -226,19 +137,17 @@ export default function Applications() {
       </div>
 
       {error && <p className="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">{error}</p>}
-      {notice && <p className="mb-4 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</p>}
-
       <div className="mb-4 flex flex-col gap-2 sm:flex-row">
         <input
           type="search"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => { setQuery(event.target.value); setPage(1); }}
           placeholder="Search reference, student, school or guardian"
           className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
         />
         <select
           value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value)}
+          onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}
           className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700"
         >
           <option value="all">All statuses</option>
@@ -249,13 +158,22 @@ export default function Applications() {
         </select>
       </div>
 
-      <section aria-label="Application results" className="space-y-3">
-        {!loading && filtered.length > 0 && (
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <span>{pagination.totalRecords} total {pagination.totalRecords === 1 ? "application" : "applications"}</span>
+        <label className="flex items-center gap-2">
+          Rows per page
+          <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} className="rounded border border-slate-200 bg-white px-2 py-1.5">
+            {Array.from({ length: 10 }, (_, index) => index + 1).map((size) => <option key={size} value={size}>{size}</option>)}
+          </select>
+        </label>
+      </div>
+      <section aria-label="Application results" className="space-y-2">
+        {!loading && applications.length > 0 && (
           <p className="text-sm text-slate-500">
-            Showing {filtered.length} {filtered.length === 1 ? "application" : "applications"}
+            Page {pagination.page} of {pagination.totalPages} · Showing {applications.length} records
           </p>
         )}
-        {filtered.map((application) => {
+        {applications.map((application) => {
           const isSelected = application.id === selectedId;
           return (
             <article
@@ -271,11 +189,11 @@ export default function Applications() {
                   toggleApplicationDetails(application);
                 }
               }}
-              className={`cursor-pointer rounded-xl border bg-white p-4 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-200 sm:p-5 ${
+              className={`cursor-pointer rounded-xl border bg-white p-3 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-200 sm:p-4 ${
                 isSelected ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-slate-300"
               }`}
             >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="break-words text-base font-semibold text-slate-900">
@@ -285,11 +203,11 @@ export default function Applications() {
                       {application.status}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm text-slate-600">{application.school || "School unavailable"}</p>
+                  <p className="mt-1 text-sm text-slate-600">{application.registeredStudent?.school_code || application.school || "School unavailable"}</p>
                 </div>
               </div>
 
-              <dl className="mt-4 grid gap-x-6 gap-y-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              <dl className="mt-3 grid gap-x-6 gap-y-2 border-t border-slate-100 pt-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
                 <div className="min-w-0">
                   <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Guardian</dt>
                   <dd className="mt-0.5 truncate font-medium text-slate-800" title={application.guardianAccount}>
@@ -311,7 +229,7 @@ export default function Applications() {
                 </div>
               </dl>
 
-              <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-2">
                 {application.registeredStudent ? (
                   <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
                     <span className="font-semibold">Student record</span>
@@ -339,7 +257,7 @@ export default function Applications() {
             </article>
           );
         })}
-        {!loading && filtered.length === 0 && (
+        {!loading && applications.length === 0 && (
           <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-slate-500">
             No guardian applications match this filter.
           </p>
@@ -350,6 +268,12 @@ export default function Applications() {
           </p>
         )}
       </section>
+
+      <nav aria-label="Application pages" className="mt-4 flex items-center justify-between gap-3">
+        <button type="button" disabled={loading || pagination.page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} className="rounded border border-slate-200 bg-white px-3 py-2 text-sm disabled:opacity-50">Previous</button>
+        <span className="text-sm text-slate-600">Page {pagination.page} of {pagination.totalPages}</span>
+        <button type="button" disabled={loading || pagination.page >= pagination.totalPages} onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))} className="rounded border border-slate-200 bg-white px-3 py-2 text-sm disabled:opacity-50">Next</button>
+      </nav>
 
       {selected && (
         <section ref={detailsRef} className="mt-6 scroll-mt-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -394,81 +318,15 @@ export default function Applications() {
             ))}
           </dl>
 
-          {selected.registeredStudent && !duplicateDecisionLocked && selected.status_code !== "rejected" && (
-            <details className="mt-5 rounded-lg border border-slate-200 p-4">
-              <summary className="cursor-pointer text-sm font-semibold text-slate-800">Correct financial-need inputs</summary>
-              <p className="mt-2 text-xs text-slate-600">Admin correction only. The submitted values and earlier assessments remain in the audit history. Give a reason; blank values remain missing.</p>
-              <form className="mt-4 space-y-3" onSubmit={correctEligibilityInputs}>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {ELIGIBILITY_FIELDS.map(([key, title, type]) => (
-                    <label key={key} className="block text-xs font-medium text-slate-700">
-                      {title}
-                      {type === "vulnerability" ? (
-                        <select value={correctionValues[key] || ""} onChange={(event) => setCorrectionValues((current) => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm">
-                          <option value="">Not supplied</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
-                        </select>
-                      ) : type === "history" ? (
-                        <select value={correctionValues[key] || ""} onChange={(event) => setCorrectionValues((current) => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm">
-                          <option value="">Not supplied</option><option value="none">None</option><option value="low">Limited assistance</option><option value="high">Substantial assistance</option>
-                        </select>
-                      ) : (
-                        <input type="number" min="0" max={type === "integer" ? 20 : 1000000000} step={type === "integer" ? 1 : "0.01"} value={correctionValues[key] || ""} onChange={(event) => setCorrectionValues((current) => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm" />
-                      )}
-                    </label>
-                  ))}
-                </div>
-                <label className="block text-xs font-medium text-slate-700">Correction reason (required)
-                  <textarea value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} minLength={5} maxLength={2000} required rows={2} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm" />
-                </label>
-                <button type="submit" disabled={correcting || correctionReason.trim().length < 5} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{correcting ? "Saving…" : "Save correction"}</button>
-              </form>
-            </details>
-          )}
-
-          {duplicateDecisionLocked ? (
-            <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              This application is read-only until duplicate screening is explicitly complete and cleared. Resolve any pending case in Duplicate Review first.
-            </p>
-          ) : <div className="mt-5 border-t border-slate-100 pt-4">
-            <label htmlFor="decision-note" className="text-sm font-medium text-slate-800">
-              Decision note <span className="font-normal text-slate-500">(required when rejecting)</span>
-            </label>
-            <textarea
-              id="decision-note"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              rows={3}
-              maxLength={2000}
-              placeholder="What was verified for this application?"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-            />
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => recordDecision("approved")}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-              >
-                Approve Guardian application
-              </button>
-              <button
-                type="button"
-                disabled={saving || note.trim().length < 5}
-                onClick={() => recordDecision("rejected")}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
-              >
-                Reject application
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => recordDecision("under_review")}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-              >
-                Keep under review
-              </button>
-            </div>
-          </div>}
+          <p className="mt-5 border-t border-slate-100 pt-4 text-sm text-slate-600">
+            {selected.status_code === "under_review"
+              ? "Waiting for Admin duplicate review."
+              : selected.status_code === "rejected"
+                ? "Rejected after duplicate review. This application is locked."
+                : selected.status_code === "approved"
+                  ? "Approved automatically after duplicate screening cleared. Eligibility assessment is handled separately."
+                  : "Application status is updated automatically by duplicate screening."}
+          </p>
         </section>
       )}
     </main>

@@ -24,10 +24,10 @@ describe('Guardian National ID rules', () => {
     expect(isValidGuardianNationalId(value)).toBe(false);
   });
 
-  test('withholds invalid historical values without changing their stored value', () => {
+  test('returns invalid historical values for guardian profile prefilling without marking them valid', () => {
     const legacyProfile = { id: 'guardian-1', national_id: 'N1234567' };
     expect(presentGuardianProfile(legacyProfile)).toMatchObject({
-      national_id: null,
+      national_id: 'N1234567',
       national_id_status: 'invalid_legacy',
     });
     expect(legacyProfile.national_id).toBe('N1234567');

@@ -25,7 +25,7 @@ function makeResponse() {
   };
 }
 
-function setupDecisionClient({ duplicateRows = [], awardStatus = 'submitted', submittedBy = 'a0b1c2d3-0000-4000-8000-000000000000', assessment = 'complete' } = {}) {
+function setupDecisionClient({ duplicateRows = [], awardStatus = 'submitted', submittedBy = 'a0b1c2d3-0000-4000-8000-000000000000', assessment = 'complete', applicationStatus = null } = {}) {
   const award = {
     id: awardId,
     student_id: studentId,
@@ -43,8 +43,9 @@ function setupDecisionClient({ duplicateRows = [], awardStatus = 'submitted', su
       if (/SELECT s\.id, s\.duplicate_of_student_id/.test(sql)) return { rows: [{
         id: studentId,
         duplicate_of_student_id: null,
-        application_id: null,
-        guardian_application_screened: false,
+        application_id: applicationStatus ? 'a1111111-1111-4111-8111-111111111111' : null,
+        application_status: applicationStatus,
+        guardian_application_screened: Boolean(applicationStatus),
         legacy_student_screened: true,
         has_open_case: duplicateRows.some((row) => ['pending', 'needs_verification'].includes(row.status)),
         has_unresolved_confirmed_case: duplicateRows.some((row) => row.status === 'confirmed_duplicate'),
@@ -96,8 +97,9 @@ describe('bursary award proposals (isolated; no database)', () => {
         if (/SELECT s\.id, s\.duplicate_of_student_id/.test(sql)) return { rows: [{
           id: studentId,
           duplicate_of_student_id: studentRow.duplicate_of_student_id || null,
-          application_id: null,
-          guardian_application_screened: false,
+          application_id: studentRow.application_status ? 'a1111111-1111-4111-8111-111111111111' : null,
+          application_status: studentRow.application_status || null,
+          guardian_application_screened: Boolean(studentRow.application_status),
           legacy_student_screened: studentRow.legacy_student_screened ?? true,
           has_open_case: Boolean(studentRow.has_open_case),
           has_unresolved_confirmed_case: Boolean(studentRow.has_confirmed_case),
@@ -194,6 +196,26 @@ describe('bursary award proposals (isolated; no database)', () => {
     expect(res.statusCode).toBe(409);
     expect(res.body.code).toBe('ELIGIBILITY_ASSESSMENT_REQUIRED');
     expect(client.query.mock.calls.some(([sql]) => /INSERT INTO bursary_awards/.test(sql))).toBe(false);
+  });
+
+  test.each(['rejected', 'under_review'])(
+    'a Guardian application with status %s cannot receive an award proposal',
+    async (application_status) => {
+      const client = setupCreateClient({ studentRow: { application_status } });
+      const res = makeResponse();
+      await controller.create({ body: { student_id: studentId, requested_amount: 25000 }, user: { id: actorId } }, res, jest.fn());
+      expect(res.statusCode).toBe(409);
+      expect(res.body.code).toBe('APPLICATION_NOT_APPROVED');
+      expect(client.query).not.toHaveBeenCalledWith(expect.stringMatching(/INSERT INTO bursary_awards/), expect.anything());
+    },
+  );
+
+  test('an approved Guardian application with a valid assessment can receive a proposal', async () => {
+    const client = setupCreateClient({ studentRow: { application_status: 'approved' } });
+    const res = makeResponse();
+    await controller.create({ body: { student_id: studentId, requested_amount: 25000 }, user: { id: actorId } }, res, jest.fn());
+    expect(res.statusCode).toBe(201);
+    expect(client.query).toHaveBeenCalledWith(expect.stringMatching(/INSERT INTO bursary_awards/), expect.any(Array));
   });
 
   test('a student without explicit duplicate-screening evidence cannot be proposed', async () => {
@@ -314,6 +336,31 @@ describe('bursary award proposals (isolated; no database)', () => {
     expect(admin.statusCode).toBe(200);
     expect(pool.query.mock.calls[1][1]).toEqual([false]);
   });
+
+  test('award detail explains the saved eligibility score factor by factor', async () => {
+    pool.query.mockResolvedValue({ rows: [{
+      id: awardId, student_id: studentId, student_name: 'Test Learner', upi: null,
+      school_code: 'SCH-003', requested_amount: 20000, approved_amount: null,
+      assessed_at: '2026-01-05T09:00:00.000Z', eligibility_score: 72,
+      eligibility_category: 'high', fee_balance: 45000, household_income: 18000,
+      vulnerability_status: 'low', siblings_in_school: 2, prior_bursary_history: 'none',
+      recommended_min: 15000, recommended_max: 25000, recommended_currency: 'KES',
+      recommendation_provisional: true, recommendation_source: 'Local provisional range',
+      recorded_via: 'automatic_assessment', assessed_by_name: null,
+    }] });
+    const res = makeResponse();
+
+    await controller.detail({ params: { id: awardId } }, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.eligibility.scoring_breakdown.map(({ key, points, max_points }) => [key, points, max_points])).toEqual([
+      ['fee_balance', 25, 30],
+      ['household_income', 25, 25],
+      ['vulnerability_status', 5, 25],
+      ['siblings_in_school', 7, 10],
+      ['prior_bursary_history', 10, 10],
+    ]);
+  });
 });
 
 describe('bursary award decisions (isolated; no database)', () => {
@@ -375,6 +422,22 @@ describe('bursary award decisions (isolated; no database)', () => {
     expect(res.body.code).toBe('ELIGIBILITY_ASSESSMENT_REQUIRED');
     expect(client.query.mock.calls.some(([sql]) => /UPDATE bursary_awards/.test(sql))).toBe(false);
   });
+
+  test.each(['rejected', 'under_review'])(
+    'an existing proposal cannot advance while its Guardian application is %s',
+    async (applicationStatus) => {
+      const client = setupDecisionClient({ applicationStatus });
+      const res = makeResponse();
+      await controller.decide({
+        params: { id: awardId },
+        body: { decision: 'approved', approved_amount: 25000, reason: 'Reviewed award proposal' },
+        user: { id: actorId },
+      }, res, jest.fn());
+      expect(res.statusCode).toBe(409);
+      expect(res.body.code).toBe('APPLICATION_NOT_APPROVED');
+      expect(client.query).not.toHaveBeenCalledWith(expect.stringMatching(/UPDATE bursary_awards/), expect.anything());
+    },
+  );
 
   test('blocks approval while a duplicate review case is open', async () => {
     const client = setupDecisionClient({

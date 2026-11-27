@@ -10,7 +10,9 @@ function presentGuardianProfile(profile) {
   const valid = isValidGuardianNationalId(profile.national_id);
   return {
     ...profile,
-    national_id: valid ? profile.national_id : null,
+    // Return the guardian's own stored value so the application form can prefill it. Matching
+    // still separately validates the exact eight-digit format before using it as evidence.
+    national_id: hasStoredValue ? profile.national_id : null,
     national_id_status: valid ? 'valid' : hasStoredValue ? 'invalid_legacy' : 'missing',
   };
 }

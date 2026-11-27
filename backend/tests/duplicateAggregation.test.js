@@ -148,6 +148,21 @@ describe('Registration-level duplicate aggregation', () => {
     expect(selectFlaggedCandidates([corroborated], { policy: 'top-1-corroborated', threshold: THRESHOLD })).toHaveLength(1);
   });
 
+  test('near-match evidence survives shared-guardian suppression for the Mwende/Ann case', () => {
+    const result = candidate(0.998, {
+      id: 'mwende-ann',
+      features: {
+        jaro_winkler: 0.9121, dob_match: 0.8, school_match: 0,
+        guardian_match: 1, admission_number_match: 0, birth_certificate_match: 0.98,
+      },
+      reviewEvidence: { near_match_review: true },
+    });
+    const selected = selectFlaggedCandidates([result], { threshold: THRESHOLD });
+    expect(selected).toHaveLength(1);
+    expect(selected[0].candidate.id).toBe('mwende-ann');
+    expect(isGuardianOnlyMatch(result.features, [], result.reviewEvidence)).toBe(false);
+  });
+
   test('near-match evidence routes a below-cutoff candidate for Admin review', () => {
     const near = candidate(0.42, {
       id: 'transposed-certificate',

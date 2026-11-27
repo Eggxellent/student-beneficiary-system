@@ -88,6 +88,27 @@ class ReviewEvidenceTests(unittest.TestCase):
         self.assertEqual(evidence["qualification_rule"], "strong_name_plus_two_identifiers")
         self.assertGreater(evidence["guardian"], 0.8)
 
+    def test_mwende_anne_near_duplicate_with_shared_guardian_routes_to_review(self):
+        original = {
+            "full_name": "Ann Mwende Mutua", "date_of_birth": "2011-09-30",
+            "school_name": "SCH-009", "guardian_id": "shared-guardian",
+            "guardian_name": "David Mutua", "admission_number": "36924",
+            "birth_certificate_number": "0369147058",
+        }
+        submitted = {
+            **original, "full_name": "Mwende M. Anne", "date_of_birth": "2011-09-29",
+            "school_name": "SCH-900", "admission_number": "39624",
+            "birth_certificate_number": "0369147508",
+        }
+        evidence = build_review_evidence(submitted, original)
+        self.assertTrue(evidence["near_match_review"])
+        self.assertEqual(evidence["school_status"], "uncertain_possible_code_typo")
+        self.assertEqual(evidence["comparisons"]["school"]["match_type"], "digit_rearrangement")
+        self.assertEqual(evidence["admission_number"], 0.78)
+        self.assertEqual(evidence["birth_certificate"], 0.88)
+        self.assertGreaterEqual(evidence["name"], 0.9)
+        self.assertEqual(evidence["dob"], 0.9)
+
     def test_registered_different_schools_block_admission_number_similarity(self):
         first = {"full_name": "Faith Wanjiru Mwangi", "date_of_birth": "2010-09-22", "school_code": "Nairobi School", "admission_number": "00123", "birth_certificate_number": "0368246159"}
         second = {**first, "school_code": "Alliance High", "admission_number": "00132", "birth_certificate_number": "9368240000"}

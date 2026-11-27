@@ -137,7 +137,7 @@ describe("Guardian submission pipeline", () => {
       [primaryReference],
     );
     expect(stored.rows[0].student_id).toBe(primaryStudentId);
-    expect(stored.rows[0].status).toBe("under_review");
+    expect(stored.rows[0].status).toBe("approved");
     // Every submitted value is stored on the application, which is where the engine read it from.
     expect(Number(stored.rows[0].fee_balance)).toBe(45000);
     expect(stored.rows[0].vulnerability_status).toBe("high");
@@ -170,6 +170,7 @@ describe("Guardian submission pipeline", () => {
     expect(row.assessment.score).toBe(92);
     expect(row.assessment.missing_inputs).toEqual([]);
     expect(row.detail.student.name).toBe(`Pipeline Child ${suffix}`);
+    expect(row.status_code).toBe('approved');
   });
 
   test("a linked historical application without a screening audit is not treated as cleared", async () => {
@@ -197,7 +198,7 @@ describe("Guardian submission pipeline", () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ status: 'approved' });
     expect(staffDecision.statusCode).toBe(409);
-    expect(staffDecision.body.code).toBe('DUPLICATE_SCREENING_REQUIRED');
+    expect(staffDecision.body.code).toBe('APPLICATION_STATUS_AUTOMATIC');
 
     const eligibility = await request(app)
       .post('/api/eligibility')
@@ -455,6 +456,12 @@ describe("Guardian submission pipeline", () => {
     expect(decision.body.automatic_assessment.status).toBe("complete");
     expect(decision.body.automatic_assessment.score).toBe(92);
 
+    const clearedApplication = await pool.query(
+      "SELECT status FROM guardian_applications WHERE student_id = $1 ORDER BY created_at DESC LIMIT 1",
+      [flaggedStudentId],
+    );
+    expect(clearedApplication.rows[0].status).toBe('approved');
+
     const clearance = (await assessmentRows(flaggedStudentId)).filter((row) => row.trigger === "duplicate_clearance");
     expect(clearance).toHaveLength(1);
     expect(clearance[0].status).toBe("complete");
@@ -572,7 +579,7 @@ describe("Guardian submission pipeline", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ fee_balance: 20000, reason: "Try correction before duplicate resolution" });
     expect(adminCorrection.statusCode).toBe(409);
-    expect(adminCorrection.body.code).toBe("ELIGIBILITY_BLOCKED_BY_DUPLICATE");
+    expect(adminCorrection.body.code).toBe("REJECTED_APPLICATION_READ_ONLY");
 
     // A confirmed duplicate also holds the matched child: the case is unresolved for both records
     // until an administrator records a resolution.

@@ -486,6 +486,13 @@ export default function Awards() {
 function EligibilityReview({ detail }) {
   const assessment = detail.eligibility;
   const range = assessment.recommended_range || {};
+  const inputs = {
+    fee_balance: money(assessment.fee_balance),
+    household_income: money(assessment.household_income),
+    vulnerability_status: statusText(assessment.vulnerability_status),
+    siblings_in_school: assessment.siblings_in_school,
+    prior_bursary_history: statusText(assessment.prior_bursary_history),
+  };
   return (
     <>
       <div className="mt-3 flex flex-wrap items-end gap-4">
@@ -517,8 +524,36 @@ function EligibilityReview({ detail }) {
       </dl>
       <p className="mt-2 text-xs text-slate-600">{range.source}</p>
       <p className="mt-1 text-xs text-slate-600">
-        A recommendation is not an approval. Enter the approved amount yourself; it may differ from the proposed and the recommended amounts.
+        The amount was proposed by the Field Officer; the eligibility score does not calculate an award amount.
       </p>
+      <details className="mt-3 rounded border border-slate-200 bg-white p-3">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-800">How the eligibility score was calculated</summary>
+        {assessment.scoring_breakdown?.length ? (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[560px] text-left text-xs">
+              <thead className="border-b border-slate-200 text-slate-500">
+                <tr><th className="py-2 pr-3">Factor</th><th className="py-2 pr-3">Saved input</th><th className="py-2 pr-3">Scoring rule</th><th className="py-2 text-right">Points</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {assessment.scoring_breakdown.map((factor) => (
+                  <tr key={factor.key}>
+                    <td className="py-2 pr-3 font-medium text-slate-800">{factor.label}</td>
+                    <td className="py-2 pr-3">{inputs[factor.key] ?? "Not recorded"}</td>
+                    <td className="py-2 pr-3 text-slate-600">{factor.detail}</td>
+                    <td className="py-2 text-right font-semibold">{factor.points}/{factor.max_points}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr className="border-t border-slate-200"><th colSpan="3" className="py-2 text-right">Total score</th><td className="py-2 text-right font-bold">{assessment.score}/{assessment.max_score}</td></tr></tfoot>
+            </table>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-amber-800">The saved score does not match the current scoring rules, so a point-by-point explanation is unavailable.</p>
+        )}
+        <p className="mt-2 text-xs text-slate-600">
+          The total determines the need category, which selects the recommended range shown above. The recommendation is provisional where marked. These saved answers are not independently verified here; the Admin decides the award amount.
+        </p>
+      </details>
     </>
   );
 }

@@ -45,6 +45,13 @@ async function correctInputs(req, res, next) {
       await client.query('ROLLBACK');
       return res.status(404).json({ code: 'STUDENT_NOT_FOUND', message: 'Student not found.' });
     }
+    if (workflow.student?.application_status === 'rejected') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'REJECTED_APPLICATION_READ_ONLY',
+        message: 'Rejected applications are preserved and read-only. Submit a new application instead.',
+      });
+    }
     const screeningError = awardReadinessError(workflow);
     if (screeningError && !['assessment_missing', 'assessment_incomplete'].includes(workflow.status)) {
       await client.query('ROLLBACK');

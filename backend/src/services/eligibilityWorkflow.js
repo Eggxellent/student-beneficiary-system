@@ -12,6 +12,7 @@ async function loadEligibilityWorkflow(client, studentId) {
   const { rows } = await client.query(
     `SELECT s.id, s.duplicate_of_student_id,
             app.id AS application_id,
+            app.status AS application_status,
             EXISTS (
               SELECT 1 FROM audit_logs screened
                WHERE screened.table_name = 'guardian_applications'
@@ -38,7 +39,7 @@ async function loadEligibilityWorkflow(client, studentId) {
             ) AS has_unresolved_confirmed_case
        FROM students s
        LEFT JOIN LATERAL (
-         SELECT a.id FROM guardian_applications a
+         SELECT a.id, a.status FROM guardian_applications a
           WHERE a.student_id = s.id
           ORDER BY a.created_at DESC, a.id DESC LIMIT 1
        ) app ON TRUE
@@ -54,6 +55,9 @@ async function loadEligibilityWorkflow(client, studentId) {
   if (!screened) return { status: 'screening_required', student };
   if (student.duplicate_of_student_id || student.has_open_case || student.has_unresolved_confirmed_case) {
     return { status: 'duplicate_review', student };
+  }
+  if (student.application_id && student.application_status !== 'approved') {
+    return { status: 'application_not_approved', student };
   }
 
   const assessmentResult = await client.query(
@@ -108,6 +112,9 @@ function awardReadinessError(state) {
   }
   if (state.status === 'duplicate_review') {
     return { status: 409, code: 'ELIGIBILITY_BLOCKED_BY_DUPLICATE', message: 'This student has an unresolved duplicate case. Resolve it before award consideration.' };
+  }
+  if (state.status === 'application_not_approved') {
+    return { status: 409, code: 'APPLICATION_NOT_APPROVED', message: 'The Guardian application must be approved before a bursary can be proposed or approved.' };
   }
   if (state.status === 'assessment_missing') {
     return { status: 409, code: 'ELIGIBILITY_ASSESSMENT_REQUIRED', message: 'A completed financial-need assessment is required before an award can be proposed or approved.' };

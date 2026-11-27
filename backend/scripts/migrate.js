@@ -56,6 +56,7 @@ const MIGRATION_ORDER = Object.freeze([
   '20261123_guardian_eligibility_inputs.sql',
   '20261124_guardian_admission_number.sql',
   '20261126_admin_eligibility_corrections.sql',
+  '20261127_auto_approve_cleared_guardian_applications.sql',
 ]);
 
 const MANUAL_MIGRATIONS = Object.freeze([

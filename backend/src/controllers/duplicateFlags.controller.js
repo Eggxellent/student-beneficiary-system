@@ -17,6 +17,7 @@ const { APPROVED_SCHOOLS } = require('../config/schools');
 const { normalizeAggregationPolicy, selectFlaggedCandidates } = require('../services/duplicateAggregation');
 const {
   assessAutomatically,
+  duplicateBlockReason,
   guardianStudentInCase,
   latestApplicationForStudent,
 } = require('../services/automaticAssessment');
@@ -655,6 +656,21 @@ async function update(req, res, next) {
           application,
           actorId: reviewerId,
         });
+        const remainingHold = await duplicateBlockReason(client, guardianStudent.id);
+        if (!remainingHold && application?.status === 'under_review') {
+          const approved = await client.query(
+            `UPDATE guardian_applications
+                SET status = 'approved', decision_note = NULL, decided_at = NOW(), updated_at = NOW()
+              WHERE id = $1 AND status = 'under_review' RETURNING id, reference`,
+            [application.id],
+          );
+          if (approved.rows[0]) {
+            await logAudit(reviewerId, 'GUARDIAN_APPLICATION_AUTO_APPROVED', 'guardian_applications', application.id, {
+              reference: application.reference,
+              reason: 'all_duplicate_reviews_cleared',
+            }, client);
+          }
+        }
       }
     }
 

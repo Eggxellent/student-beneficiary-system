@@ -219,8 +219,16 @@ def _school_comparison(first: dict[str, Any], second: dict[str, Any]) -> dict[st
     # A code-like value can be a typo, but edit similarity does not establish that
     # two institutions are equal. Keep it explicitly uncertain for Admin review.
     code_like = bool(re.fullmatch(r"[a-z]{2,}\d{2,}", left) and re.fullmatch(r"[a-z]{2,}\d{2,}", right))
-    if code_like and left[:re.search(r"\d", left).start()] == right[:re.search(r"\d", right).start()] and _adjacent_transposition(left, right):
+    same_prefix = code_like and left[:re.search(r"\d", left).start()] == right[:re.search(r"\d", right).start()]
+    left_digits = re.sub(r"\D", "", left)
+    right_digits = re.sub(r"\D", "", right)
+    if same_prefix and _adjacent_transposition(left, right):
         return info | {"similarity": 0.72, "status": "uncertain_possible_code_typo", "match_type": "adjacent_code_transposition"}
+    # Some entry errors move a digit more than one place (for example SCH-900
+    # entered as SCH-009). Keep this as uncertain context, never school equality.
+    # Restrict to short numeric codes with identical digits to avoid fuzzy name matching.
+    if same_prefix and 2 <= len(left_digits) <= 4 and left_digits != right_digits and sorted(left_digits) == sorted(right_digits):
+        return info | {"similarity": 0.68, "status": "uncertain_possible_code_typo", "match_type": "digit_rearrangement"}
     return info | {"status": "different", "match_type": "different_school_values"}
 
 

@@ -1,21 +1,16 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const PDFDocument = require('pdfkit');
 const { z } = require('zod');
 const pool = require('../config/db');
+const certificatesController = require('./certificates.controller');
 const { getJwtSecret } = require('../config/jwtSecret');
 const logAudit = require('../services/auditLog');
 const { DuplicateScreeningUnavailableError } = require('../services/studentRegistration');
 const { linkGuardianApplicationStudent } = require('../services/guardianApplicationLink');
 const { GUARDIAN_NATIONAL_ID_PATTERN, presentGuardianProfile } = require('../services/guardianNationalId');
 
-// Guardian status vocabulary. The database keeps snake_case values; the guardian pages use the
-// shorter `statusKey` they were designed around ('review' for 'under_review').
-//
-// Every successful submission is recorded as `under_review`: the application status is driven only
-// by the submission itself, never by duplicate screening. A duplicate review (when one applies) is a
-// separate workflow with its own status and does not move this application to Approved; only an
-// administrator decision does that.
+// Guardian status vocabulary. Duplicate screening automatically approves a clean submission;
+// only a possible duplicate waits for an administrator decision in the duplicate-review workflow.
 const STATUS_LABELS = Object.freeze({
   submitted: 'Submitted',
   under_review: 'Under Review',
@@ -167,14 +162,6 @@ const applicationSchema = z.object({
   declaration: z.literal(true),
 });
 
-const decisionSchema = z.object({
-  status: z.enum(['under_review', 'approved', 'rejected']),
-  note: z.string().trim().max(2000).optional(),
-}).refine((value) => value.status !== 'rejected' || Boolean(value.note && value.note.length >= 5), {
-  message: 'A reason of at least 5 characters is required when rejecting an application.',
-  path: ['note'],
-});
-
 function formatDate(value, style = 'long') {
   if (!value) return '';
   const date = value instanceof Date ? value : new Date(value);
@@ -261,9 +248,10 @@ function presentDetail(row) {
 
 function presentGuardianDetail(row) {
   const detail = presentDetail(row);
-  if (row.status !== 'rejected') return { ...detail, decisionNote: '' };
+  const result = { ...detail, invoiceAwardId: row.invoice_award_id || null };
+  if (row.status !== 'rejected') return { ...result, decisionNote: '' };
   return {
-    ...detail,
+    ...result,
     decisionNote: row.duplicate_screening_status === 'confirmed_duplicate'
       ? GUARDIAN_DUPLICATE_REASON
       : row.decision_note || '',
@@ -479,6 +467,21 @@ async function createApplication(req, res) {
           error: 'This application is read-only while its duplicate review is unresolved.',
         });
       }
+      if (application.status === 'under_review' && application.duplicate_screening_status === 'cleared') {
+        const approved = await client.query(
+          `UPDATE guardian_applications
+              SET status = 'approved', decision_note = NULL, decided_at = NOW(), updated_at = NOW()
+            WHERE id = $1 AND status = 'under_review' RETURNING *`,
+          [application.id],
+        );
+        if (approved.rows[0]) {
+          application = approved.rows[0];
+          await logAudit(req.user.id, 'GUARDIAN_APPLICATION_AUTO_APPROVED', 'guardian_applications', application.id, {
+            reference: application.reference,
+            reason: 'duplicate_screening_cleared',
+          }, client);
+        }
+      }
       // The earlier submission already produced a student record. Return that application instead
       // of screening and registering the same unresolved submission again.
       const student = await client.query('SELECT * FROM students WHERE id = $1', [application.student_id]);
@@ -548,8 +551,8 @@ async function createApplication(req, res) {
       );
     }
 
-    // The application is preserved as submitted (status under_review); the student record is the
-    // same record duplicate screening has always produced for a registration.
+    // Linking sets the final application status from screening: approved if clear, under review if
+    // a candidate requires Admin review.
     let linkage;
     try {
       linkage = await linkGuardianApplicationStudent({
@@ -588,9 +591,17 @@ async function createApplication(req, res) {
 
 async function getApplication(req, res) {
   const { rows } = await pool.query(
-    `SELECT a.*, ${APPLICATION_DUPLICATE_STATUS_SQL} AS duplicate_screening_status
+    `SELECT a.*, invoice.award_id AS invoice_award_id,
+            ${APPLICATION_DUPLICATE_STATUS_SQL} AS duplicate_screening_status
        FROM guardian_applications a
        LEFT JOIN students s ON s.id = a.student_id
+       LEFT JOIN LATERAL (
+         SELECT award.id AS award_id
+           FROM bursary_awards award
+           JOIN bursary_certificates certificate ON certificate.award_id = award.id
+          WHERE award.student_id = s.id AND award.status = 'approved'
+          ORDER BY award.decided_at DESC NULLS LAST LIMIT 1
+       ) invoice ON TRUE
       WHERE a.reference = $1 AND a.user_id = $2`,
     [req.params.reference, req.user.id],
   );
@@ -598,41 +609,20 @@ async function getApplication(req, res) {
   return res.json({ application: presentGuardianDetail(rows[0]) });
 }
 
-async function downloadReceipt(req, res, next) {
+async function downloadApplicationInvoice(req, res, next) {
   try {
     const { rows } = await pool.query(
-      `SELECT a.reference, a.created_at, a.status, a.student_full_name, a.school_name,
-              u.full_name AS guardian_name
+      `SELECT award.id
          FROM guardian_applications a
-         JOIN users u ON u.id = a.user_id
-        WHERE a.reference = $1 AND a.user_id = $2`,
+         JOIN students s ON s.id = a.student_id
+         JOIN bursary_awards award ON award.student_id = s.id AND award.status = 'approved'
+         JOIN bursary_certificates certificate ON certificate.award_id = award.id
+        WHERE a.reference = $1 AND a.user_id = $2
+        ORDER BY award.decided_at DESC NULLS LAST LIMIT 1`,
       [req.params.reference, req.user.id],
     );
-    const application = rows[0];
-    if (!application) return res.status(404).json({ error: 'Application not found' });
-
-    const pdf = new PDFDocument({ size: 'A4', margin: 56, info: { Title: `SBMS submission receipt ${application.reference}` } });
-    const chunks = [];
-    pdf.on('data', (chunk) => chunks.push(chunk));
-    pdf.on('error', next);
-    pdf.on('end', () => {
-      res.set({
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${application.reference}-receipt.pdf"`,
-        'Cache-Control': 'private, no-store',
-      }).send(Buffer.concat(chunks));
-    });
-    pdf.fontSize(20).fillColor('#174b40').text('SBMS submission receipt');
-    pdf.moveDown(0.5).fontSize(11).fillColor('#222222');
-    pdf.text(`Application reference: ${application.reference}`);
-    pdf.text(`Submitted: ${formatDate(application.created_at)}`);
-    pdf.text(`Guardian: ${application.guardian_name}`);
-    pdf.text(`Student: ${application.student_full_name}`);
-    pdf.text(`School: ${application.school_name}`);
-    pdf.text(`Application status: ${STATUS_LABELS[application.status] || 'Under Review'}`);
-    pdf.moveDown().fontSize(9).fillColor('#555555')
-      .text('This receipt confirms submission only. It is not an eligibility decision or a bursary award.');
-    pdf.end();
+    if (!rows.length) return res.status(404).json({ error: 'No approved bursary invoice is available for this application.' });
+    return certificatesController.downloadPdf({ ...req, params: { ...req.params, id: rows[0].id } }, res, next);
   } catch (error) {
     next(error);
   }
@@ -643,9 +633,28 @@ async function staffQueue(req, res) {
   // the latest assessment so a reviewer can see why a submission is still waiting, and can tell an
   // application from before the linkage pipeline (student_id IS NULL) from one that is genuinely
   // unresolved.
+  const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const pageSize = Math.max(1, Math.min(10, Number.parseInt(req.query.page_size, 10) || 10));
+  const allowedStatuses = new Set(['submitted', 'under_review', 'approved', 'rejected']);
+  const status = allowedStatuses.has(req.query.status) ? req.query.status : null;
+  const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 120) : '';
+  const filters = [status, search || null];
+  const where = `WHERE ($1::text IS NULL OR a.status = $1)
+                 AND ($2::text IS NULL OR concat_ws(' ', a.reference, a.student_full_name,
+                     a.school_name, u.full_name, u.email) ILIKE '%' || $2 || '%')`;
+  const countResult = await pool.query(
+    `SELECT COUNT(*)::int AS total
+       FROM guardian_applications a JOIN users u ON u.id = a.user_id
+       ${where}`,
+    filters,
+  );
+  const totalRecords = Number(countResult.rows[0]?.total || 0);
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  const page = Math.min(requestedPage, totalPages);
   const { rows } = await pool.query(
     `SELECT a.*, u.full_name AS guardian_account_name, u.email AS guardian_email,
             s.full_name AS registered_full_name,
+            s.school_code AS registered_school_code,
             COALESCE(s.admission_number, a.admission_number) AS registered_admission_number,
             ${APPLICATION_DUPLICATE_STATUS_SQL} AS duplicate_screening_status,
             flag.probability AS duplicate_probability,
@@ -669,7 +678,10 @@ async function staffQueue(req, res) {
           ORDER BY assessed_at DESC, created_at DESC
           LIMIT 1
        ) assessment ON TRUE
-      ORDER BY a.created_at DESC`,
+      ${where}
+      ORDER BY a.created_at DESC, a.id DESC
+      LIMIT $3 OFFSET $4`,
+    [...filters, pageSize, (page - 1) * pageSize],
   );
   return res.json({
     applications: rows.map((row) => ({
@@ -682,6 +694,7 @@ async function staffQueue(req, res) {
         ? {
             id: row.student_id,
             full_name: row.registered_full_name || row.student_full_name,
+            school_code: row.registered_school_code || null,
             admission_number: row.registered_admission_number || null,
           }
         : null,
@@ -708,95 +721,15 @@ async function staffQueue(req, res) {
           }
         : null,
     })),
+    pagination: { page, pageSize, totalPages, totalRecords },
   });
 }
 
 async function staffDecision(req, res) {
-  const result = decisionSchema.safeParse(req.body);
-  if (!result.success) {
-    return res.status(400).json({ error: 'Invalid decision data', details: result.error.flatten() });
-  }
-  const { status, note } = result.data;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('sbms.student.registration'))");
-    const { rows: applications } = await client.query(
-      `SELECT a.*, s.duplicate_of_student_id,
-              ${APPLICATION_DUPLICATE_STATUS_SQL} AS duplicate_screening_status,
-              EXISTS (SELECT 1 FROM duplicate_flags f
-                       WHERE (f.student_id = s.id OR f.matched_student_id = s.id)
-                         AND (f.status IN ('pending', 'needs_verification') OR
-                              (f.status = 'confirmed_duplicate' AND NOT EXISTS (
-                                SELECT 1 FROM duplicate_resolutions r WHERE r.duplicate_flag_id = f.id
-                              )))) AS duplicate_review_open
-         FROM guardian_applications a
-         LEFT JOIN students s ON s.id = a.student_id
-        WHERE a.id = $1 FOR UPDATE OF a`,
-      [req.params.id],
-    );
-    const application = applications[0];
-    if (!application) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Application not found' });
-    }
-    const duplicateRejected = application.status === 'rejected' && (
-      application.duplicate_of_student_id || application.duplicate_review_open
-    );
-    if (duplicateRejected) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({
-        code: 'DUPLICATE_APPLICATION_READ_ONLY',
-        error: 'This application was rejected after duplicate review and is permanently read-only.',
-      });
-    }
-    if (application.status === 'rejected') {
-      await client.query('ROLLBACK');
-      return res.status(409).json({
-        code: 'REJECTED_APPLICATION_READ_ONLY',
-        error: 'Rejected applications are preserved and read-only. Submit a new application instead.',
-      });
-    }
-    if (status !== 'under_review' && application.duplicate_review_open) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({
-        code: 'DUPLICATE_REVIEW_REQUIRED',
-        error: 'Resolve duplicate review before approving or rejecting this application.',
-      });
-    }
-    if (status !== 'under_review' && application.duplicate_screening_status !== 'cleared') {
-      await client.query('ROLLBACK');
-      return res.status(409).json({
-        code: 'DUPLICATE_SCREENING_REQUIRED',
-        error: 'This application cannot proceed until duplicate screening is explicitly cleared.',
-      });
-    }
-
-    const { rows } = await client.query(
-      `UPDATE guardian_applications
-          SET status = $1, decision_note = $2,
-              decided_at = CASE WHEN $3 THEN NOW() ELSE NULL END,
-              updated_at = NOW()
-        WHERE id = $4 RETURNING *`,
-      [status, note || null, status === 'approved' || status === 'rejected', req.params.id],
-    );
-    rows[0].duplicate_screening_status = application.duplicate_screening_status;
-    await logAudit(
-      req.user.id,
-      'GUARDIAN_APPLICATION_DECIDED',
-      'guardian_applications',
-      rows[0].id,
-      { status, reference: rows[0].reference, reason: note || null },
-      client,
-    );
-    await client.query('COMMIT');
-    return res.json({ application: presentDetail(rows[0]) });
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw error;
-  } finally {
-    client.release();
-  }
+  return res.status(409).json({
+    code: 'APPLICATION_STATUS_AUTOMATIC',
+    error: 'Application status follows duplicate screening. Resolve any flagged case in Duplicate Review.',
+  });
 }
 
 module.exports = {
@@ -807,7 +740,7 @@ module.exports = {
   listApplications,
   createApplication,
   getApplication,
-  downloadReceipt,
+  downloadApplicationInvoice,
   staffQueue,
   staffDecision,
 };

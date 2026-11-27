@@ -4,14 +4,13 @@ import {
   ArrowLeft,
   Check,
   Clock3,
-  Download,
   Flag,
   LockKeyhole,
 } from "lucide-react";
 
 import { GUARDIAN_PATHS, GuardianLayout } from "../components/GuardianChrome";
 import { useAuth } from "../context/AuthContext";
-import { downloadGuardianApplicationReceipt, fetchGuardianApplication, apiErrorMessage } from "../services/guardian";
+import { downloadGuardianApplicationInvoice, fetchGuardianApplication, apiErrorMessage } from "../services/guardian";
 
 // Guardian application details (read-only). The record is fetched from
 // GET /api/guardian/applications/:reference, which only returns applications owned by the
@@ -81,8 +80,8 @@ export default function ApplicationDetails() {
   const { user } = useAuth();
   const [application, setApplication] = useState(null);
   const [error, setError] = useState("");
-  const [receiptError, setReceiptError] = useState("");
-  const [downloadingReceipt, setDownloadingReceipt] = useState(false);
+  const [invoiceError, setInvoiceError] = useState("");
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -135,23 +134,23 @@ export default function ApplicationDetails() {
     not_screened: "Not Screened",
   })[duplicateStatus] || "Under Review";
 
-  async function downloadReceipt() {
-    setDownloadingReceipt(true);
-    setReceiptError("");
+  async function downloadInvoice() {
+    setDownloadingInvoice(true);
+    setInvoiceError("");
     try {
-      const blob = await downloadGuardianApplicationReceipt(application.reference);
+      const blob = await downloadGuardianApplicationInvoice(application.reference);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${application.reference}-receipt.pdf`;
+      link.download = `SBMS-bursary-invoice-${application.reference}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setReceiptError(apiErrorMessage(err, "Could not download the submission receipt."));
+      setInvoiceError(apiErrorMessage(err, "Could not download the bursary invoice."));
     } finally {
-      setDownloadingReceipt(false);
+      setDownloadingInvoice(false);
     }
   }
 
@@ -219,15 +218,7 @@ export default function ApplicationDetails() {
             <span className="w-fit rounded-full border border-secondary/30 bg-accent px-3 py-1.5 text-sm font-medium text-secondary">
               {application.status}
             </span>
-            <button
-              type="button"
-              onClick={downloadReceipt}
-              disabled={downloadingReceipt}
-              className="inline-flex h-10 items-center gap-2 rounded-md border border-border px-3 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60"
-            >
-              <Download className="size-4" aria-hidden="true" />
-              {downloadingReceipt ? "Preparing receipt…" : "Download receipt"}
-            </button>
+            {application.invoiceAwardId && <button type="button" onClick={downloadInvoice} disabled={downloadingInvoice} className="inline-flex h-10 items-center rounded-md border border-border px-3 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60">{downloadingInvoice ? "Preparing invoice…" : "Download bursary invoice"}</button>}
           </div>
         </div>
 
@@ -256,7 +247,7 @@ export default function ApplicationDetails() {
           </div>
         </section>
 
-        {receiptError && <p role="alert" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{receiptError}</p>}
+        {invoiceError && <p role="alert" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{invoiceError}</p>}
 
         <section aria-label="Duplicate screening status" className={`${CARD_CLASS} mt-6 p-5`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
