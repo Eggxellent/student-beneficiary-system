@@ -25,7 +25,7 @@ RUN python3 -m venv /app/ml-service/.venv \
 
 COPY backend/src ./backend/src
 COPY backend/scripts ./backend/scripts
-COPY ml-service/predict.py ml-service/feature_engineering.py ./ml-service/
+COPY ml-service/predict.py ml-service/feature_engineering.py ml-service/review_evidence.py ./ml-service/
 COPY ml-service/model/xgb_duplicate_model.metadata.json ./ml-service/model/xgb_duplicate_model.metadata.json
 COPY ml-service/model/xgb_duplicate_model.joblib ./ml-service/model/xgb_duplicate_model.joblib
 
