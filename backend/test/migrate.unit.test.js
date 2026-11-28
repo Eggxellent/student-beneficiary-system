@@ -59,3 +59,9 @@ test('notification cleanup tolerates installations where read_at was already rem
   const sql = fs.readFileSync(file, 'utf8');
   assert.match(sql, /information_schema\.columns[\s\S]*column_name\s*=\s*'read_at'[\s\S]*DELETE FROM notifications WHERE read_at IS NOT NULL/i);
 });
+
+test('notification creation skips the unread index when read_at is already absent', () => {
+  const file = path.join(__dirname, '..', 'src', 'db', 'migrations', '20261111_notifications.sql');
+  const sql = fs.readFileSync(file, 'utf8');
+  assert.match(sql, /information_schema\.columns[\s\S]*column_name\s*=\s*'read_at'[\s\S]*CREATE INDEX IF NOT EXISTS notifications_user_unread_idx/i);
+});

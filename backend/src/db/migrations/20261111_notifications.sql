@@ -34,6 +34,15 @@ CREATE INDEX IF NOT EXISTS notifications_user_created_idx
   ON notifications(user_id, created_at DESC);
 
 -- The badge count only ever asks for one user's unread rows.
-CREATE INDEX IF NOT EXISTS notifications_user_unread_idx
-  ON notifications(user_id)
-  WHERE read_at IS NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'notifications'
+       AND column_name = 'read_at'
+  ) THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS notifications_user_unread_idx ON notifications(user_id) WHERE read_at IS NULL';
+  END IF;
+END $$;
